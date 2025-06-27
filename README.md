@@ -1,20 +1,27 @@
+
+![SynApps Logo](logo192.png)
+
 # SynApps v0.4.0
 
 A web-based visual platform for modular AI agents with database persistence and improved workflow execution.
 
 ## Introduction
 
-SynApps is a **web-based visual platform for modular AI agents**. Its mission is to let indie creators build autonomous AI applets like LEGO blocks – each applet is a small agent with a specialized skill (e.g. *Writer*, *Memory*, *Artist*). 
+SynApps is a **web-based visual platform for modular AI agents called Snaplets**. Its mission is to let indie creators build autonomous AI snaplets like LEGO blocks – each snaplet is a small agent with a specialized skill (e.g. *Writer*, *Memory*, *Artist*). 
 
-A lightweight **SynApps Orchestrator** routes messages between these applets, sequencing their interactions to solve tasks collaboratively. In other words, SynApps connects AI "synapses" (agents) in real time, forming an intelligent network that can tackle complex workflows.
+A lightweight **SynApps Orchestrator** routes messages between these snaplets, sequencing their interactions to solve tasks collaboratively. In other words, SynApps connects AI "synapses" (snaplets) in real time, forming an intelligent network that can tackle complex workflows.
+
+## Demo
+
+![SynApps Demo](SynApps-v0.4.0-Demo.gif)
 
 ## Features
 
 - **One-Click Creation & Extreme Simplicity:** Create an AI workflow with minimal steps (one or two clicks).
-- **Autonomous & Collaborative Agents:** Each applet (agent) runs autonomously but can pass data to others via the orchestrator.
-- **Real-Time Visual Feedback:** See the AI agents at work with an animated graph of nodes (agents) and connections (data flow).
-- **Background Execution & Notifications:** Agents run in the background once triggered, with a notification system to alert users of important status changes.
-- **Openness and Extensibility:** Support for user-editable applets via code for those who want to customize logic.
+- **Autonomous & Collaborative Snaplets:** Each snaplet runs autonomously but can pass data to others via the orchestrator.
+- **Real-Time Visual Feedback:** See the AI snaplets at work with an animated graph of nodes (snaplets) and connections (data flow).
+- **Background Execution & Notifications:** Snaplets run in the background once triggered, with a notification system to alert users of important status changes.
+- **Openness and Extensibility:** Support for user-editable snaplets via code for those who want to customize logic.
 
 ## Quick Start
 

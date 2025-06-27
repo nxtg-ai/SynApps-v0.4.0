@@ -148,7 +148,7 @@ const SettingsPage: React.FC = () => {
                   placeholder="sk-..."
                 />
                 <div className="input-description">
-                  Required for Writer applet using gpt-4.1 and AI code suggestions.
+                  Required for Writer applet using gpt-4o and AI code suggestions.
                 </div>
               </div>
               
@@ -301,7 +301,7 @@ const SettingsPage: React.FC = () => {
           <div className="info-section">
             <h3>About SynApps</h3>
             <p>
-              SynApps MVP v0.1.0 - A web-based visual platform for modular AI agents.
+              SynApps MVP v0.4.0 - A web-based visual platform for modular AI agents.
             </p>
             <p>
               SynApps allows indie creators to build autonomous AI applets like LEGO blocks, 
@@ -312,9 +312,9 @@ const SettingsPage: React.FC = () => {
           <div className="info-section">
             <h3>Quick Links</h3>
             <ul>
-              <li><a href="https://github.com/synapps/synapps" target="_blank" rel="noopener noreferrer">GitHub Repository</a></li>
-              <li><a href="https://docs.synapps.ai" target="_blank" rel="noopener noreferrer">Documentation</a></li>
-              <li><a href="https://discord.gg/synapps" target="_blank" rel="noopener noreferrer">Discord Community</a></li>
+              <li><a href="https://github.com/nxtg-ai/SynApps-v0.4.0" target="_blank" rel="noopener noreferrer">GitHub Repository</a></li>
+              <li><a href="https://github.com/nxtg-ai/SynApps-v0.4.0/tree/master/docs" target="_blank" rel="noopener noreferrer">Documentation</a></li>
+              <li><a href="https://discord.gg/UUt6Yfk7NX" target="_blank" rel="noopener noreferrer">Discord Community</a></li>
             </ul>
           </div>
         </div>
