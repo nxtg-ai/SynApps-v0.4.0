@@ -1,4 +1,4 @@
-# Contributing to SynApps
+# Contributing to SynApps v0.4.0
 
 Thank you for your interest in contributing to SynApps! This document provides guidelines and instructions for contributing to the project.
 
@@ -7,11 +7,20 @@ Thank you for your interest in contributing to SynApps! This document provides g
 - [Code of Conduct](#code-of-conduct)
 - [Getting Started](#getting-started)
 - [Development Environment](#development-environment)
+  - [Prerequisites](#prerequisites)
+  - [Local Setup](#local-setup)
+  - [Running the Application](#running-the-application)
 - [Coding Standards](#coding-standards)
+  - [Python](#python)
+  - [TypeScript/React](#typescriptreact)
 - [Pull Request Process](#pull-request-process)
 - [Creating Applets](#creating-applets)
 - [Testing](#testing)
+  - [Backend Testing](#backend-testing)
+  - [Frontend Testing](#frontend-testing)
+  - [End-to-End Testing](#end-to-end-testing)
 - [Documentation](#documentation)
+- [Deployment](#deployment)
 - [Community](#community)
 
 ## Code of Conduct
@@ -38,28 +47,44 @@ Our project adheres to a Code of Conduct that establishes expected behavior in o
 
 ### Prerequisites
 
-- Docker and Docker Compose
-- Node.js 16+
-- Python 3.9+
-- API keys for OpenAI and Stability AI (for testing)
+- [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/) (for containerized development)
+- [Node.js](https://nodejs.org/) 16+ and npm (for frontend development)
+- [Python](https://www.python.org/downloads/) 3.9+ and pip (for backend development)
+- API keys for [OpenAI](https://platform.openai.com/) and [Stability AI](https://stability.ai/) (for testing AI features)
+- Git (for version control)
 
 ### Local Setup
 
-1. Create a `.env` file in the root directory with your API keys:
+1. Fork the repository on GitHub and clone your fork:
+   ```bash
+   git clone https://github.com/yourusername/SynApps-v0.4.0.git
+   cd SynApps-v0.4.0
+   ```
+
+2. Create a `.env.development` file in the root directory with your API keys and database configuration:
    ```
    OPENAI_API_KEY=your_openai_api_key
    STABILITY_API_KEY=your_stability_api_key
+   DATABASE_URL=sqlite+aiosqlite:///synapps.db
+   BACKEND_CORS_ORIGINS=http://localhost:3000
    ```
 
-2. Install backend dependencies:
-   ```
+3. Set up the backend environment:
+   ```bash
    cd apps/orchestrator
-   pip install -e .
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   pip install -e .  # Installs the package in editable mode with all dependencies
    ```
 
-3. Install frontend dependencies:
+4. Initialize the database:
+   ```bash
+   alembic upgrade head
    ```
-   cd apps/web-frontend
+
+5. Install frontend dependencies:
+   ```bash
+   cd ../web-frontend
    npm install
    ```
 
@@ -67,23 +92,30 @@ Our project adheres to a Code of Conduct that establishes expected behavior in o
 
 #### Using Docker
 
+To run the entire application using Docker:
+
+```bash
+docker-compose -f infra/docker/docker-compose.yml up --build
 ```
-docker-compose -f infra/docker/docker-compose.yml up
-```
+
+Then access the application at http://localhost:3000
 
 #### Manual Development
 
-In one terminal:
-```
+For backend development, in one terminal:
+```bash
 cd apps/orchestrator
-uvicorn main:app --reload
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+uvicorn main:app --reload --port 8000
 ```
 
-In another terminal:
-```
+For frontend development, in another terminal:
+```bash
 cd apps/web-frontend
 npm start
 ```
+
+The frontend will be available at http://localhost:3000 and the backend API at http://localhost:8000
 
 ## Coding Standards
 
@@ -136,30 +168,80 @@ apps/applets/my-applet/
 
 ### Backend Testing
 
-We use pytest for backend testing:
+We use pytest for backend testing. The tests are located in `apps/orchestrator/tests/`.
 
-```
+To run all backend tests:
+
+```bash
 cd apps/orchestrator
-pytest
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pytest -v
 ```
+
+To run a specific test file:
+
+```bash
+pytest tests/test_main.py -v
+```
+
+To run with coverage reporting:
+
+```bash
+pytest --cov=. --cov-report=term-missing
+```
+
+When writing backend tests:
+- Use the `TestClient` from FastAPI for API testing
+- Mock external dependencies when appropriate
+- Test both success and error cases
+- Ensure database operations are properly isolated
 
 ### Frontend Testing
 
-We use Jest and React Testing Library for frontend testing:
+We use Jest and React Testing Library for frontend testing. The tests are located alongside the components they test with a `.test.tsx` extension.
 
-```
+To run all frontend tests:
+
+```bash
 cd apps/web-frontend
 npm test
 ```
 
+To run tests in watch mode (useful during development):
+
+```bash
+npm test -- --watch
+```
+
+To run a specific test file:
+
+```bash
+npm test -- src/components/WorkflowCanvas/nodes/AppletNode.test.tsx
+```
+
+To run with coverage reporting:
+
+```bash
+npm test -- --coverage
+```
+
+When writing frontend tests:
+- Focus on testing component behavior, not implementation details
+- Mock API calls and external dependencies
+- Test user interactions using `userEvent` from Testing Library
+- Verify that components render correctly with different props
+
 ### End-to-End Testing
 
-We use Cypress for end-to-end testing:
+E2E tests verify that the entire application works correctly from the user's perspective.
 
-```
-cd apps/web-frontend
-npm run test:e2e
-```
+For manual E2E testing, please verify these critical workflows:
+1. Creating and saving a new workflow
+2. Running a workflow with different inputs
+3. Viewing workflow run history
+4. Editing an existing workflow
+
+When contributing, please ensure that your changes don't break these critical user flows.
 
 ## Documentation
 
@@ -171,13 +253,36 @@ Good documentation is crucial for the project. Please update the following as ne
 - Update architecture.md for design changes
 - Add usage examples for new features
 
+When documenting code:
+
+- For Python, use Google-style docstrings
+- For TypeScript/React, use JSDoc comments
+- Include examples where appropriate
+- Document both public APIs and internal functions with complex logic
+- Keep documentation up to date when changing code
+
+## Deployment
+
+SynApps can be deployed in several ways:
+
+### Docker Deployment
+
+For production deployment using Docker:
+
+```bash
+docker-compose -f infra/docker/docker-compose.yml -f infra/docker/docker-compose.prod.yml up -d
+```
+
+### Kubernetes Deployment
+
+For Kubernetes deployment, refer to the documentation in `infra/k8s/README.md`.
+
 ## Community
 
 Join our community to discuss development, get help, and share your work:
 
-- [Discord Server](https://discord.gg/synapps)
-- [GitHub Discussions](https://github.com/synapps/synapps-mvp/discussions)
-- [Twitter](https://twitter.com/synappshq)
+- [GitHub Discussions](https://github.com/nxtg-ai/SynApps-v0.4.0/discussions)
+- [GitHub Issues](https://github.com/nxtg-ai/SynApps-v0.4.0/issues)
 
 ## License
 
