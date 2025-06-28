@@ -1,7 +1,6 @@
-
 ![SynApps Logo](logo192.png)
 
-# SynApps v0.4.0
+# SynApps v0.4.0 [![Star on GitHub](https://img.shields.io/github/stars/nxtg-ai/SynApps-v0.4.0?style=social)](https://github.com/nxtg-ai/SynApps-v0.4.0/stargazers)
 
 A web-based visual platform for modular AI agents with database persistence and improved workflow execution.
 
