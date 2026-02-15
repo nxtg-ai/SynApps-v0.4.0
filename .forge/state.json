@@ -2,7 +2,7 @@
   "version": "1.1.0",
   "project_name": "synapps",
   "created_at": "2026-02-15T03:04:41.518674601Z",
-  "updated_at": "2026-02-15T18:56:46.460117770Z",
+  "updated_at": "2026-02-15T19:00:16.740519741Z",
   "tools": [
     {
       "name": "claude",
@@ -39,21 +39,13 @@
     "blocked": 21
   },
   "active_locks": {
-    "T-035": {
-      "task_id": "T-035",
+    "T-037": {
+      "task_id": "T-037",
       "agent": "codex",
-      "locked_at": "2026-02-15T18:51:07.707633311Z",
+      "locked_at": "2026-02-15T19:00:16.740519669Z",
       "files": [
-        "apps/orchestrator/main.py",
-        "apps/web-frontend/src/"
-      ]
-    },
-    "T-036": {
-      "task_id": "T-036",
-      "agent": "codex",
-      "locked_at": "2026-02-15T18:56:46.460117658Z",
-      "files": [
-        "apps/orchestrator/models.py"
+        "docker-compose.yml",
+        "apps/orchestrator/main.py"
       ]
     },
     "T-024": {
@@ -62,6 +54,14 @@
       "locked_at": "2026-02-15T18:49:28.482255881Z",
       "files": [
         "apps/orchestrator/main.py",
+        "apps/orchestrator/models.py"
+      ]
+    },
+    "T-036": {
+      "task_id": "T-036",
+      "agent": "codex",
+      "locked_at": "2026-02-15T18:56:46.460117658Z",
+      "files": [
         "apps/orchestrator/models.py"
       ]
     }

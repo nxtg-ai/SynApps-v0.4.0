@@ -2,7 +2,7 @@
   "id": "T-035",
   "title": "Optimize Backend and Frontend Performance",
   "description": "Implement backend async everywhere, connection pooling, lazy applet loading. On frontend, add code splitting, tree-shaking, and ReactFlow virtualization.",
-  "status": "in_progress",
+  "status": "completed",
   "assigned_to": "codex",
   "task_type": "implement",
   "depends_on": [
@@ -20,8 +20,8 @@
     "ReactFlow virtualization for large workflows"
   ],
   "created_at": "2026-02-15T03:19:12.347904249Z",
-  "updated_at": "2026-02-15T18:51:07.707549682Z",
-  "completed_at": null,
+  "updated_at": "2026-02-15T19:00:16.739451732Z",
+  "completed_at": "2026-02-15T19:00:16.739451615Z",
   "plan_version": 2,
   "retry_count": 0
 }
