@@ -68,3 +68,10 @@
 {"timestamp":"2026-02-15T18:56:46.459251058Z","event_type":"task_completed","task_id":"T-028","agent":"codex","message":"T-028 completed by codex (exit 0)","metadata":null}
 {"timestamp":"2026-02-15T19:00:16.739689911Z","event_type":"task_completed","task_id":"T-035","agent":"codex","message":"T-035 completed by codex (exit 0)","metadata":null}
 {"timestamp":"2026-02-15T19:00:26.541210153Z","event_type":"task_completed","task_id":"T-036","agent":"codex","message":"T-036 completed by codex (exit 0)","metadata":null}
+{"timestamp":"2026-02-15T19:02:21.874907918Z","event_type":"task_failed","task_id":"T-037","agent":"codex","message":"T-037 rate limited. Retrying in 11s (attempt 1/5)","metadata":null}
+{"timestamp":"2026-02-15T19:02:33.404332445Z","event_type":"task_failed","task_id":"T-037","agent":"codex","message":"T-037 rate limited. Retrying in 34s (attempt 2/5)","metadata":null}
+{"timestamp":"2026-02-15T19:03:07.995853403Z","event_type":"task_failed","task_id":"T-037","agent":"codex","message":"T-037 rate limited. Retrying in 67s (attempt 3/5)","metadata":null}
+{"timestamp":"2026-02-15T19:04:15.633230668Z","event_type":"task_failed","task_id":"T-037","agent":"codex","message":"T-037 rate limited. Retrying in 129s (attempt 4/5)","metadata":null}
+{"timestamp":"2026-02-15T19:06:25.180500386Z","event_type":"task_failed","task_id":"T-037","agent":"codex","message":"T-037 failed after 5 rate limit retries by codex","metadata":null}
+{"timestamp":"2026-02-15T19:06:33.815180320Z","event_type":"task_completed","task_id":"T-024","agent":"codex","message":"Task T-024 failed after 3 attempts by codex","metadata":null}
+{"timestamp":"2026-02-15T19:07:43.874457772Z","event_type":"task_completed","task_id":"T-024","agent":"codex","message":"T-024 completed by codex (exit 0)","metadata":null}

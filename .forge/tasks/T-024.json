@@ -2,7 +2,7 @@
   "id": "T-024",
   "title": "Implement Execution Engine Upgrades",
   "description": "Refactor orchestrator to support parallel execution, fan-in/fan-out, conditional and loop nodes, error handling (retries, timeouts, fallback), and full execution history.",
-  "status": "in_progress",
+  "status": "completed",
   "assigned_to": "codex",
   "task_type": "implement",
   "depends_on": [
@@ -20,8 +20,8 @@
     "Execution history with trace and diff view"
   ],
   "created_at": "2026-02-15T03:19:12.347895081Z",
-  "updated_at": "2026-02-15T18:49:28.482139164Z",
-  "completed_at": null,
+  "updated_at": "2026-02-15T19:07:43.874242795Z",
+  "completed_at": "2026-02-15T19:07:43.874242617Z",
   "plan_version": 2,
   "retry_count": 0
 }
