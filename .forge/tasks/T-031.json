@@ -1,0 +1,27 @@
+{
+  "id": "T-031",
+  "title": "Expand Backend Test Coverage to 80%",
+  "description": "Write unit and integration tests for all applets, orchestrator engine, API endpoints, and auth flow to achieve at least 80% coverage.",
+  "status": "pending",
+  "assigned_to": "gemini",
+  "task_type": "test",
+  "depends_on": [
+    "T-027",
+    "T-028",
+    "T-029",
+    "T-030"
+  ],
+  "locked_files": [
+    "apps/orchestrator/tests/"
+  ],
+  "acceptance_criteria": [
+    "Backend test coverage >= 80%",
+    "All tests pass",
+    "Coverage report generated"
+  ],
+  "created_at": "2026-02-15T03:19:12.347901838Z",
+  "updated_at": "2026-02-15T03:19:12.347901838Z",
+  "completed_at": null,
+  "plan_version": 2,
+  "retry_count": 0
+}

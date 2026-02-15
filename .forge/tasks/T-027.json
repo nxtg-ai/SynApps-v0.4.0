@@ -1,0 +1,27 @@
+{
+  "id": "T-027",
+  "title": "Migrate Legacy Applets to New Nodes",
+  "description": "Implement migration logic to auto-convert WriterApplet, ArtistApplet, and MemoryApplet to the new LLM Node, Image Gen Node, and upgraded Memory Node, preserving user data.",
+  "status": "pending",
+  "assigned_to": "codex",
+  "task_type": "implement",
+  "depends_on": [
+    "T-025",
+    "T-026"
+  ],
+  "locked_files": [
+    "apps/applets/writer/applet.py",
+    "apps/applets/artist/applet.py",
+    "apps/applets/memory/applet.py"
+  ],
+  "acceptance_criteria": [
+    "Legacy applets auto-migrate on load",
+    "No user data lost",
+    "Migration is idempotent"
+  ],
+  "created_at": "2026-02-15T03:19:12.347899225Z",
+  "updated_at": "2026-02-15T03:19:12.347899225Z",
+  "completed_at": null,
+  "plan_version": 2,
+  "retry_count": 0
+}

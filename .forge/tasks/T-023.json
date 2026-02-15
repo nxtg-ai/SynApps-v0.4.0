@@ -1,0 +1,21 @@
+{
+  "id": "T-023",
+  "title": "Design Execution Engine Parallelism and Routing",
+  "description": "Design the upgraded execution engine supporting parallel execution, fan-in/fan-out, conditional routing, loop support, error handling, and execution history. Specify data structures, algorithms, and API changes.",
+  "status": "completed",
+  "assigned_to": "claude",
+  "task_type": "design",
+  "depends_on": [],
+  "locked_files": [],
+  "acceptance_criteria": [
+    "Detailed design document for execution engine",
+    "Clear algorithms for topological sort and parallel group detection",
+    "Error handling and retry logic specified",
+    "API changes documented"
+  ],
+  "created_at": "2026-02-15T03:19:12.347894521Z",
+  "updated_at": "2026-02-15T18:28:12.508789072Z",
+  "completed_at": "2026-02-15T18:28:12.508788020Z",
+  "plan_version": 2,
+  "retry_count": 0
+}

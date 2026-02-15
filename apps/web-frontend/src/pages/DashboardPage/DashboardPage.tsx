@@ -66,7 +66,10 @@ const DashboardPage: React.FC = () => {
       <div className="dashboard">
         <section className="welcome-section">
           <div className="welcome-text">
-            <h2>Welcome to SynApps</h2>
+            <h2>Welcome to SynApps | (v.0.4.0) Alpha</h2>
+            <p>
+              Thank you for your participation in this alpha release: <a href="https://github.com/nxtg-ai/SynApps-v0.4.0" target="_blank" rel="noopener noreferrer">SynApps-v0.4.0 GitHub</a>
+            </p>
             <p>
               Build modular AI workflows with autonomous agents that work together.
               Get started by creating a new workflow from a template or open a recent one.

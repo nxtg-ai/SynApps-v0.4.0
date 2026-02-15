@@ -1,0 +1,24 @@
+{
+  "id": "T-036",
+  "title": "Optimize Database Indexes and Queries",
+  "description": "Add indexes on frequently queried columns and optimize queries for flow history and run status.",
+  "status": "in_progress",
+  "assigned_to": "codex",
+  "task_type": "implement",
+  "depends_on": [
+    "T-010"
+  ],
+  "locked_files": [
+    "apps/orchestrator/models.py"
+  ],
+  "acceptance_criteria": [
+    "Indexes created on flow_id, status, created_at",
+    "History queries optimized",
+    "No slow query warnings"
+  ],
+  "created_at": "2026-02-15T03:19:12.347908533Z",
+  "updated_at": "2026-02-15T18:56:46.460005009Z",
+  "completed_at": null,
+  "plan_version": 2,
+  "retry_count": 0
+}

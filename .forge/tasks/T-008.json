@@ -1,0 +1,21 @@
+{
+  "id": "T-008",
+  "title": "Design Backend Stack Upgrade Plan",
+  "description": "Plan the migration of the backend codebase from Python 3.9/FastAPI 0.68/Pydantic v1/SQLAlchemy 1.4 to Python 3.11+, FastAPI 0.115+, Pydantic v2, and SQLAlchemy 2.0. Identify breaking changes, deprecated patterns, and required code updates. Specify steps for Alembic upgrade and database compatibility testing.",
+  "status": "completed",
+  "assigned_to": "claude",
+  "task_type": "design",
+  "depends_on": [],
+  "locked_files": [],
+  "acceptance_criteria": [
+    "Documented migration plan covering all major dependencies",
+    "List of files and modules impacted by each upgrade",
+    "Checklist of deprecated patterns to remove",
+    "Strategy for Alembic auto-migration and database testing"
+  ],
+  "created_at": "2026-02-15T03:19:12.347883308Z",
+  "updated_at": "2026-02-15T18:14:25.357110938Z",
+  "completed_at": "2026-02-15T18:14:25.357110237Z",
+  "plan_version": 2,
+  "retry_count": 0
+}

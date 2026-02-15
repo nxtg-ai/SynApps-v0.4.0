@@ -18,7 +18,8 @@ import ReactFlow, {
   OnEdgesChange,
   OnNodesChange,
   ConnectionLineType,
-  NodeRemoveChange
+  NodeRemoveChange,
+  ReactFlowInstance
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import anime from 'animejs';
@@ -35,6 +36,7 @@ import EndNode from './nodes/EndNode';
 import webSocketService from '../../services/WebSocketService';
 import NodeContextMenu from './NodeContextMenu';
 import './NodeContextMenu.css';
+import NodeConfigModal from './NodeConfigModal';
 
 interface WorkflowCanvasProps {
   flow: Flow;
@@ -71,6 +73,19 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow, onFlowChange, rea
     nodeRect: null
   });
   
+  // State for node configuration modal
+  const [configModal, setConfigModal] = useState<{
+    isOpen: boolean;
+    nodeId: string | null;
+    nodeType: string | null;
+    nodeData: any | null;
+  }>({
+    isOpen: false,
+    nodeId: null,
+    nodeType: null,
+    nodeData: null
+  });
+  
   // Reference to the anime.js timeline
   const animationRef = useRef<anime.AnimeTimelineInstance | null>(null);
   
@@ -78,8 +93,95 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow, onFlowChange, rea
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
   
+  // Reference to track pending flow updates that should happen after render
+  const pendingFlowUpdateRef = useRef<{
+    type: 'nodeChange' | 'nodeDelete' | 'edgeChange' | 'connect';
+    nodes?: Node[];
+    edges?: Edge[];
+    nodeId?: string;
+    connection?: Connection;
+  } | null>(null);
+  
   // Use ref to track previous flow value to prevent unnecessary updates
   const prevFlowRef = useRef<string>('');
+  
+  // Process flow updates after render
+  useEffect(() => {
+    // Skip if no pending updates
+    if (!pendingFlowUpdateRef.current) return;
+    
+    const pendingUpdate = pendingFlowUpdateRef.current;
+    pendingFlowUpdateRef.current = null; // Clear the pending update
+    
+    // Handle different types of updates
+    if (pendingUpdate.type === 'nodeDelete' && pendingUpdate.nodeId) {
+      // Update the flow by removing the node and its connected edges
+      const updatedFlow = {
+        ...flow,
+        nodes: flow.nodes.filter(node => node.id !== pendingUpdate.nodeId),
+        edges: flow.edges.filter(edge => 
+          edge.source !== pendingUpdate.nodeId && 
+          edge.target !== pendingUpdate.nodeId
+        )
+      };
+      onFlowChange(updatedFlow);
+    } 
+    else if (pendingUpdate.type === 'nodeChange' && pendingUpdate.nodes) {
+      // Handle position and data updates for nodes
+      const updatedFlow = {
+        ...flow,
+        nodes: flow.nodes.map(node => {
+          const updatedNode = pendingUpdate.nodes?.find(n => n.id === node.id);
+          if (updatedNode) {
+            return {
+              ...node,
+              position: updatedNode.position,
+              data: {
+                ...node.data,
+                ...updatedNode.data
+              }
+            };
+          }
+          return node;
+        })
+      };
+      onFlowChange(updatedFlow);
+    }
+    else if (pendingUpdate.type === 'edgeChange' && pendingUpdate.edges) {
+      // Handle edge updates
+      const updatedFlow = {
+        ...flow,
+        edges: pendingUpdate.edges.map(edge => {
+          const existingEdge = flow.edges.find(e => e.id === edge.id);
+          if (existingEdge) {
+            return {
+              ...existingEdge,
+              ...edge
+            };
+          }
+          return edge;
+        })
+      };
+      onFlowChange(updatedFlow);
+    }
+    else if (pendingUpdate.type === 'connect' && pendingUpdate.connection) {
+      // Handle new connections
+      const newEdge = {
+        id: generateId(),
+        source: pendingUpdate.connection.source || '',
+        target: pendingUpdate.connection.target || '',
+        sourceHandle: pendingUpdate.connection.sourceHandle,
+        targetHandle: pendingUpdate.connection.targetHandle
+      };
+      
+      const updatedFlow = {
+        ...flow,
+        edges: [...flow.edges, newEdge]
+      };
+      
+      onFlowChange(updatedFlow);
+    }
+  }, [flow, onFlowChange, nodes, edges]);
   
   // Convert our Flow format to ReactFlow format
   useEffect(() => {
@@ -121,7 +223,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow, onFlowChange, rea
       animated: edge.animated || false,
     }));
     
-    // Update state
+    // Update state00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
     setNodes(rfNodes);
     setEdges(rfEdges);
   }, [flow]);
@@ -134,60 +236,31 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow, onFlowChange, rea
       setNodes((nds) => {
         const newNodes = applyNodeChanges(changes, nds);
         
-        // Check if any nodes were removed
-        const removedNodeIds = changes
-          .filter((change): change is NodeRemoveChange => change.type === 'remove')
-          .map(change => change.id);
-        
-        // If nodes were removed, also update the flow
-        if (removedNodeIds.length > 0) {
-          // Filter out removed nodes
-          const updatedNodes = flow.nodes.filter(
-            node => !removedNodeIds.includes(node.id)
-          );
+        // Handle node deletion
+        const nodeDeleteChange = changes.find(change => change.type === 'remove') as NodeRemoveChange;
+        if (nodeDeleteChange) {
+          // Get the node ID being deleted
+          const nodeId = nodeDeleteChange.id;
           
-          // Filter out edges connected to removed nodes
-          const updatedEdges = flow.edges.filter(
-            edge => 
-              !removedNodeIds.includes(edge.source) && 
-              !removedNodeIds.includes(edge.target)
-          );
-          
-          // Update the flow with removed nodes and their connected edges
-          const updatedFlow = {
-            ...flow,
-            nodes: updatedNodes,
-            edges: updatedEdges
+          // Queue the node deletion update for after render
+          pendingFlowUpdateRef.current = {
+            type: 'nodeDelete',
+            nodeId
           };
           
-          onFlowChange(updatedFlow);
           return newNodes;
         }
         
-        // Handle position and data updates for remaining nodes
-        const updatedFlow = {
-          ...flow,
-          nodes: flow.nodes.map(node => {
-            const updatedNode = newNodes.find(n => n.id === node.id);
-            if (updatedNode) {
-              return {
-                ...node,
-                position: updatedNode.position,
-                data: {
-                  ...node.data,
-                  ...updatedNode.data
-                }
-              };
-            }
-            return node;
-          })
+        // Queue a regular node change update for after render
+        pendingFlowUpdateRef.current = {
+          type: 'nodeChange',
+          nodes: newNodes
         };
         
-        onFlowChange(updatedFlow);
         return newNodes;
       });
     },
-    [flow, onFlowChange, readonly]
+    [readonly]
   );
   
   // Edge changes handler
@@ -198,26 +271,16 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow, onFlowChange, rea
       setEdges((eds) => {
         const newEdges = applyEdgeChanges(changes, eds);
         
-        // Update the flow with the new edges
-        const updatedFlow = {
-          ...flow,
-          edges: flow.edges.map(edge => {
-            const updatedEdge = newEdges.find(e => e.id === edge.id);
-            if (updatedEdge) {
-              return {
-                ...edge,
-                animated: updatedEdge.animated || false
-              };
-            }
-            return edge;
-          })
+        // Queue edge changes for after render
+        pendingFlowUpdateRef.current = {
+          type: 'edgeChange',
+          edges: newEdges
         };
         
-        onFlowChange(updatedFlow);
         return newEdges;
       });
     },
-    [flow, onFlowChange, readonly]
+    [readonly]
   );
   
   // Connection handler
@@ -225,29 +288,28 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow, onFlowChange, rea
     (connection: Connection) => {
       if (readonly) return;
       
+      // Queue the connection for after render
+      pendingFlowUpdateRef.current = {
+        type: 'connect',
+        connection
+      };
+      
+      // Add the edge to the UI immediately
       const newEdge = {
         id: generateId(),
         source: connection.source || '',
         target: connection.target || '',
-        animated: false
+        sourceHandle: connection.sourceHandle,
+        targetHandle: connection.targetHandle
       };
       
       setEdges((eds) => {
-        const newEdges = addEdge(connection, eds);
-        
-        // Update the flow with the new edge
-        const updatedFlow = {
-          ...flow,
-          edges: [...flow.edges, newEdge]
-        };
-        
-        onFlowChange(updatedFlow);
-        return newEdges;
+        return addEdge(newEdge, eds);
       });
     },
-    [flow, onFlowChange, readonly]
+    [readonly]
   );
-
+  
   // Subscribe to workflow status updates
   useEffect(() => {
     const unsubscribe = webSocketService.subscribe('workflow.status', (status: WorkflowRunStatus) => {
@@ -255,20 +317,20 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow, onFlowChange, rea
       if (status.flow_id === flow.id) {
         setRunStatus(status);
         
-        // Keep track of completed nodes
+        // Update completed nodes
         if (status.completed_applets && Array.isArray(status.completed_applets)) {
           setCompletedNodes(status.completed_applets);
-        } else if (status.current_applet && status.status !== 'error') {
-          // If completed_applets is not provided, infer from current_applet
-          // Find the index of current node in the workflow
-          const nodeIndex = flow.nodes.findIndex(node => node.id === status.current_applet);
           
-          if (nodeIndex > 0) {
-            // Mark all nodes before the current one as completed
-            const previousNodeIds = flow.nodes
-              .slice(0, nodeIndex)
-              .map(node => node.id);
-            setCompletedNodes(previousNodeIds);
+          // If there's a current applet and it's running, animate it
+          if (status.current_applet && status.status === 'running') {
+            // Find the node in our nodes array
+            const runningNode = nodes.find(node => 
+              node.id === status.current_applet
+            );
+            
+            if (runningNode) {
+              animateWorkflow(status);
+            }
           }
         }
         
@@ -276,7 +338,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow, onFlowChange, rea
         setNodes(prevNodes => {
           return prevNodes.map(node => {
             // Current node is running
-            if (node.id === status.current_applet) {
+            if (status.current_applet && node.id === status.current_applet) {
               return {
                 ...node,
                 data: { ...node.data, status: 'running' }
@@ -284,7 +346,8 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow, onFlowChange, rea
             }
             
             // Node is already completed
-            if (status.completed_applets && status.completed_applets.includes(node.id)) {
+            if (status.completed_applets && Array.isArray(status.completed_applets) && 
+                status.completed_applets.includes(node.id)) {
               return {
                 ...node,
                 data: { ...node.data, status: 'success' }
@@ -292,7 +355,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow, onFlowChange, rea
             }
             
             // Error state
-            if (status.status === 'error' && node.id === status.current_applet) {
+            if (status.status === 'error' && status.current_applet && node.id === status.current_applet) {
               return {
                 ...node,
                 data: { ...node.data, status: 'error' }
@@ -302,7 +365,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow, onFlowChange, rea
             // Default state
             return {
               ...node,
-              data: { ...node.data, status: node.data.status || 'idle' }
+              data: { ...node.data, status: node.data?.status || 'idle' }
             };
           });
         });
@@ -313,7 +376,8 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow, onFlowChange, rea
           const targetNode = nodes.find(node => node.id === edge.target);
           
           // If target node is the current one or completed, animate the edge
-          if (targetNode && (targetNode.id === status.current_applet || targetNode.data.status === 'success')) {
+          if (targetNode && status.current_applet && 
+              (targetNode.id === status.current_applet || targetNode.data?.status === 'success')) {
             return {
               ...edge,
               animated: true
@@ -333,7 +397,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow, onFlowChange, rea
     return () => {
       unsubscribe();
     };
-  }, [flow.id, nodes, edges, completedNodes, flow.nodes]);
+  }, [flow.id, nodes, edges, flow.nodes]);
   
   // Animation function
   const animateWorkflow = (status: WorkflowRunStatus) => {
@@ -344,22 +408,27 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow, onFlowChange, rea
     
     // Create a new animation timeline
     const timeline = anime.timeline({
-      easing: 'easeOutSine',
-      duration: 500
+      easing: 'easeOutElastic(1, .8)',
+      duration: 800
     });
     
     // Find the current node element
-    const currentNodeElement = document.querySelector(`[data-id="${status.current_applet}"]`);
-    
-    if (currentNodeElement) {
-      // Add pulse animation to current node
-      timeline.add({
-        targets: currentNodeElement,
-        scale: [1, 1.05, 1],
-        opacity: [1, 0.8, 1],
-        duration: 1000,
-        easing: 'easeInOutQuad'
-      });
+    if (status.current_applet) {
+      const nodeElement = document.querySelector(
+        `[data-id="${status.current_applet}"]`
+      );
+      
+      if (nodeElement) {
+        // Pulse animation for the current node
+        timeline.add({
+          targets: nodeElement,
+          scale: [1, 1.05, 1],
+          opacity: [1, 0.8, 1],
+          duration: 1000,
+          easing: 'easeInOutQuad',
+          loop: true
+        });
+      }
     }
     
     // Store the timeline reference
@@ -451,8 +520,6 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow, onFlowChange, rea
   const deleteNodeById = useCallback((nodeId: string) => {
     if (readonly || !nodeId) return;
     
-    console.log(`Deleting node with ID: ${nodeId}`);
-    
     // Filter out the node
     const updatedNodes = flow.nodes.filter(node => node.id !== nodeId);
     
@@ -467,7 +534,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow, onFlowChange, rea
     );
     
     if (removedEdges.length > 0) {
-      console.log(`Removed ${removedEdges.length} connected edges`);
+      // Optional logging if needed
     }
     
     // Update the flow
@@ -478,6 +545,89 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow, onFlowChange, rea
     };
     
     onFlowChange(updatedFlow);
+  }, [flow, onFlowChange, readonly]);
+  
+  // Define closeContextMenu to close the context menu
+  const closeContextMenu = useCallback(() => {
+    setContextMenu(prev => ({ ...prev, visible: false, nodeRect: null }));
+  }, []);
+  
+  // Open node configuration modal
+  const onOpenConfig = useCallback((nodeId: string) => {
+    if (readonly || !nodeId) return;
+    
+    // Find the node in the flow
+    const node = flow.nodes.find(node => node.id === nodeId);
+    
+    if (node) {
+      // Close the context menu first
+      closeContextMenu();
+      
+      // Open the configuration modal with the node data
+      setConfigModal({
+        isOpen: true,
+        nodeId: nodeId,
+        nodeType: node.type || '',
+        nodeData: node.data || {}
+      });
+    }
+  }, [flow.nodes, readonly, closeContextMenu]);
+  
+  // Handle saving node configuration
+  const handleSaveNodeConfig = useCallback((nodeId: string, updatedData: any) => {
+    if (readonly || !nodeId) return;
+    
+    console.log('Saving node config for node:', nodeId, 'with data:', updatedData);
+    
+    // Find the existing node to ensure we have the complete data
+    const existingNode = flow.nodes.find(node => node.id === nodeId);
+    if (!existingNode) {
+      console.error('Could not find node with ID:', nodeId);
+      return;
+    }
+    
+    // Update the node data in the flow, preserving all existing properties
+    const updatedNodes = flow.nodes.map(node => {
+      if (node.id === nodeId) {
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            ...updatedData
+          },
+          // Ensure position is preserved
+          position: node.position
+        };
+      }
+      return node;
+    });
+    
+    // Create a complete updated flow object
+    const updatedFlow = {
+      ...flow,
+      nodes: updatedNodes
+    };
+    
+    console.log('Updated flow:', updatedFlow);
+    
+    // Update the flow state
+    onFlowChange(updatedFlow);
+    
+    // Ensure the nodes state is also updated to reflect changes
+    setNodes(prevNodes => {
+      return prevNodes.map(node => {
+        if (node.id === nodeId) {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              ...updatedData
+            }
+          };
+        }
+        return node;
+      });
+    });
   }, [flow, onFlowChange, readonly]);
   
   // Handle keyboard events for node deletion
@@ -530,12 +680,11 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow, onFlowChange, rea
     const node = flow.nodes.find(n => n.id === nodeId);
     if (!node) return;
     
-    console.log(`Opening configuration for node ${nodeId} of type ${node.type}`);
+
     
     // Find the node element in the DOM
     const nodeElement = document.querySelector(`[data-id="${nodeId}"]`);
     if (!nodeElement) {
-      console.error(`Could not find node element with ID ${nodeId}`);
       return;
     }
     
@@ -549,7 +698,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow, onFlowChange, rea
     }
   }, [flow.nodes, readonly]);
   
-  // Handle right-click on node
+  // Handle node context menu
   const onNodeContextMenu = useCallback(
     (event: React.MouseEvent, node: Node) => {
       // Prevent default context menu
@@ -563,10 +712,6 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow, onFlowChange, rea
       // Get the bounding rectangle of the node element
       const nodeRect = nodeElement.getBoundingClientRect();
       
-      console.log('Node rect:', nodeRect);
-      console.log('Node ID:', node.id);
-      console.log('Node type:', node.type);
-      
       // Show our custom context menu with the node's rect
       setContextMenu({
         visible: true,
@@ -578,17 +723,15 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow, onFlowChange, rea
     [readonly]
   );
   
-  // Close context menu when clicking outside
-  const closeContextMenu = useCallback(() => {
-    setContextMenu(prev => ({ ...prev, visible: false, nodeRect: null }));
-  }, []);
+  // This is where the duplicate closeContextMenu function was removed
 
   return (
     <div 
-      className="workflow-canvas" 
-      ref={reactFlowWrapper} 
-      tabIndex={0} 
-      onKeyDown={onKeyDown}>
+      className="workflow-canvas-container" 
+      ref={reactFlowWrapper}
+      onKeyDown={onKeyDown}
+      tabIndex={0} // Make div focusable to capture keyboard events
+    >
       <ReactFlowProvider>
         <ReactFlow
           nodes={nodes}
@@ -600,34 +743,9 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow, onFlowChange, rea
           onInit={setReactFlowInstance}
           onDrop={onDrop}
           onDragOver={onDragOver}
-          onNodeContextMenu={onNodeContextMenu}
+          connectionLineType={ConnectionLineType.SmoothStep}
           fitView
-          attributionPosition="bottom-right"
-          connectionLineStyle={{ stroke: '#ddd', strokeWidth: 2 }}
-          connectionLineType={ConnectionLineType.Bezier}
-          snapToGrid={true}
-          snapGrid={[1, 1]}
-          defaultViewport={{ x: 0, y: 0, zoom: 1 }}
-          minZoom={0.2}
-          maxZoom={4}
-          onNodeDragStop={(e, node) => {
-            // Update node position in our Flow format when drag stops
-            if (!readonly) {
-              const updatedFlow = {
-                ...flow,
-                nodes: flow.nodes.map(n => {
-                  if (n.id === node.id) {
-                    return {
-                      ...n,
-                      position: node.position
-                    };
-                  }
-                  return n;
-                })
-              };
-              onFlowChange(updatedFlow);
-            }
-          }}
+          onNodeContextMenu={onNodeContextMenu}
         >
           <Background color="#f8f8f8" gap={16} />
           <Controls />
@@ -683,9 +801,19 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow, onFlowChange, rea
           nodeType={contextMenu.nodeType || ''}
           onClose={closeContextMenu}
           onDelete={deleteNodeById}
-          onOpenConfig={openNodeConfig}
+          onOpenConfig={onOpenConfig}
         />
       )}
+      
+      {/* Node Configuration Modal */}
+      <NodeConfigModal
+        isOpen={configModal.isOpen}
+        nodeId={configModal.nodeId || ''}
+        nodeType={configModal.nodeType || ''}
+        nodeData={configModal.nodeData || {}}
+        onClose={() => setConfigModal({ isOpen: false, nodeId: null, nodeType: null, nodeData: null })}
+        onSave={handleSaveNodeConfig}
+      />
     </div>
   );
 };

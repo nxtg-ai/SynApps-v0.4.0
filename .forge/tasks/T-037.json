@@ -1,0 +1,25 @@
+{
+  "id": "T-037",
+  "title": "Implement Docker Compose and Health Check Endpoint",
+  "description": "Create Docker Compose setup for orchestrator, frontend, and PostgreSQL. Add /health endpoint returning status, version, and uptime.",
+  "status": "pending",
+  "assigned_to": "codex",
+  "task_type": "implement",
+  "depends_on": [
+    "T-010",
+    "T-013"
+  ],
+  "locked_files": [
+    "docker-compose.yml",
+    "apps/orchestrator/main.py"
+  ],
+  "acceptance_criteria": [
+    "docker-compose up starts all services",
+    "/health endpoint returns correct JSON"
+  ],
+  "created_at": "2026-02-15T03:19:12.347909091Z",
+  "updated_at": "2026-02-15T03:19:12.347909091Z",
+  "completed_at": null,
+  "plan_version": 2,
+  "retry_count": 0
+}

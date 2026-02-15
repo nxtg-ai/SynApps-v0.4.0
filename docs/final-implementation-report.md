@@ -32,7 +32,7 @@ The system is designed to be extensible, allowing new applets to be added withou
   - Metadata specifications
 
 - **Core Applets**:
-  - `WriterApplet`: Text generation using gpt-4.1
+  - `WriterApplet`: Text generation using gpt-4o
   - `ArtistApplet`: Image generation using Stable Diffusion
   - `MemoryApplet`: Context storage and retrieval
 

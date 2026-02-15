@@ -37,6 +37,8 @@ export interface WorkflowRunStatus {
   end_time?: number;
   results: Record<string, any>;
   error?: string;
+  completed_applets?: string[];
+  input_data?: Record<string, any>;
 }
 
 export interface AppletMetadata {

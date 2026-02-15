@@ -15,6 +15,15 @@ import time
 import uuid
 from enum import Enum
 from typing import Any, Dict, List, Optional, Type
+from pathlib import Path
+
+# Load environment variables from .env.development file
+from dotenv import load_dotenv
+
+# Load .env.development file from the project root directory
+project_root = Path(__file__).parent.parent.parent
+dotenv_path = project_root / ".env.development"
+load_dotenv(dotenv_path=dotenv_path)
 
 # Add the parent directory to the Python path so we can import the apps package
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
@@ -56,13 +65,26 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="SynApps Orchestrator", lifespan=lifespan)
 
 # Configure CORS
+# Configure CORS for production: restrict allowed origins
+backend_cors_origins = os.environ.get("BACKEND_CORS_ORIGINS", "")
+print(f"CORS Origins from env: {backend_cors_origins}")
+backend_cors_origins = backend_cors_origins.split(",")
+allowed_origins = [origin.strip() for origin in backend_cors_origins if origin.strip()]
+print(f"Allowed Origins: {allowed_origins}")
+
+# If no origins are specified, allow all origins in development mode
+if not allowed_origins:
+    logger.warning("No CORS origins specified, allowing all origins in development mode")
+    allowed_origins = ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Update for production
+    allow_origins=allowed_origins,  # Set via BACKEND_CORS_ORIGINS env var (comma-separated)
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Example: BACKEND_CORS_ORIGINS="http://localhost:3000,https://app.synapps.ai"
 
 # Models
 class AppletStatus(str, Enum):
@@ -478,9 +500,15 @@ async def list_applets():
     return result
 
 @app.post("/flows")
-async def create_flow(flow: Flow):
+async def create_flow(flow: FlowModel):
     """Create or update a flow."""
-    await FlowRepository.save(model_to_dict(flow))
+    # Generate a new UUID if id is empty or not provided
+    if not flow.id or flow.id.strip() == "":
+        flow.id = str(uuid.uuid4())
+    
+    # Convert to dict and save
+    flow_dict = model_to_dict(flow)
+    await FlowRepository.save(flow_dict)
     return {"message": "Flow created", "id": flow.id}
 
 @app.get("/flows")
@@ -530,20 +558,12 @@ async def get_run(run_id: str):
 @app.post("/ai/suggest")
 async def ai_suggest(data: Dict[str, str]):
     """Generate code suggestions using AI."""
-    # This will be implemented with OpenAI or similar
-    # For MVP, we'll mock this
-    code = data.get("code", "")
-    hint = data.get("hint", "")
-    
-    # In a real implementation, we would call OpenAI Codex here
-    # For now, just echo back with a comment
-    suggested_code = f"{code}\n\n# AI Suggestion based on hint: {hint}\n# TODO: Implement AI code suggestions"
-    
-    return {
-        "original": code,
-        "suggestion": suggested_code,
-        "diff": "# TODO: Generate actual diff"
-    }
+    # TODO: Implement OpenAI or similar LLM integration for code suggestions
+    # For Alpha, this endpoint is not yet implemented.
+    raise HTTPException(
+        status_code=501,
+        detail="AI code suggestion is not implemented in the Alpha release. Please check back in a future version."
+    )
 
 # For direct execution
 if __name__ == "__main__":

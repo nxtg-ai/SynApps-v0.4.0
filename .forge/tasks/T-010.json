@@ -1,0 +1,27 @@
+{
+  "id": "T-010",
+  "title": "Refactor Backend for Pydantic v2 and SQLAlchemy 2.0",
+  "description": "Update all backend code to use Pydantic v2 (removing v1 compat hacks like model_to_dict) and SQLAlchemy 2.0 (new ORM patterns, mapped_column). Remove deprecated FastAPI patterns.",
+  "status": "completed",
+  "assigned_to": "codex",
+  "task_type": "implement",
+  "depends_on": [
+    "T-009"
+  ],
+  "locked_files": [
+    "apps/orchestrator/main.py",
+    "apps/orchestrator/models.py",
+    "apps/orchestrator/repositories.py"
+  ],
+  "acceptance_criteria": [
+    "No usage of Pydantic v1 compat functions",
+    "All SQLAlchemy models use 2.0 ORM patterns",
+    "No deprecated FastAPI event handlers",
+    "All tests pass"
+  ],
+  "created_at": "2026-02-15T03:19:12.347886384Z",
+  "updated_at": "2026-02-15T18:20:54.663762119Z",
+  "completed_at": "2026-02-15T18:20:54.663761200Z",
+  "plan_version": 2,
+  "retry_count": 0
+}

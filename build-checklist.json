@@ -76,7 +76,7 @@
   "Applets": [
     {
       "task": "Implement WriterApplet",
-      "description": "Text generation using gpt-4.1 API",
+      "description": "Text generation using gpt-4o API",
       "status": "complete"
     },
     {

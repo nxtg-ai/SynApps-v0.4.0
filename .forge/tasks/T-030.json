@@ -1,0 +1,25 @@
+{
+  "id": "T-030",
+  "title": "Add ESLint, Prettier, Ruff, and Pre-commit Hooks",
+  "description": "Integrate ESLint 9 (flat config), Prettier, Ruff for Python, and pre-commit hooks for linting, formatting, and type checking.",
+  "status": "completed",
+  "assigned_to": "codex",
+  "task_type": "implement",
+  "depends_on": [],
+  "locked_files": [
+    "apps/web-frontend/.eslintrc",
+    "apps/web-frontend/.prettierrc",
+    "apps/orchestrator/pyproject.toml",
+    ".pre-commit-config.yaml"
+  ],
+  "acceptance_criteria": [
+    "ESLint 9 and Prettier configured for frontend",
+    "Ruff configured for backend",
+    "Pre-commit hooks run lint, format, type check"
+  ],
+  "created_at": "2026-02-15T03:19:12.347901116Z",
+  "updated_at": "2026-02-15T05:23:45.477950118Z",
+  "completed_at": "2026-02-15T05:23:45.477949461Z",
+  "plan_version": 2,
+  "retry_count": 0
+}

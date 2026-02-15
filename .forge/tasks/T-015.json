@@ -1,0 +1,24 @@
+{
+  "id": "T-015",
+  "title": "Enable TypeScript Strict Mode",
+  "description": "Enable strict mode in TypeScript config and fix resulting type errors across the frontend codebase.",
+  "status": "completed",
+  "assigned_to": "codex",
+  "task_type": "implement",
+  "depends_on": [
+    "T-013"
+  ],
+  "locked_files": [
+    "apps/web-frontend/tsconfig.json",
+    "apps/web-frontend/src/"
+  ],
+  "acceptance_criteria": [
+    "TypeScript strict mode enabled",
+    "No type errors in build"
+  ],
+  "created_at": "2026-02-15T03:19:12.347889609Z",
+  "updated_at": "2026-02-15T04:19:56.839665530Z",
+  "completed_at": "2026-02-15T04:19:56.839664555Z",
+  "plan_version": 2,
+  "retry_count": 0
+}

@@ -1,26 +1,41 @@
 /**
  * AppletNode component
  * Custom node for applets in the workflow canvas
+ * Enhanced with modern UI/UX design
  */
-import React, { memo } from 'react';
+import React, { memo, useEffect, useState } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
 import './Nodes.css';
 
-const AppletNode: React.FC<NodeProps> = ({ data, id, type }) => {
+const AppletNode: React.FC<NodeProps> = ({ data, id, type, selected }) => {
   const appletType = type || 'applet';
   const status = data.status || 'idle';
+  const [isAnimating, setIsAnimating] = useState(false);
+  
+  // Add animation when status changes
+  useEffect(() => {
+    setIsAnimating(true);
+    const timer = setTimeout(() => setIsAnimating(false), 500);
+    return () => clearTimeout(timer);
+  }, [status]);
   
   // Get the icon based on applet type
   const getIcon = () => {
     switch (appletType) {
       case 'writer':
-        return '✍️';
+        return <span role="img" aria-label="Writer">✍️</span>;
       case 'artist':
-        return '🎨';
+        return <span role="img" aria-label="Artist">🎨</span>;
       case 'memory':
-        return '🧠';
+        return <span role="img" aria-label="Memory">🧠</span>;
+      case 'researcher':
+        return <span role="img" aria-label="Researcher">🔍</span>;
+      case 'analyzer':
+        return <span role="img" aria-label="Analyzer">📊</span>;
+      case 'summarizer':
+        return <span role="img" aria-label="Summarizer">📝</span>;
       default:
-        return '🔌';
+        return <span role="img" aria-label="Applet">🔌</span>;
     }
   };
   
@@ -28,13 +43,39 @@ const AppletNode: React.FC<NodeProps> = ({ data, id, type }) => {
   const getColor = () => {
     switch (appletType) {
       case 'writer':
-        return '#e6f7ff';
+        return 'rgba(59, 130, 246, 0.05)';
       case 'artist':
-        return '#fff7e6';
+        return 'rgba(249, 115, 22, 0.05)';
       case 'memory':
-        return '#f9f0ff';
+        return 'rgba(168, 85, 247, 0.05)';
+      case 'researcher':
+        return 'rgba(20, 184, 166, 0.05)';
+      case 'analyzer':
+        return 'rgba(236, 72, 153, 0.05)';
+      case 'summarizer':
+        return 'rgba(234, 179, 8, 0.05)';
       default:
-        return '#f5f5f5';
+        return 'rgba(100, 116, 139, 0.05)';
+    }
+  };
+  
+  // Get the accent color based on applet type
+  const getAccentColor = () => {
+    switch (appletType) {
+      case 'writer':
+        return '#3b82f6';
+      case 'artist':
+        return '#f97316';
+      case 'memory':
+        return '#a855f7';
+      case 'researcher':
+        return '#14b8a6';
+      case 'analyzer':
+        return '#ec4899';
+      case 'summarizer':
+        return '#eab308';
+      default:
+        return '#64748b';
     }
   };
   
@@ -42,24 +83,27 @@ const AppletNode: React.FC<NodeProps> = ({ data, id, type }) => {
   const getBorderColor = () => {
     switch (status) {
       case 'running':
-        return '#1a90ff';
+        return '#3b82f6';
       case 'success':
-        return '#52c41a';
+        return '#10b981';
       case 'error':
-        return '#ff4d4f';
+        return '#ef4444';
       default:
-        return '#d9d9d9';
+        return selected ? 'rgba(59, 130, 246, 0.5)' : 'rgba(226, 232, 240, 0.8)';
     }
   };
   
   return (
     <div 
-      className={`applet-node ${status}`} 
+      className={`applet-node ${status} ${isAnimating ? 'animating' : ''}`} 
       style={{ 
         backgroundColor: getColor(),
-        borderColor: getBorderColor()
+        borderColor: getBorderColor(),
+        boxShadow: selected ? '0 0 0 2px rgba(59, 130, 246, 0.5), 0 12px 24px -6px rgba(0, 0, 0, 0.25)' : undefined,
+        transform: selected ? 'translateY(-2px) scale(1.05)' : undefined
       }}
       data-id={id}
+      data-applet-type={appletType}
     >
       <Handle
         type="target"
@@ -67,14 +111,25 @@ const AppletNode: React.FC<NodeProps> = ({ data, id, type }) => {
         className="handle"
       />
       
-      <div className="applet-icon">
+      <div className="applet-icon" style={{ color: getAccentColor(), backgroundColor: `${getAccentColor()}15` }}>
         {getIcon()}
       </div>
-      
+  
       <div className="applet-content">
-        <div className="applet-name">{data.label || type}</div>
+        <div className="applet-name">{data.label || appletType.charAt(0).toUpperCase() + appletType.slice(1)}</div>
         {data.description && (
           <div className="applet-description">{data.description}</div>
+        )}
+        {!data.description && (
+          <div className="applet-description">
+            {appletType === 'writer' && 'Generates text content using AI'}
+            {appletType === 'artist' && 'Creates images using AI models'}
+            {appletType === 'memory' && 'Stores and retrieves context'}
+            {appletType === 'researcher' && 'Searches for information'}
+            {appletType === 'analyzer' && 'Analyzes data and provides insights'}
+            {appletType === 'summarizer' && 'Creates concise summaries'}
+            {!['writer', 'artist', 'memory', 'researcher', 'analyzer', 'summarizer'].includes(appletType) && 'Custom applet module'}
+          </div>
         )}
       </div>
       

@@ -29,7 +29,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, title, actions }) => 
     <div className="main-layout">
       <aside className="sidebar">
         <div className="logo">
-          <span className="logo-icon">🧠</span>
+          <img src="logo50.png" alt="Logo" className="logo-icon" />
           <span className="logo-text">SynApps</span>
         </div>
         
@@ -47,7 +47,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, title, actions }) => 
         </nav>
         
         <div className="version-info">
-          <span>SynApps MVP v0.1.0</span>
+          <span><a href="https://github.com/nxtg-ai/SynApps-v0.4.0" target="_blank" rel="noopener noreferrer">SynApps-v0.4.0 GitHub</a></span>
         </div>
       </aside>
       

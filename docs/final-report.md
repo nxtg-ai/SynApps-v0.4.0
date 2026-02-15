@@ -16,7 +16,7 @@ The platform allows indie creators to build autonomous AI applets like LEGO bloc
    - Background execution with status tracking
 
 2. **Core Applets**
-   - WriterApplet: Text generation using gpt-4.1
+   - WriterApplet: Text generation using gpt-4o
    - ArtistApplet: Image generation using Stable Diffusion
    - MemoryApplet: Context storage and retrieval
 

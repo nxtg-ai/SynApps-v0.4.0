@@ -29,7 +29,7 @@
 .logo-text {
   font-size: 1.4rem;
   font-weight: 600;
-  background: linear-gradient(90deg, #1890ff, #52c41a);
+  background: linear-gradient(90deg, #ff99c7, #1890ff);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }

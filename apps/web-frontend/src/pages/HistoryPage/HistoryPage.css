@@ -31,6 +31,19 @@
   background-color: #40a9ff;
 }
 
+.load-in-editor-button {
+  padding: 8px 16px;
+  background-color: #1890ff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.load-in-editor-button:hover {
+  background-color: #40a9ff;
+}
+
 .history-container {
   display: flex;
   flex: 1;
@@ -275,7 +288,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 8px 12px;
-  background-color: #fafafa;
+  background-color: #c3ffc6;
   border-bottom: 1px solid #f0f0f0;
 }
 
@@ -297,13 +310,20 @@
 .text-output {
   white-space: pre-wrap;
   font-size: 0.9rem;
-  max-height: 400px;
-  overflow-y: auto;
+  width: 100%;
+  overflow-wrap: break-word;
+}
+
+.input-content {
+  white-space: pre-wrap;
+  font-size: 0.9rem;
+  width: auto;
+  overflow-wrap: break-word;
 }
 
 .image-output {
   display: flex;
-  justify-content: center;
+  justify-content: left;
 }
 
 .image-output img {
@@ -314,17 +334,21 @@
 
 .json-output {
   max-height: 400px;
+  max-width: 600px;
   overflow-y: auto;
+  overflow-x: auto;
   background-color: #fafafa;
   padding: 12px;
   border-radius: 4px;
+  overflow-wrap: break-word;
 }
 
-.json-output pre {
+.json-output-pre {
   margin: 0;
   font-family: monospace;
   font-size: 0.85rem;
   white-space: pre-wrap;
+  overflow-x: auto;
 }
 
 .no-run-selected {

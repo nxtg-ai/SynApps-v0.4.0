@@ -1,0 +1,28 @@
+{
+  "id": "T-029",
+  "title": "Implement Security Features and Rate Limiting",
+  "description": "Add CORS configuration, rate limiting per user, input sanitization, HTTPS enforcement in production, and sandboxing for Code Node.",
+  "status": "pending",
+  "assigned_to": "codex",
+  "task_type": "implement",
+  "depends_on": [
+    "T-029",
+    "T-026"
+  ],
+  "locked_files": [
+    "apps/orchestrator/main.py",
+    "apps/orchestrator/middleware/billing_guard.py"
+  ],
+  "acceptance_criteria": [
+    "CORS configured per environment",
+    "Rate limiting enforced on all endpoints",
+    "Inputs sanitized",
+    "HTTPS enforced in prod",
+    "Code Node sandboxed"
+  ],
+  "created_at": "2026-02-15T03:19:12.347900598Z",
+  "updated_at": "2026-02-15T03:19:12.347900598Z",
+  "completed_at": null,
+  "plan_version": 2,
+  "retry_count": 0
+}

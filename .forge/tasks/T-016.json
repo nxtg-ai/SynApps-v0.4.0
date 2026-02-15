@@ -1,0 +1,24 @@
+{
+  "id": "T-016",
+  "title": "Integrate Zustand for State Management",
+  "description": "Add Zustand to frontend and refactor state management for workflow state, execution state, and settings to use Zustand stores.",
+  "status": "completed",
+  "assigned_to": "codex",
+  "task_type": "implement",
+  "depends_on": [
+    "T-013"
+  ],
+  "locked_files": [
+    "apps/web-frontend/src/"
+  ],
+  "acceptance_criteria": [
+    "Zustand installed and configured",
+    "Global state managed via Zustand",
+    "No redundant state in React context"
+  ],
+  "created_at": "2026-02-15T03:19:12.347890089Z",
+  "updated_at": "2026-02-15T04:31:12.832995990Z",
+  "completed_at": "2026-02-15T04:31:12.832995318Z",
+  "plan_version": 2,
+  "retry_count": 0
+}

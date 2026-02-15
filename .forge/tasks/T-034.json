@@ -1,0 +1,27 @@
+{
+  "id": "T-034",
+  "title": "Harden REST API and WebSocket Protocol",
+  "description": "Ensure REST API uses consistent error format, pagination, strict request validation, and versioning. Update WebSocket protocol for structured messages, reconnection, and authentication.",
+  "status": "pending",
+  "assigned_to": "claude",
+  "task_type": "implement",
+  "depends_on": [
+    "T-010",
+    "T-029"
+  ],
+  "locked_files": [
+    "apps/orchestrator/main.py"
+  ],
+  "acceptance_criteria": [
+    "REST API returns consistent error objects",
+    "All list endpoints paginated",
+    "Strict validation via Pydantic v2",
+    "API versioning in place",
+    "WebSocket messages structured and authenticated"
+  ],
+  "created_at": "2026-02-15T03:19:12.347903745Z",
+  "updated_at": "2026-02-15T03:19:12.347903745Z",
+  "completed_at": null,
+  "plan_version": 2,
+  "retry_count": 0
+}

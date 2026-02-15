@@ -28,7 +28,7 @@ The SynApps MVP has been implemented with the following components:
 - REST API for flow management
 
 ### Applets
-- WriterApplet: Text generation with gpt-4.1
+- WriterApplet: Text generation with gpt-4o
 - ArtistApplet: Image generation with Stable Diffusion
 - MemoryApplet: Context storage and retrieval
 

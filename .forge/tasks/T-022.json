@@ -1,0 +1,24 @@
+{
+  "id": "T-022",
+  "title": "Implement Dashboard and New Pages",
+  "description": "Create dashboard with workflow cards, quick-run, search/filter, usage stats. Add settings page (API keys, theme, model selection) and applet library page.",
+  "status": "completed",
+  "assigned_to": "codex",
+  "task_type": "implement",
+  "depends_on": [
+    "T-014",
+    "T-018"
+  ],
+  "locked_files": [
+    "apps/web-frontend/src/"
+  ],
+  "acceptance_criteria": [
+    "Dashboard, settings, and applet library pages implemented",
+    "All features functional and responsive"
+  ],
+  "created_at": "2026-02-15T03:19:12.347893900Z",
+  "updated_at": "2026-02-15T05:18:27.591038563Z",
+  "completed_at": "2026-02-15T05:18:27.591037895Z",
+  "plan_version": 2,
+  "retry_count": 0
+}

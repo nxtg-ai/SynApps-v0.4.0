@@ -38,7 +38,8 @@ class ArtistApplet(BaseApplet):
         self.openai_api_key = os.environ.get("OPENAI_API_KEY")
         
         if not (self.stability_api_key or self.openai_api_key):
-            logger.warning("No API keys found for image generation. Using mock responses.")
+            logger.error("Neither STABILITY_API_KEY nor OPENAI_API_KEY environment variables are set. ArtistApplet cannot function without at least one.")
+            raise RuntimeError("At least one of STABILITY_API_KEY or OPENAI_API_KEY environment variables is required for ArtistApplet. Please set before starting the app.")
     
     async def on_message(self, message: AppletMessage) -> AppletMessage:
         """Process an incoming message and generate an image."""

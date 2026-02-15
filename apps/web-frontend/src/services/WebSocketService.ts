@@ -28,12 +28,12 @@ class WebSocketService {
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
     // Make sure to use the correct backend port (8000)
     const wsUrl = process.env.REACT_APP_WEBSOCKET_URL || `${protocol}://localhost:8000/ws`;
-    console.log('Connecting to WebSocket at:', wsUrl);
+
     
     this.socket = new WebSocket(wsUrl);
     
     this.socket.onopen = () => {
-      console.log('WebSocket connected');
+
       this.isConnected = true;
       if (this.reconnectTimer) {
         clearTimeout(this.reconnectTimer);
@@ -51,7 +51,7 @@ class WebSocketService {
     };
     
     this.socket.onclose = () => {
-      console.log('WebSocket disconnected, reconnecting...');
+
       this.isConnected = false;
       this.scheduleReconnect();
     };

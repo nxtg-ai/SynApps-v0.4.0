@@ -106,7 +106,7 @@ class WorkflowRunRepository:
             run = result.scalars().first()
             if run:
                 # Update
-                for field in ["status", "current_applet", "progress", "total_steps", "end_time", "results", "error"]:
+                for field in ["status", "current_applet", "progress", "total_steps", "end_time", "results", "error", "input_data"]:
                     if field in run_data:
                         setattr(run, field, run_data[field])
             else:
@@ -120,7 +120,8 @@ class WorkflowRunRepository:
                     start_time=run_data.get("start_time", time.time()),
                     end_time=run_data.get("end_time"),
                     results=run_data.get("results", {}),
-                    error=run_data.get("error")
+                    error=run_data.get("error"),
+                    input_data=run_data.get("input_data")  # Save input_data when creating a new run
                 )
                 session.add(run)
             await session.commit()

@@ -1,4 +1,14 @@
-/* WorkflowCanvas component styles */
+/* WorkflowCanvas component styles - Enhanced for modern UI/UX */
+
+.workflow-canvas-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  overflow: hidden;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+}
 
 .workflow-canvas {
   width: 100%;
@@ -9,7 +19,83 @@
 .workflow-canvas .react-flow {
   width: 100%;
   height: 100%;
-  background-color: #fafafa;
+  background-color: #f8fafc;
+  background-image: radial-gradient(#e2e8f0 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* Node styling enhancements */
+.react-flow__node {
+  transition: all 0.2s ease-in-out;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1));
+}
+
+.react-flow__node:hover {
+  transform: translateY(-2px);
+  filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.15));
+}
+
+/* Edge styling enhancements */
+.react-flow__edge-path {
+  stroke-width: 2;
+  stroke: #94a3b8;
+  transition: all 0.3s ease;
+}
+
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: #3b82f6;
+  stroke-width: 3;
+  filter: drop-shadow(0 0 4px rgba(59, 130, 246, 0.5));
+}
+
+.react-flow__edge.animated .react-flow__edge-path {
+  stroke: #3b82f6;
+  stroke-width: 3;
+  stroke-dasharray: 5, 5;
+  animation: flowAnimation 1s linear infinite;
+  filter: drop-shadow(0 0 3px rgba(59, 130, 246, 0.5));
+}
+
+@keyframes flowAnimation {
+  0% {
+    stroke-dashoffset: 10;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* Edge label styling */
+.react-flow__edge-text {
+  font-size: 12px;
+  font-weight: 500;
+  fill: #475569;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8);
+  transition: all 0.2s ease;
+}
+
+.react-flow__edge.selected .react-flow__edge-text {
+  fill: #3b82f6;
+  font-weight: 600;
+}
+
+/* Controls styling */
+.react-flow__controls {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.react-flow__controls-button {
+  border: none !important;
+  background: white;
+  color: #64748b;
+  transition: all 0.2s ease;
+}
+
+.react-flow__controls-button:hover {
+  background: #f1f5f9;
+  color: #0f172a;
 }
 
 .workflow-status {
@@ -17,69 +103,161 @@
   bottom: 20px;
   left: 20px;
   background-color: white;
-  border-radius: 8px;
-  padding: 12px 16px;
-  width: 300px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border-radius: 12px;
+  padding: 16px;
+  width: 320px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.08);
   z-index: 10;
-  transition: all 0.3s ease;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transform: translateY(0);
+  opacity: 1;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
 }
 
 .workflow-status.running {
-  border-left: 4px solid #1a90ff;
+  border-left: 4px solid #3b82f6;
+  background: linear-gradient(to right, rgba(59, 130, 246, 0.05), transparent);
 }
 
 .workflow-status.success {
-  border-left: 4px solid #52c41a;
+  border-left: 4px solid #10b981;
+  background: linear-gradient(to right, rgba(16, 185, 129, 0.05), transparent);
 }
 
 .workflow-status.error {
-  border-left: 4px solid #ff4d4f;
+  border-left: 4px solid #ef4444;
+  background: linear-gradient(to right, rgba(239, 68, 68, 0.05), transparent);
+}
+
+/* Status animation */
+@keyframes statusPulse {
+  0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
+  70% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+}
+
+.workflow-status.running {
+  animation: statusPulse 2s infinite;
 }
 
 .workflow-status-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
 }
 
 .status-label {
   font-weight: 600;
   text-transform: capitalize;
+  font-size: 1rem;
+  letter-spacing: -0.01em;
+  display: flex;
+  align-items: center;
+}
+
+.status-label::before {
+  content: '';
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 8px;
+  background-color: #3b82f6;
+}
+
+.workflow-status.success .status-label::before {
+  background-color: #10b981;
+}
+
+.workflow-status.error .status-label::before {
+  background-color: #ef4444;
 }
 
 .progress-label {
   font-size: 0.85rem;
-  color: #666;
+  color: #64748b;
+  font-weight: 500;
+  background-color: #f1f5f9;
+  padding: 4px 8px;
+  border-radius: 4px;
 }
 
 .progress-bar {
-  height: 6px;
-  background-color: #f0f0f0;
-  border-radius: 3px;
+  height: 8px;
+  background-color: #e2e8f0;
+  border-radius: 6px;
   overflow: hidden;
+  margin-bottom: 8px;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .progress-fill {
   height: 100%;
-  background-color: #1a90ff;
-  transition: width 0.3s ease;
+  background: linear-gradient(90deg, #3b82f6, #60a5fa);
+  transition: width 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  border-radius: 6px;
+  background-size: 200% 100%;
+  animation: gradientShift 2s ease infinite;
+}
+
+@keyframes gradientShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
 }
 
 .workflow-status.success .progress-fill {
-  background-color: #52c41a;
+  background: linear-gradient(90deg, #10b981, #34d399);
 }
 
 .workflow-status.error .progress-fill {
-  background-color: #ff4d4f;
+  background: linear-gradient(90deg, #ef4444, #f87171);
 }
 
 .error-message {
-  margin-top: 8px;
-  color: #ff4d4f;
+  margin-top: 12px;
+  color: #b91c1c;
   font-size: 0.85rem;
-  background-color: #fff2f0;
-  padding: 8px;
-  border-radius: 4px;
+  background-color: #fee2e2;
+  padding: 12px;
+  border-radius: 6px;
+  border-left: 3px solid #ef4444;
+  font-weight: 500;
+  display: flex;
+  align-items: flex-start;
+  line-height: 1.5;
+}
+
+.error-message::before {
+  content: '⚠️';
+  margin-right: 8px;
+  font-size: 1rem;
+}
+
+/* Node configuration modal enhancements */
+.node-config-modal {
+  backdrop-filter: blur(8px);
+  background-color: rgba(255, 255, 255, 0.8);
+  border-radius: 16px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  overflow: hidden;
+}
+
+/* Context menu enhancements */
+.node-context-menu {
+  backdrop-filter: blur(8px);
+  background-color: rgba(255, 255, 255, 0.9);
+  border-radius: 12px;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  overflow: hidden;
+  animation: menuFadeIn 0.2s ease-out forwards;
+}
+
+@keyframes menuFadeIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
 }

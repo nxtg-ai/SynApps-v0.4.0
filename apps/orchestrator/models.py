@@ -100,6 +100,7 @@ class WorkflowRun(Base):
     end_time = Column(Float, nullable=True)
     results = Column(JSON, nullable=True)
     error = Column(String, nullable=True)
+    input_data = Column(JSON, nullable=True)  # Added input_data column to store workflow input
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert ORM model to dictionary."""
@@ -113,7 +114,8 @@ class WorkflowRun(Base):
             "start_time": self.start_time,
             "end_time": self.end_time,
             "results": self.results or {},
-            "error": self.error
+            "error": self.error,
+            "input_data": self.input_data  # Include input_data in the dictionary output
         }
 
 

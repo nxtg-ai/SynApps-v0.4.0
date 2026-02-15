@@ -99,7 +99,7 @@ Technologies:
 Applets are self-contained AI micro-agents that implement a standard interface for receiving messages, processing them, and producing outputs.
 
 Core applets:
-- **WriterApplet**: Generates text using gpt-4.1 or similar LLMs.
+- **WriterApplet**: Generates text using gpt-4o or similar LLMs.
 - **ArtistApplet**: Creates images using Stable Diffusion or DALL·E 3.
 - **MemoryApplet**: Stores and retrieves information to maintain context.
 
