@@ -2,7 +2,7 @@
   "id": "T-036",
   "title": "Optimize Database Indexes and Queries",
   "description": "Add indexes on frequently queried columns and optimize queries for flow history and run status.",
-  "status": "in_progress",
+  "status": "completed",
   "assigned_to": "codex",
   "task_type": "implement",
   "depends_on": [
@@ -17,8 +17,8 @@
     "No slow query warnings"
   ],
   "created_at": "2026-02-15T03:19:12.347908533Z",
-  "updated_at": "2026-02-15T18:56:46.460005009Z",
-  "completed_at": null,
+  "updated_at": "2026-02-15T19:00:26.541012363Z",
+  "completed_at": "2026-02-15T19:00:26.541012032Z",
   "plan_version": 2,
   "retry_count": 0
 }
