@@ -2,7 +2,7 @@
   "id": "T-025",
   "title": "Implement FM-Agnostic LLM Node and Provider Adapters",
   "description": "Replace WriterApplet with a universal LLM Node supporting OpenAI, Anthropic, Google, Ollama, and custom endpoints. Implement provider adapter pattern, node config UI, and streaming via SSE.",
-  "status": "in_progress",
+  "status": "completed",
   "assigned_to": "codex",
   "task_type": "implement",
   "depends_on": [
@@ -20,8 +20,8 @@
     "No hardcoded provider logic outside adapter layer"
   ],
   "created_at": "2026-02-15T03:19:12.347897980Z",
-  "updated_at": "2026-02-17T00:36:28.743027903Z",
-  "completed_at": null,
+  "updated_at": "2026-02-17T00:45:42.103478259Z",
+  "completed_at": "2026-02-17T00:45:42.103478094Z",
   "plan_version": 2,
   "retry_count": 0
 }
