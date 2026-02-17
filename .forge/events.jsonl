@@ -105,3 +105,6 @@
 {"timestamp":"2026-02-17T00:43:26.677152304Z","event_type":"task_completed","task_id":"T-026","agent":"codex","message":"T-026 completed by codex (exit 0)","metadata":null}
 {"timestamp":"2026-02-17T00:45:14.262452638Z","event_type":"task_completed","task_id":"T-011","agent":"codex","message":"T-011 completed by codex (exit 0)","metadata":null}
 {"timestamp":"2026-02-17T00:45:42.103694274Z","event_type":"task_completed","task_id":"T-025","agent":"codex","message":"T-025 completed by codex (exit 0)","metadata":null}
+{"timestamp":"2026-02-17T00:45:56.384158912Z","event_type":"task_failed","task_id":"T-038","agent":"gemini","message":"T-038 failed by gemini (exit 1)","metadata":null}
+{"timestamp":"2026-02-17T00:46:02.731901478Z","event_type":"task_failed","task_id":"T-040","agent":"claude","message":"T-040 failed by claude (exit 1)","metadata":null}
+{"timestamp":"2026-02-17T00:53:15.016281524Z","event_type":"task_completed","task_id":"T-027","agent":"codex","message":"T-027 completed by codex (exit 0)","metadata":null}
