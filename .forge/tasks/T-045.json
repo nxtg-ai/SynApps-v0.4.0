@@ -1,0 +1,20 @@
+{
+  "id": "T-045",
+  "title": "Design Frontend Stack Migration Plan",
+  "description": "Plan migration from CRA to Vite, CSS modules to Tailwind 4 + shadcn/ui, and add Zustand for state management. Identify all affected files and migration steps.",
+  "status": "pending",
+  "assigned_to": "claude",
+  "task_type": "design",
+  "depends_on": [],
+  "locked_files": [],
+  "acceptance_criteria": [
+    "Documented migration plan for frontend stack",
+    "List of files/components to update",
+    "Identified risks and mitigation steps"
+  ],
+  "created_at": "2026-02-16T06:27:01.699009684Z",
+  "updated_at": "2026-02-16T06:27:01.699009684Z",
+  "completed_at": null,
+  "plan_version": 3,
+  "retry_count": 0
+}

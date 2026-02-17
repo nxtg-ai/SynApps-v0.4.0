@@ -1,0 +1,25 @@
+{
+  "id": "T-061",
+  "title": "Implement Merge Node for Fan-in",
+  "description": "Implement Merge Node to merge multiple parallel branches with configurable merge strategy (concatenate, array, first-wins).",
+  "status": "pending",
+  "assigned_to": "codex",
+  "task_type": "implement",
+  "depends_on": [
+    "T-042"
+  ],
+  "locked_files": [
+    "apps/orchestrator/main.py",
+    "apps/orchestrator/models.py"
+  ],
+  "acceptance_criteria": [
+    "Merge Node supports all merge strategies",
+    "Handles multiple inputs correctly",
+    "Output matches selected strategy"
+  ],
+  "created_at": "2026-02-16T06:27:01.699026643Z",
+  "updated_at": "2026-02-16T06:27:01.699026643Z",
+  "completed_at": null,
+  "plan_version": 3,
+  "retry_count": 0
+}

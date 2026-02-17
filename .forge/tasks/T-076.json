@@ -1,0 +1,28 @@
+{
+  "id": "T-076",
+  "title": "Review and Refactor Existing Backend Code",
+  "description": "Review existing backend code for compatibility with new stack, security, and maintainability. Refactor as needed to align with v1.0 standards.",
+  "status": "pending",
+  "assigned_to": "claude",
+  "task_type": "review",
+  "depends_on": [
+    "T-043",
+    "T-044"
+  ],
+  "locked_files": [
+    "apps/orchestrator/main.py",
+    "apps/orchestrator/models.py",
+    "apps/orchestrator/db.py",
+    "apps/orchestrator/repositories.py"
+  ],
+  "acceptance_criteria": [
+    "Codebase follows modern best practices",
+    "No deprecated or insecure patterns remain",
+    "Readability and maintainability improved"
+  ],
+  "created_at": "2026-02-16T06:27:01.699041616Z",
+  "updated_at": "2026-02-16T06:27:01.699041616Z",
+  "completed_at": null,
+  "plan_version": 3,
+  "retry_count": 0
+}

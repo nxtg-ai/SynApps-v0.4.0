@@ -1,0 +1,25 @@
+{
+  "id": "T-057",
+  "title": "Implement HTTP Request Node",
+  "description": "Implement HTTP Request Node to make HTTP requests (GET/POST/PUT/DELETE) with configurable URL, method, headers, and body template.",
+  "status": "pending",
+  "assigned_to": "codex",
+  "task_type": "implement",
+  "depends_on": [
+    "T-042"
+  ],
+  "locked_files": [
+    "apps/orchestrator/main.py",
+    "apps/orchestrator/models.py"
+  ],
+  "acceptance_criteria": [
+    "HTTP Request Node supports all listed methods",
+    "Headers and body are configurable",
+    "Node output contains response data"
+  ],
+  "created_at": "2026-02-16T06:27:01.699024486Z",
+  "updated_at": "2026-02-16T06:27:01.699024486Z",
+  "completed_at": null,
+  "plan_version": 3,
+  "retry_count": 0
+}

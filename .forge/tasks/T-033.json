@@ -6,8 +6,7 @@
   "assigned_to": "codex",
   "task_type": "implement",
   "depends_on": [
-    "T-032",
-    "T-033"
+    "T-032"
   ],
   "locked_files": [
     ".github/workflows/"

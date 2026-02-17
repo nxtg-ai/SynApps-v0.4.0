@@ -2,8 +2,8 @@
   "id": "T-032",
   "title": "Expand Frontend Test Coverage to 70%",
   "description": "Write unit, integration, and E2E tests (Vitest, React Testing Library, Playwright) for all components, state, and flows to reach 70%+ coverage.",
-  "status": "failed",
-  "assigned_to": "gemini",
+  "status": "pending",
+  "assigned_to": "codex",
   "task_type": "test",
   "depends_on": [
     "T-019",
@@ -21,8 +21,9 @@
     "Coverage report generated"
   ],
   "created_at": "2026-02-15T03:19:12.347902710Z",
-  "updated_at": "2026-02-15T18:55:30.074096298Z",
+  "updated_at": "2026-02-16T01:40:44.365266697Z",
   "completed_at": null,
   "plan_version": 2,
-  "retry_count": 0
+  "retry_count": 0,
+  "result_summary": null
 }

@@ -75,3 +75,31 @@
 {"timestamp":"2026-02-15T19:06:25.180500386Z","event_type":"task_failed","task_id":"T-037","agent":"codex","message":"T-037 failed after 5 rate limit retries by codex","metadata":null}
 {"timestamp":"2026-02-15T19:06:33.815180320Z","event_type":"task_completed","task_id":"T-024","agent":"codex","message":"Task T-024 failed after 3 attempts by codex","metadata":null}
 {"timestamp":"2026-02-15T19:07:43.874457772Z","event_type":"task_completed","task_id":"T-024","agent":"codex","message":"T-024 completed by codex (exit 0)","metadata":null}
+{"timestamp":"2026-02-15T19:07:44.422767168Z","event_type":"task_failed","task_id":"T-025","agent":"codex","message":"T-025 rate limited. Retrying in 14s (attempt 1/5)","metadata":null}
+{"timestamp":"2026-02-15T19:07:44.489640978Z","event_type":"task_failed","task_id":"T-026","agent":"codex","message":"T-026 rate limited. Retrying in 31s (attempt 2/5)","metadata":null}
+{"timestamp":"2026-02-15T19:07:53.830258007Z","event_type":"task_started","task_id":"T-025","agent":"codex","message":"Task T-025 claimed by codex","metadata":null}
+{"timestamp":"2026-02-15T19:08:16.041494444Z","event_type":"task_failed","task_id":"T-026","agent":"codex","message":"T-026 rate limited. Retrying in 61s (attempt 3/5)","metadata":null}
+{"timestamp":"2026-02-15T19:08:25.473662586Z","event_type":"task_completed","task_id":"T-025","agent":"codex","message":"Task T-025 failed after 3 attempts by codex","metadata":null}
+{"timestamp":"2026-02-15T19:08:25.474727684Z","event_type":"task_started","task_id":"T-026","agent":"codex","message":"Task T-026 claimed by codex","metadata":null}
+{"timestamp":"2026-02-15T19:08:57.141705755Z","event_type":"task_completed","task_id":"T-026","agent":"codex","message":"Task T-026 failed after 3 attempts by codex","metadata":null}
+{"timestamp":"2026-02-15T19:14:00.817412173Z","event_type":"state_reconciled","task_id":null,"agent":null,"message":"State reconciled: 39 tasks (27 done, 0 pending)","metadata":null}
+{"timestamp":"2026-02-15T20:28:22.168220212Z","event_type":"state_reconciled","task_id":null,"agent":null,"message":"State reconciled: 39 tasks (27 done, 0 pending)","metadata":null}
+{"timestamp":"2026-02-16T01:16:57.746203158Z","event_type":"state_reconciled","task_id":null,"agent":null,"message":"State reconciled: 39 tasks (27 done, 5 pending)","metadata":null}
+{"timestamp":"2026-02-16T01:38:34.132963576Z","event_type":"task_started","task_id":"T-011","agent":"codex","message":"Task T-011 claimed by codex","metadata":null}
+{"timestamp":"2026-02-16T01:39:09.237367624Z","event_type":"task_completed","task_id":"T-011","agent":"codex","message":"Task T-011 failed after 3 attempts by codex","metadata":null}
+{"timestamp":"2026-02-16T01:39:09.239365536Z","event_type":"task_started","task_id":"T-025","agent":"codex","message":"Task T-025 claimed by codex","metadata":null}
+{"timestamp":"2026-02-16T01:39:41.013848074Z","event_type":"task_completed","task_id":"T-025","agent":"codex","message":"Task T-025 failed after 3 attempts by codex","metadata":null}
+{"timestamp":"2026-02-16T01:39:41.022584882Z","event_type":"task_started","task_id":"T-026","agent":"codex","message":"Task T-026 claimed by codex","metadata":null}
+{"timestamp":"2026-02-16T01:40:12.685686198Z","event_type":"task_completed","task_id":"T-026","agent":"codex","message":"Task T-026 failed after 3 attempts by codex","metadata":null}
+{"timestamp":"2026-02-16T01:40:12.693060718Z","event_type":"task_started","task_id":"T-032","agent":"codex","message":"Task T-032 claimed by codex","metadata":null}
+{"timestamp":"2026-02-16T01:40:44.365549964Z","event_type":"task_completed","task_id":"T-032","agent":"codex","message":"Task T-032 failed after 3 attempts by codex","metadata":null}
+{"timestamp":"2026-02-16T01:40:44.376397500Z","event_type":"task_started","task_id":"T-037","agent":"codex","message":"Task T-037 claimed by codex","metadata":null}
+{"timestamp":"2026-02-16T01:41:16.057623017Z","event_type":"task_completed","task_id":"T-037","agent":"codex","message":"Task T-037 failed after 3 attempts by codex","metadata":null}
+{"timestamp":"2026-02-16T01:47:20.542764459Z","event_type":"task_started","task_id":"T-011","agent":"codex","message":"Task T-011 claimed by codex","metadata":null}
+{"timestamp":"2026-02-16T01:47:52.741266722Z","event_type":"task_completed","task_id":"T-011","agent":"codex","message":"Task T-011 failed after 3 attempts by codex","metadata":null}
+{"timestamp":"2026-02-16T01:47:52.746813352Z","event_type":"task_started","task_id":"T-025","agent":"codex","message":"Task T-025 claimed by codex","metadata":null}
+{"timestamp":"2026-02-16T06:27:30.485415108Z","event_type":"plan_created","task_id":null,"agent":null,"message":"Plan generated from SPEC.md: 38 tasks","metadata":null}
+{"timestamp":"2026-02-17T00:35:17.537364834Z","event_type":"task_started","task_id":null,"agent":null,"message":"Reset T-026 to pending (dashboard exiting)","metadata":null}
+{"timestamp":"2026-02-17T00:35:17.538412887Z","event_type":"task_started","task_id":null,"agent":null,"message":"Reset T-011 to pending (dashboard exiting)","metadata":null}
+{"timestamp":"2026-02-17T00:35:17.539480559Z","event_type":"task_started","task_id":null,"agent":null,"message":"Reset T-025 to pending (dashboard exiting)","metadata":null}
+{"timestamp":"2026-02-17T00:43:26.677152304Z","event_type":"task_completed","task_id":"T-026","agent":"codex","message":"T-026 completed by codex (exit 0)","metadata":null}

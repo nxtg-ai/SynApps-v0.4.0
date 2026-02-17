@@ -1,0 +1,26 @@
+{
+  "id": "T-064",
+  "title": "Implement Node-Level Error Handling",
+  "description": "Add per-node retry configuration, timeout, fallback path, structured error codes, and execution state checkpointing to the execution engine.",
+  "status": "pending",
+  "assigned_to": "codex",
+  "task_type": "implement",
+  "depends_on": [
+    "T-062"
+  ],
+  "locked_files": [
+    "apps/orchestrator/main.py"
+  ],
+  "acceptance_criteria": [
+    "Nodes can retry on failure with configurable delay",
+    "Timeouts are enforced per node",
+    "Fallback path is used on repeated failure",
+    "Structured error codes returned",
+    "Checkpointing allows resume from last successful node"
+  ],
+  "created_at": "2026-02-16T06:27:01.699029732Z",
+  "updated_at": "2026-02-16T06:27:01.699029732Z",
+  "completed_at": null,
+  "plan_version": 3,
+  "retry_count": 0
+}

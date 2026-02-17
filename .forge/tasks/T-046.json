@@ -1,0 +1,26 @@
+{
+  "id": "T-046",
+  "title": "Migrate Frontend to Vite and Tailwind",
+  "description": "Migrate frontend build tool from CRA to Vite 6. Replace CSS modules with Tailwind CSS 4 and integrate shadcn/ui. Ensure build and dev workflows work.",
+  "status": "pending",
+  "assigned_to": "codex",
+  "task_type": "implement",
+  "depends_on": [
+    "T-045"
+  ],
+  "locked_files": [
+    "apps/web-frontend/src/App.tsx",
+    "apps/web-frontend/src/index.tsx"
+  ],
+  "acceptance_criteria": [
+    "Frontend builds and runs with Vite",
+    "Tailwind and shadcn/ui are integrated",
+    "No CSS modules remain",
+    "UI renders correctly"
+  ],
+  "created_at": "2026-02-16T06:27:01.699010214Z",
+  "updated_at": "2026-02-16T06:27:01.699010214Z",
+  "completed_at": null,
+  "plan_version": 3,
+  "retry_count": 0
+}
