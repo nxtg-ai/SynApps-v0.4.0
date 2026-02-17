@@ -2,7 +2,7 @@
   "id": "T-038",
   "title": "Document Stack Upgrade and Migration Steps",
   "description": "Write documentation for the stack upgrade, migration steps, and any breaking changes for contributors.",
-  "status": "pending",
+  "status": "in_progress",
   "assigned_to": "gemini",
   "task_type": "document",
   "depends_on": [
@@ -19,7 +19,7 @@
     "Docs available in repo"
   ],
   "created_at": "2026-02-15T03:19:12.347909775Z",
-  "updated_at": "2026-02-15T03:19:12.347909775Z",
+  "updated_at": "2026-02-17T00:45:14.265192643Z",
   "completed_at": null,
   "plan_version": 2,
   "retry_count": 0
