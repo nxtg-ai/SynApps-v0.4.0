@@ -143,3 +143,6 @@
 {"timestamp":"2026-02-17T19:41:33.644674420Z","event_type":"task_completed","task_id":"T-034","agent":"claude","message":"T-034 completed by claude (exit 0)","metadata":null}
 {"timestamp":"2026-02-17T19:42:19.515563386Z","event_type":"task_completed","task_id":"T-033","agent":"codex","message":"T-033 completed by codex (exit 0)","metadata":null}
 {"timestamp":"2026-02-17T19:56:17.049342931Z","event_type":"task_completed","task_id":"T-039","agent":"gemini","message":"T-039 completed by gemini (exit 0)","metadata":null}
+{"timestamp":"2026-02-17T23:47:00.873931731Z","event_type":"task_started","task_id":null,"agent":null,"message":"Reset T-031 to pending (dashboard exiting)","metadata":null}
+{"timestamp":"2026-02-17T23:47:00.874970804Z","event_type":"task_started","task_id":null,"agent":null,"message":"Reset T-038 to pending (dashboard exiting)","metadata":null}
+{"timestamp":"2026-02-17T23:52:28.713954834Z","event_type":"task_completed","task_id":"T-038","agent":"gemini","message":"T-038 completed by gemini (exit 0)","metadata":null}
