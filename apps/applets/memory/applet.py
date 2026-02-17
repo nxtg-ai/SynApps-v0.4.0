@@ -10,9 +10,7 @@ import uuid
 from typing import Dict, Any, List, Optional
 
 # Import base applet from orchestrator
-import sys
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'orchestrator'))
-from main import BaseApplet, AppletMessage
+from apps.orchestrator.main import BaseApplet, AppletMessage
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -54,6 +52,10 @@ class MemoryApplet(BaseApplet):
             return await self._handle_store(message)
         elif operation.lower() == "retrieve":
             return await self._handle_retrieve(message)
+        elif operation.lower() == "delete":
+            return await self._handle_delete(message)
+        elif operation.lower() == "clear":
+            return await self._handle_clear(message)
         else:
             # Invalid operation
             return AppletMessage(
@@ -155,6 +157,38 @@ class MemoryApplet(BaseApplet):
             content={"status": "not_found"},
             context={**context, "memory_retrieved": False},
             metadata={"applet": "memory", "operation": "retrieve", "status": "not_found"}
+        )
+
+    async def _handle_delete(self, message: AppletMessage) -> AppletMessage:
+        """Handle a memory deletion operation."""
+        content = message.content
+        context = message.context
+        
+        key = None
+        if isinstance(content, dict) and "key" in content:
+            key = content["key"]
+            
+        if key and key in self.memory_store:
+            del self.memory_store[key]
+            return AppletMessage(
+                content={"status": "deleted", "key": key},
+                context=context,
+                metadata={"applet": "memory", "operation": "delete", "status": "success"}
+            )
+            
+        return AppletMessage(
+            content={"status": "not_found", "key": key},
+            context=context,
+            metadata={"applet": "memory", "operation": "delete", "status": "not_found"}
+        )
+        
+    async def _handle_clear(self, message: AppletMessage) -> AppletMessage:
+        """Handle clearing all memories."""
+        self.memory_store.clear()
+        return AppletMessage(
+            content={"status": "cleared"},
+            context=message.context,
+            metadata={"applet": "memory", "operation": "clear", "status": "success"}
         )
 
 # For testing

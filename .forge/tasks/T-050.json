@@ -2,7 +2,7 @@
   "id": "T-050",
   "title": "Design Universal LLM Node and Provider Adapter",
   "description": "Design the architecture for a universal LLM Node supporting multiple providers (OpenAI, Anthropic, Google, Ollama, Custom) using an adapter pattern. Specify the common interface and provider-specific adapters.",
-  "status": "pending",
+  "status": "failed",
   "assigned_to": "claude",
   "task_type": "design",
   "depends_on": [],
@@ -13,7 +13,7 @@
     "Migration plan from WriterApplet to LLM Node"
   ],
   "created_at": "2026-02-16T06:27:01.699014438Z",
-  "updated_at": "2026-02-16T06:27:01.699014438Z",
+  "updated_at": "2026-02-17T01:00:21.636656599Z",
   "completed_at": null,
   "plan_version": 3,
   "retry_count": 0

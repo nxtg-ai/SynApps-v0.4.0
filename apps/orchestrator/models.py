@@ -138,7 +138,7 @@ class FlowEdgeModel(BaseModel):
 
 class FlowModel(BaseModel):
     """API model for flows."""
-    id: str
+    id: Optional[str] = None
     name: str
     nodes: List[FlowNodeModel] = Field(default_factory=list)
     edges: List[FlowEdgeModel] = Field(default_factory=list)

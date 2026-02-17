@@ -8,6 +8,7 @@ import os
 import time
 from typing import Dict, Optional, Callable
 from fastapi import Request, HTTPException, Response
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 # Constants for different tiers
@@ -39,21 +40,31 @@ class BillingGuard(BaseHTTPMiddleware):
         if request.url.path.endswith("/run") and request.method == "POST":
             # Check if the user is within their rate limit
             if not self._check_rate_limit(user_id, user_tier):
-                raise HTTPException(
+                return JSONResponse(
                     status_code=429,
-                    detail=f"Rate limit exceeded. Upgrade to a higher tier for more workflow runs."
+                    content={"error": {
+                        "code": "RATE_LIMIT_EXCEEDED",
+                        "status": 429,
+                        "message": "Rate limit exceeded. Upgrade to a higher tier for more workflow runs.",
+                    }}
                 )
             
             # For free tier, check the number of applets in the workflow
             if user_tier == "free":
                 # This would be implemented based on the actual request structure
-                await self._check_applet_limit(request)
+                applet_limit_response = await self._check_applet_limit(request)
+                if applet_limit_response:
+                    return applet_limit_response
                 
         # Handle requests to premium features
         if self._is_premium_feature(request) and user_tier == "free":
-            raise HTTPException(
+            return JSONResponse(
                 status_code=403,
-                detail="This feature is only available to Pro or Enterprise users. Please upgrade your subscription."
+                content={"error": {
+                    "code": "FORBIDDEN",
+                    "status": 403,
+                    "message": "This feature is only available to Pro or Enterprise users. Please upgrade your subscription.",
+                }}
             )
         
         # Process the request
@@ -102,7 +113,7 @@ class BillingGuard(BaseHTTPMiddleware):
             user_runs[user_id] = 1
             run_timestamps[user_id] = {"month": time.strftime("%Y-%m")}
     
-    async def _check_applet_limit(self, request: Request) -> None:
+    async def _check_applet_limit(self, request: Request) -> Optional[JSONResponse]:
         """
         Check if the workflow has more applets than allowed for the free tier.
         This is a placeholder - in a real implementation, we would parse the request body.
@@ -117,10 +128,15 @@ class BillingGuard(BaseHTTPMiddleware):
         applet_count = len(body.get("nodes", []))
         
         if applet_count > FREE_TIER_MAX_APPLETS:
-            raise HTTPException(
+            return JSONResponse(
                 status_code=403,
-                detail=f"Free tier is limited to {FREE_TIER_MAX_APPLETS} applets per workflow. Upgrade to Pro for unlimited applets."
+                content={"error": {
+                    "code": "FORBIDDEN",
+                    "status": 403,
+                    "message": f"Free tier is limited to {FREE_TIER_MAX_APPLETS} applets per workflow. Upgrade to Pro for unlimited applets.",
+                }}
             )
+        return None
     
     def _is_premium_feature(self, request: Request) -> bool:
         """

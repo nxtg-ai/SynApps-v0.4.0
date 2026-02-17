@@ -10,9 +10,7 @@ import logging
 from typing import Dict, Any, Optional
 
 # Import base applet from orchestrator
-import sys
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'orchestrator'))
-from main import BaseApplet, AppletMessage
+from apps.orchestrator.main import BaseApplet, AppletMessage
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

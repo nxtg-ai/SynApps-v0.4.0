@@ -153,3 +153,36 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 | Date | Change |
 |------|--------|
 | 2026-02-16 | Created. 15 initiatives across 5 pillars. 6 shipped, 1 building, 8 decided. RED health — modernization needed. |
+
+---
+
+## CoS Directives
+
+### DIRECTIVE-NXTG-20260216-01 — Modernization Progress Check
+**From**: NXTG-AI CoS | **Date**: 2026-02-16 | **Status**: PENDING
+**Priority**: P0
+
+**Action Items**:
+1. [ ] Report current Python version, FastAPI version, Pydantic version, SQLAlchemy version. Are any of the N-07 upgrades completed? Update N-07 status.
+2. [ ] Run existing tests (`pytest` or whatever test runner is configured) and report pass/fail counts. Update N-15 with baseline.
+3. [ ] Check if the merge conflict with `origin/main` has been resolved (repo had diverged history with 5 local vs 1 remote commits as of 2026-02-16). Report git status.
+4. [ ] List all security vulnerabilities from outdated dependencies. Run `pip audit` or equivalent if available.
+
+**Constraints**:
+- Health is RED. The #1 priority is N-07 (backend stack upgrade). Do NOT add new features until the stack is modernized.
+- Upgrade order: Python 3.9→3.11+ first, then Pydantic v1→v2, then FastAPI 0.68→0.115+, then SQLAlchemy 1.4→2.0.
+- Do NOT break existing shipped features (N-01 through N-06) during upgrade.
+
+**Portfolio context**:
+- synapps (P-10) is in the Developer Tools vertical alongside NXTG-Forge (P-03).
+- The portfolio standard is Pydantic v2 + FastAPI modern + Python 3.11+. synapps is the only project still on v1.
+- Frontend migration (N-08, CRA→Vite) should happen AFTER backend stabilizes.
+
+**Response** (filled by project team):
+> _(pending)_
+
+---
+
+## Team Questions
+
+_(Project team: add questions for ASIF CoS here. They will be answered during the next enrichment cycle.)_

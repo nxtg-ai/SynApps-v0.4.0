@@ -60,3 +60,16 @@ Ensure REST API uses consistent error format, pagination, strict request validat
 - Run tests before marking task complete
 - Check `.forge/state.json` for current orchestration state
 
+---
+
+## ASIF Governance
+
+This project is **P-10** in the ASIF portfolio (Developer Tools vertical). It is governed by the ASIF Chief of Staff.
+
+**On every session**:
+1. Read `.asif/NEXUS.md` — check the `## CoS Directives` section at the bottom
+2. Execute any **PENDING** directives before other work (unless Asif explicitly overrides)
+3. Write your response inline under each directive's `**Response**` section
+4. Update initiative statuses in NEXUS if your work changes them
+5. If you have questions for the CoS, add them under `## Team Questions` in NEXUS
+

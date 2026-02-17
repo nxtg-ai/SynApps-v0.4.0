@@ -7,12 +7,12 @@ from typing import List, Dict, Any, Optional
 import logging
 import uuid
 import time
-from models import Flow, FlowNode, FlowEdge, WorkflowRun
+from apps.orchestrator.models import Flow, FlowNode, FlowEdge, WorkflowRun
 from sqlalchemy import delete
 from sqlalchemy.orm import selectinload
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from db import get_db_session
+from apps.orchestrator.db import get_db_session
 
 # Configure logging
 logger = logging.getLogger("repositories")

@@ -2,7 +2,7 @@
   "id": "T-033",
   "title": "Implement CI/CD Pipeline with Coverage Reporting",
   "description": "Set up GitHub Actions for lint, type-check, test, build on PRs. Add coverage reporting and separate deploy pipelines for staging and production.",
-  "status": "pending",
+  "status": "in_progress",
   "assigned_to": "codex",
   "task_type": "implement",
   "depends_on": [
@@ -17,7 +17,7 @@
     "Staging and production deploys separated"
   ],
   "created_at": "2026-02-15T03:19:12.347903178Z",
-  "updated_at": "2026-02-15T03:19:12.347903178Z",
+  "updated_at": "2026-02-17T19:38:01.635785818Z",
   "completed_at": null,
   "plan_version": 2,
   "retry_count": 0
