@@ -2,7 +2,7 @@
   "id": "T-040",
   "title": "Design Backend Stack Upgrade Plan",
   "description": "Plan the upgrade path for backend dependencies: Python 3.11+, FastAPI 0.115+, Pydantic v2, SQLAlchemy 2.0, Alembic latest. Identify breaking changes, migration steps, and compatibility issues. Outline steps to remove deprecated patterns and v1 compat hacks.",
-  "status": "pending",
+  "status": "complete",
   "assigned_to": "claude",
   "task_type": "design",
   "depends_on": [],
@@ -13,8 +13,9 @@
     "Identified code sections needing update"
   ],
   "created_at": "2026-02-16T06:27:01.699005217Z",
-  "updated_at": "2026-02-17T04:40:07.612242492Z",
-  "completed_at": null,
+  "updated_at": "2026-02-17T19:42:19.517564774Z",
+  "completed_at": "2026-02-17T20:00:00Z",
   "plan_version": 3,
-  "retry_count": 0
+  "retry_count": 0,
+  "design_document": ".forge/designs/T-040-backend-stack-upgrade.md"
 }
