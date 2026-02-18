@@ -164,3 +164,7 @@
 {"timestamp":"2026-02-18T01:35:21.752925525Z","event_type":"task_completed","task_id":"T-052","agent":"codex","message":"T-052 completed by codex (exit 0)","metadata":null}
 {"timestamp":"2026-02-18T01:38:31.548016655Z","event_type":"task_completed","task_id":"T-053","agent":"codex","message":"T-053 completed by codex (exit 0)","metadata":null}
 {"timestamp":"2026-02-18T01:41:45.262552061Z","event_type":"task_completed","task_id":"T-054","agent":"codex","message":"T-054 completed by codex (exit 0)","metadata":null}
+{"timestamp":"2026-02-18T01:42:31.517341871Z","event_type":"task_started","task_id":null,"agent":null,"message":"Reset T-076 to pending (dashboard exiting)","metadata":null}
+{"timestamp":"2026-02-18T01:42:31.518849220Z","event_type":"task_started","task_id":null,"agent":null,"message":"Reset T-073 to pending (dashboard exiting)","metadata":null}
+{"timestamp":"2026-02-18T01:42:31.519877361Z","event_type":"task_started","task_id":null,"agent":null,"message":"Reset T-055 to pending (dashboard exiting)","metadata":null}
+{"timestamp":"2026-02-18T01:44:30.051434009Z","event_type":"task_completed","task_id":"T-073","agent":"gemini","message":"T-073 completed by gemini (exit 0)","metadata":null}
