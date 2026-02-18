@@ -48,6 +48,7 @@ import jwt
 from pydantic import BaseModel, Field, field_validator
 from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import select
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 # Import database modules
 from contextlib import asynccontextmanager
@@ -209,7 +210,14 @@ async def lifespan(app: FastAPI):
     await close_db_connections()
     logger.info("Database connections closed")
 
-app = FastAPI(title="SynApps Orchestrator", version=API_VERSION, lifespan=lifespan)
+app = FastAPI(
+    title="SynApps Orchestrator",
+    version=API_VERSION,
+    lifespan=lifespan,
+    openapi_url="/api/v1/openapi.json",
+    docs_url="/api/v1/docs",
+    redoc_url="/api/v1/redoc",
+)
 
 # Configure CORS
 backend_cors_origins = os.environ.get("BACKEND_CORS_ORIGINS", "")
@@ -269,6 +277,13 @@ def _error_response(
 async def http_exception_handler(request: Request, exc: HTTPException):
     code = _HTTP_ERROR_CODES.get(exc.status_code, "ERROR")
     return _error_response(exc.status_code, code, str(exc.detail))
+
+
+@app.exception_handler(StarletteHTTPException)
+async def starlette_http_exception_handler(request: Request, exc: StarletteHTTPException):
+    code = _HTTP_ERROR_CODES.get(exc.status_code, "ERROR")
+    detail = exc.detail if isinstance(exc.detail, str) else "Request error"
+    return _error_response(exc.status_code, code, detail)
 
 
 @app.exception_handler(RequestValidationError)
@@ -6022,8 +6037,12 @@ async def create_api_key(
     )
 
 
-@v1.get("/auth/api-keys", response_model=List[APIKeyResponseModel])
-async def list_api_keys(current_user: Dict[str, Any] = Depends(get_authenticated_user)):
+@v1.get("/auth/api-keys")
+async def list_api_keys(
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(20, ge=1, le=100, description="Items per page"),
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
     """List active API keys for the authenticated user."""
     async with get_db_session() as session:
         result = await session.execute(
@@ -6033,7 +6052,7 @@ async def list_api_keys(current_user: Dict[str, Any] = Depends(get_authenticated
             )
         )
         records = result.scalars().all()
-        return [
+        items = [
             APIKeyResponseModel(
                 id=record.id,
                 name=record.name,
@@ -6041,9 +6060,10 @@ async def list_api_keys(current_user: Dict[str, Any] = Depends(get_authenticated
                 is_active=record.is_active,
                 created_at=record.created_at,
                 last_used_at=record.last_used_at,
-            )
+            ).model_dump()
             for record in records
         ]
+        return paginate(items, page, page_size)
 
 
 @v1.delete("/auth/api-keys/{api_key_id}")
@@ -6102,17 +6122,25 @@ async def list_applets(
 
 
 @v1.get("/llm/providers")
-async def list_llm_providers(current_user: Dict[str, Any] = Depends(get_authenticated_user)):
+async def list_llm_providers(
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(20, ge=1, le=100, description="Items per page"),
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
     """List supported LLM providers and model catalogs."""
     providers = [provider.model_dump() for provider in LLMProviderRegistry.list_providers()]
-    return {"providers": providers}
+    return paginate(providers, page, page_size)
 
 
 @v1.get("/image/providers")
-async def list_image_providers(current_user: Dict[str, Any] = Depends(get_authenticated_user)):
+async def list_image_providers(
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(20, ge=1, le=100, description="Items per page"),
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
     """List supported image generation providers and model catalogs."""
     providers = [provider.model_dump() for provider in ImageProviderRegistry.list_providers()]
-    return {"providers": providers}
+    return paginate(providers, page, page_size)
 
 
 @v1.post("/flows", status_code=201)
@@ -6174,19 +6202,38 @@ async def delete_flow(
     return {"message": "Flow deleted"}
 
 
-@v1.post("/flows/{flow_id}/run")
-async def run_flow(
+async def _run_flow_impl(
     flow_id: str,
     body: RunFlowRequest,
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
-):
-    """Run a flow with the given input data."""
+    current_user: Optional[Dict[str, Any]] = None,
+) -> Dict[str, str]:
+    """Execute a flow and return a run identifier."""
     flow = await FlowRepository.get_by_id(flow_id)
     if not flow:
         raise HTTPException(status_code=404, detail="Flow not found")
     flow = await Orchestrator.auto_migrate_legacy_nodes(flow, persist=True)
     run_id = await Orchestrator.execute_flow(flow, body.input)
     return {"run_id": run_id}
+
+
+@v1.post("/flows/{flow_id}/runs", status_code=202)
+async def create_flow_run(
+    flow_id: str,
+    body: RunFlowRequest,
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
+    """RESTful run creation endpoint for a flow."""
+    return await _run_flow_impl(flow_id, body, current_user)
+
+
+@v1.post("/flows/{flow_id}/run", deprecated=True)
+async def run_flow_legacy(
+    flow_id: str,
+    body: RunFlowRequest,
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
+    """Backward-compatible alias for flow execution."""
+    return await _run_flow_impl(flow_id, body, current_user)
 
 
 @v1.get("/runs")
@@ -6222,6 +6269,16 @@ async def ai_suggest(
         status_code=501,
         detail="AI code suggestion is not implemented in the Alpha release. Please check back in a future version."
     )
+
+
+@v1.get("/health")
+async def health_v1():
+    """Versioned health check endpoint."""
+    return {
+        "status": "healthy",
+        "service": "SynApps Orchestrator API",
+        "version": API_VERSION,
+    }
 
 
 # Include versioned router
