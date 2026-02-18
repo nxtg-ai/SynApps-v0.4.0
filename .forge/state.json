@@ -2,7 +2,7 @@
   "version": "1.1.0",
   "project_name": "synapps",
   "created_at": "2026-02-15T03:04:41.518674601Z",
-  "updated_at": "2026-02-18T02:28:19.345354444Z",
+  "updated_at": "2026-02-18T02:29:32.757271671Z",
   "tools": [
     {
       "name": "claude",
@@ -55,22 +55,14 @@
       "files": [
         "apps/orchestrator/main.py"
       ]
-    },
-    "T-064": {
-      "task_id": "T-064",
-      "agent": "gemini",
-      "locked_at": "2026-02-18T02:20:20.046596377Z",
-      "files": [
-        "apps/orchestrator/main.py"
-      ]
     }
   },
   "agent_auth": {
     "codex": "subscription"
   },
   "agent_permissions": {
-    "gemini": "yolo",
     "claude": "yolo",
+    "gemini": "yolo",
     "codex": "yolo"
   },
   "git": {

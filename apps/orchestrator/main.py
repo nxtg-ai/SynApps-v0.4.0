@@ -415,6 +415,8 @@ class WorkflowRunStatus(BaseModel):
     end_time: Optional[float] = None
     results: Dict[str, Any] = Field(default_factory=dict)
     error: Optional[str] = None
+    error_details: Dict[str, Any] = Field(default_factory=dict)
+    completed_applets: List[str] = Field(default_factory=list)
 
 
 # ============================================================

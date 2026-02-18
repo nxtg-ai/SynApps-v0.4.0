@@ -106,7 +106,7 @@ class WorkflowRunRepository:
             run = result.scalars().first()
             if run:
                 # Update
-                for field in ["status", "current_applet", "progress", "total_steps", "end_time", "results", "error", "input_data", "completed_applets"]:
+                for field in ["status", "current_applet", "progress", "total_steps", "end_time", "results", "error", "error_details", "input_data", "completed_applets"]:
                     if field in run_data:
                         setattr(run, field, run_data[field])
             else:
@@ -121,6 +121,7 @@ class WorkflowRunRepository:
                     end_time=run_data.get("end_time"),
                     results=run_data.get("results", {}),
                     error=run_data.get("error"),
+                    error_details=run_data.get("error_details", {}),
                     input_data=run_data.get("input_data"),
                     completed_applets=run_data.get("completed_applets", [])
                 )

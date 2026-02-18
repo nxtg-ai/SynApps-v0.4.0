@@ -124,6 +124,7 @@ class WorkflowRun(Base):
     end_time: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     results: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
     error: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    error_details: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
     input_data: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
     completed_applets: Mapped[Optional[List[str]]] = mapped_column(JSON, nullable=True)
 
@@ -140,6 +141,7 @@ class WorkflowRun(Base):
             "end_time": self.end_time,
             "results": self.results or {},
             "error": self.error,
+            "error_details": self.error_details or {},
             "input_data": self.input_data,
             "completed_applets": self.completed_applets or [],
         }
@@ -185,6 +187,7 @@ class WorkflowRunStatusModel(BaseModel):
     end_time: Optional[float] = None
     results: Dict[str, Any] = Field(default_factory=dict)
     error: Optional[str] = None
+    error_details: Dict[str, Any] = Field(default_factory=dict)
     input_data: Optional[Dict[str, Any]] = None
     completed_applets: List[str] = Field(default_factory=list)
 
