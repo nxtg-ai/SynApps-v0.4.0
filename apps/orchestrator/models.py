@@ -639,3 +639,110 @@ class TransformNodeConfigModel(BaseModel):
             if flag not in unique:
                 unique.append(flag)
         return "".join(unique)
+
+
+SUPPORTED_IF_ELSE_OPERATIONS = (
+    "contains",
+    "equals",
+    "regex",
+    "json_path",
+)
+
+
+class IfElseNodeConfigModel(BaseModel):
+    """Configuration schema for the conditional if/else routing node."""
+
+    model_config = ConfigDict(extra="allow")
+
+    label: str = Field("If / Else", max_length=100)
+    operation: str = Field("equals")
+    source: Any = Field(default="{{content}}")
+    value: Optional[Any] = None
+    case_sensitive: bool = False
+    negate: bool = False
+    regex_pattern: str = Field("", max_length=5000)
+    regex_flags: str = Field("")
+    json_path: str = Field("$")
+    true_target: Optional[str] = Field(None, max_length=200)
+    false_target: Optional[str] = Field(None, max_length=200)
+    extra: Dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("operation")
+    @classmethod
+    def validate_operation(cls, value: str) -> str:
+        normalized = value.strip().lower().replace("-", "_")
+        alias_map = {
+            "equal": "equals",
+            "eq": "equals",
+            "contains_text": "contains",
+            "matches": "regex",
+            "regex_match": "regex",
+            "pattern": "regex",
+            "jsonpath": "json_path",
+            "json_path_exists": "json_path",
+            "path": "json_path",
+        }
+        normalized = alias_map.get(normalized, normalized)
+        if normalized not in SUPPORTED_IF_ELSE_OPERATIONS:
+            raise ValueError(
+                f"operation must be one of: {', '.join(SUPPORTED_IF_ELSE_OPERATIONS)}"
+            )
+        return normalized
+
+    @field_validator("regex_flags")
+    @classmethod
+    def validate_regex_flags(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        allowed = {"i", "m", "s", "x"}
+        unique = []
+        for flag in normalized:
+            if flag not in allowed:
+                raise ValueError("regex_flags may contain only: i, m, s, x")
+            if flag not in unique:
+                unique.append(flag)
+        return "".join(unique)
+
+    @field_validator("json_path")
+    @classmethod
+    def validate_json_path(cls, value: str) -> str:
+        normalized = value.strip() or "$"
+        if not normalized.startswith("$"):
+            normalized = f"${normalized if normalized.startswith('.') else f'.{normalized}'}"
+        return normalized
+
+    @field_validator("true_target", "false_target")
+    @classmethod
+    def normalize_targets(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+
+class ForEachNodeConfigModel(BaseModel):
+    """Configuration schema for the for-each loop node."""
+
+    model_config = ConfigDict(extra="allow")
+
+    label: str = Field("For-Each", max_length=100)
+    array_source: str = Field(
+        "{{input}}",
+        description="Template expression or JSON path resolving to the array to iterate over.",
+    )
+    max_iterations: int = Field(
+        1000,
+        ge=1,
+        le=100000,
+        description="Maximum number of iterations before the loop aborts.",
+    )
+    parallel: bool = Field(
+        False,
+        description="When true, execute iterations concurrently instead of sequentially.",
+    )
+    concurrency_limit: int = Field(
+        10,
+        ge=1,
+        le=100,
+        description="Maximum concurrent iterations when parallel is enabled.",
+    )
+    extra: Dict[str, Any] = Field(default_factory=dict)

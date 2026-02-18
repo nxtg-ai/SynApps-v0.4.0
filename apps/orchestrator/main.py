@@ -51,6 +51,8 @@ from apps.orchestrator.models import (
     FlowModel,
     FlowNodeModel,
     FlowEdgeModel,
+    IfElseNodeConfigModel,
+    ForEachNodeConfigModel,
     WorkflowRunStatusModel,
     ImageGenNodeConfigModel,
     ImageGenRequestModel,
@@ -101,6 +103,8 @@ MEMORY_NODE_TYPE = "memory"
 HTTP_REQUEST_NODE_TYPE = "http_request"
 CODE_NODE_TYPE = "code"
 TRANSFORM_NODE_TYPE = "transform"
+IF_ELSE_NODE_TYPE = "if_else"
+FOR_EACH_NODE_TYPE = "for_each"
 DEFAULT_MEMORY_BACKEND = os.environ.get("MEMORY_BACKEND", "sqlite_fts").strip().lower()
 DEFAULT_MEMORY_NAMESPACE = os.environ.get("MEMORY_NAMESPACE", "default").strip() or "default"
 DEFAULT_MEMORY_SQLITE_PATH = str(
@@ -136,6 +140,26 @@ LEGACY_MEMORY_BACKEND_ALIASES: Dict[str, str] = {
     "chroma": "chroma",
     "chromadb": "chroma",
     "chroma_db": "chroma",
+}
+_TRUE_BRANCH_HINTS = {
+    "true",
+    "then",
+    "yes",
+    "pass",
+    "match",
+    "matched",
+    "on_true",
+    "if_true",
+}
+_FALSE_BRANCH_HINTS = {
+    "false",
+    "else",
+    "no",
+    "fail",
+    "nomatch",
+    "not_match",
+    "on_false",
+    "if_false",
 }
 
 # ============================================================
@@ -322,6 +346,37 @@ class AppletStatus(str, Enum):
     RUNNING = "running"
     SUCCESS = "success"
     ERROR = "error"
+
+class NodeErrorCode(str, Enum):
+    TIMEOUT = "TIMEOUT"
+    RETRY_EXHAUSTED = "RETRY_EXHAUSTED"
+    EXECUTION_ERROR = "EXECUTION_ERROR"
+    VALIDATION_ERROR = "VALIDATION_ERROR"
+    NOT_FOUND = "NOT_FOUND"
+    UNKNOWN_ERROR = "UNKNOWN_ERROR"
+
+class NodeError(Exception):
+    """Structured error for node execution."""
+    def __init__(
+        self,
+        code: NodeErrorCode,
+        message: str,
+        details: Optional[Dict[str, Any]] = None,
+        node_id: Optional[str] = None,
+    ):
+        self.code = code
+        self.message = message
+        self.details = details or {}
+        self.node_id = node_id
+        super().__init__(self.message)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "code": self.code,
+            "message": self.message,
+            "details": self.details,
+            "node_id": self.node_id,
+        }
 
 class FlowNode(BaseModel):
     id: str
@@ -3571,6 +3626,269 @@ class TransformNodeApplet(BaseApplet):
         return config.join_delimiter.join(normalized)
 
 
+class IfElseNodeApplet(BaseApplet):
+    """Conditional routing node that evaluates data and selects a true/false branch."""
+
+    VERSION = "1.0.0"
+    CAPABILITIES = [
+        "conditional-routing",
+        "contains-condition",
+        "equals-condition",
+        "regex-condition",
+        "json-path-condition",
+    ]
+
+    async def on_message(self, message: AppletMessage) -> AppletMessage:
+        base_context = message.context if isinstance(message.context, dict) else {}
+
+        try:
+            config = self._resolve_config(message)
+        except Exception as exc:
+            error_content = {
+                "ok": False,
+                "operation": "unknown",
+                "result": False,
+                "branch": "false",
+                "error": f"Invalid if/else configuration: {exc}",
+            }
+            return AppletMessage(
+                content=error_content,
+                context={**base_context, "last_if_else_response": error_content},
+                metadata={
+                    "applet": IF_ELSE_NODE_TYPE,
+                    "status": "error",
+                    "operation": "unknown",
+                    "branch": "false",
+                    "condition_result": False,
+                },
+            )
+
+        template_data = self._template_data(message)
+        source_value = _render_template_payload(config.source, template_data)
+        expected_value = (
+            _render_template_payload(config.value, template_data)
+            if config.value is not None
+            else None
+        )
+
+        try:
+            result, details = self._evaluate_condition(config, source_value, expected_value)
+            if config.negate:
+                result = not result
+                details["negated"] = True
+        except Exception as exc:
+            error_content = {
+                "ok": False,
+                "operation": config.operation,
+                "source": source_value,
+                "value": expected_value,
+                "result": False,
+                "branch": "false",
+                "error": str(exc),
+            }
+            return AppletMessage(
+                content=error_content,
+                context={**base_context, "last_if_else_response": error_content},
+                metadata={
+                    "applet": IF_ELSE_NODE_TYPE,
+                    "status": "error",
+                    "operation": config.operation,
+                    "branch": "false",
+                    "condition_result": False,
+                },
+            )
+
+        branch = "true" if result else "false"
+        output_content = {
+            "ok": True,
+            "operation": config.operation,
+            "source": source_value,
+            "value": expected_value,
+            "result": result,
+            "branch": branch,
+            "details": details,
+        }
+        output_context = {**base_context, "last_if_else_response": output_content}
+        output_metadata = {
+            "applet": IF_ELSE_NODE_TYPE,
+            "status": "success",
+            "operation": config.operation,
+            "branch": branch,
+            "condition_result": result,
+        }
+        return AppletMessage(content=output_content, context=output_context, metadata=output_metadata)
+
+    def _resolve_config(self, message: AppletMessage) -> IfElseNodeConfigModel:
+        context = message.context if isinstance(message.context, dict) else {}
+        node_data = message.metadata.get("node_data", {})
+        if not isinstance(node_data, dict):
+            node_data = {}
+
+        context_config: Dict[str, Any] = {}
+        for key in ("if_else_config", "ifelse_config", "condition_config", "if_config"):
+            candidate = context.get(key)
+            if isinstance(candidate, dict):
+                context_config = {**context_config, **candidate}
+
+        metadata_config: Dict[str, Any] = {}
+        for key in ("if_else_config", "ifelse_config", "condition_config", "if_config"):
+            candidate = message.metadata.get(key)
+            if isinstance(candidate, dict):
+                metadata_config = {**metadata_config, **candidate}
+
+        merged = {**context_config, **metadata_config, **node_data}
+        config_payload = {
+            "label": merged.get("label", "If / Else"),
+            "operation": merged.get(
+                "operation",
+                merged.get("condition", merged.get("match_type", "equals")),
+            ),
+            "source": merged.get(
+                "source",
+                merged.get("left", merged.get("input", "{{content}}")),
+            ),
+            "value": merged.get(
+                "value",
+                merged.get("expected", merged.get("right")),
+            ),
+            "case_sensitive": merged.get(
+                "case_sensitive",
+                merged.get("caseSensitive", False),
+            ),
+            "negate": merged.get("negate", merged.get("not", False)),
+            "regex_pattern": merged.get(
+                "regex_pattern",
+                merged.get("regexPattern", merged.get("pattern", "")),
+            ),
+            "regex_flags": merged.get("regex_flags", merged.get("regexFlags", "")),
+            "json_path": merged.get("json_path", merged.get("jsonPath", merged.get("path", "$"))),
+            "true_target": merged.get(
+                "true_target",
+                merged.get("trueTarget", merged.get("on_true")),
+            ),
+            "false_target": merged.get(
+                "false_target",
+                merged.get("falseTarget", merged.get("on_false")),
+            ),
+            "extra": merged.get("extra", {}),
+        }
+        return IfElseNodeConfigModel.model_validate(config_payload)
+
+    def _template_data(self, message: AppletMessage) -> Dict[str, Any]:
+        context = message.context if isinstance(message.context, dict) else {}
+        results = context.get("results", {})
+        if not isinstance(results, dict):
+            results = {}
+        return {
+            "input": message.content,
+            "content": message.content,
+            "context": context,
+            "results": results,
+            "metadata": message.metadata,
+            "run_id": context.get("run_id", message.metadata.get("run_id")),
+            "node_id": message.metadata.get("node_id"),
+        }
+
+    def _evaluate_condition(
+        self,
+        config: IfElseNodeConfigModel,
+        source_value: Any,
+        expected_value: Any,
+    ) -> tuple[bool, Dict[str, Any]]:
+        if config.operation == "contains":
+            matched = self._evaluate_contains(
+                source_value=source_value,
+                expected_value=expected_value,
+                case_sensitive=config.case_sensitive,
+            )
+            return matched, {"mode": "contains"}
+
+        if config.operation == "equals":
+            matched = self._evaluate_equals(
+                left=source_value,
+                right=expected_value,
+                case_sensitive=config.case_sensitive,
+            )
+            return matched, {"mode": "equals"}
+
+        if config.operation == "regex":
+            pattern = config.regex_pattern
+            if not pattern and expected_value is not None:
+                pattern = _as_text(expected_value)
+            if not pattern:
+                raise ValueError("regex_pattern is required for regex operation")
+
+            flags = self._compile_regex_flags(config.regex_flags)
+            source_text = _as_text(source_value)
+            matched = re.search(pattern, source_text, flags=flags) is not None
+            return matched, {"mode": "regex", "pattern": pattern}
+
+        if config.operation == "json_path":
+            matched_value, found = _resolve_json_path(source_value, config.json_path)
+            if not found:
+                return False, {"mode": "json_path", "found": False}
+            if expected_value is None:
+                return True, {"mode": "json_path", "found": True, "value": matched_value}
+            matched = self._evaluate_equals(
+                left=matched_value,
+                right=expected_value,
+                case_sensitive=config.case_sensitive,
+            )
+            return matched, {
+                "mode": "json_path",
+                "found": True,
+                "value": matched_value,
+            }
+
+        raise ValueError(f"Unsupported if/else operation: {config.operation}")
+
+    def _evaluate_contains(
+        self,
+        source_value: Any,
+        expected_value: Any,
+        case_sensitive: bool,
+    ) -> bool:
+        if expected_value is None:
+            return False
+
+        if isinstance(source_value, dict):
+            if expected_value in source_value:
+                return True
+            return expected_value in source_value.values()
+
+        if isinstance(source_value, (list, tuple, set)):
+            return expected_value in source_value
+
+        source_text = _as_text(source_value)
+        expected_text = _as_text(expected_value)
+        if not case_sensitive:
+            source_text = source_text.lower()
+            expected_text = expected_text.lower()
+        return expected_text in source_text
+
+    def _evaluate_equals(
+        self,
+        left: Any,
+        right: Any,
+        case_sensitive: bool,
+    ) -> bool:
+        if isinstance(left, str) and isinstance(right, str) and not case_sensitive:
+            return left.lower() == right.lower()
+        return left == right
+
+    def _compile_regex_flags(self, flags_text: str) -> int:
+        flags = 0
+        if "i" in flags_text:
+            flags |= re.IGNORECASE
+        if "m" in flags_text:
+            flags |= re.MULTILINE
+        if "s" in flags_text:
+            flags |= re.DOTALL
+        if "x" in flags_text:
+            flags |= re.VERBOSE
+        return flags
+
+
 class CodeNodeApplet(BaseApplet):
     """Sandboxed code execution node for Python and JavaScript."""
 
@@ -3794,12 +4112,276 @@ class CodeNodeApplet(BaseApplet):
         return result_payload
 
 
+class ForEachNodeApplet(BaseApplet):
+    """For-Each loop node that iterates over an array, executing downstream nodes per item."""
+
+    VERSION = "1.0.0"
+    CAPABILITIES = [
+        "loop",
+        "for-each",
+        "array-iteration",
+        "parallel-iteration",
+        "max-iteration-limit",
+    ]
+
+    async def on_message(self, message: AppletMessage) -> AppletMessage:
+        try:
+            config = self._resolve_config(message)
+        except Exception as exc:
+            return AppletMessage(
+                content={"error": f"Invalid for-each configuration: {exc}"},
+                context=message.context,
+                metadata={"applet": FOR_EACH_NODE_TYPE, "status": "error"},
+            )
+
+        template_data = self._template_data(message)
+        resolved_source = _render_template_payload(config.array_source, template_data)
+
+        items = self._coerce_to_list(resolved_source)
+        if items is None:
+            return AppletMessage(
+                content={
+                    "ok": False,
+                    "error": "array_source did not resolve to an iterable array",
+                    "resolved_value": resolved_source,
+                },
+                context=message.context,
+                metadata={"applet": FOR_EACH_NODE_TYPE, "status": "error"},
+            )
+
+        total_items = len(items)
+        effective_limit = min(total_items, config.max_iterations)
+        truncated = total_items > config.max_iterations
+        items = items[:effective_limit]
+
+        node_id = message.metadata.get("node_id", "for_each")
+        run_id = message.context.get("run_id", message.metadata.get("run_id"))
+
+        if config.parallel:
+            iteration_results = await self._run_parallel(
+                items, message, config, node_id, run_id
+            )
+        else:
+            iteration_results = await self._run_sequential(
+                items, message, node_id, run_id
+            )
+
+        output_content = {
+            "ok": True,
+            "total_items": total_items,
+            "iterated": len(items),
+            "truncated": truncated,
+            "max_iterations": config.max_iterations,
+            "parallel": config.parallel,
+            "results": iteration_results,
+        }
+        output_context = {
+            **message.context,
+            "last_for_each_response": output_content,
+            "for_each_results": iteration_results,
+        }
+        output_metadata = {
+            "applet": FOR_EACH_NODE_TYPE,
+            "status": "success",
+            "iterated": len(items),
+            "truncated": truncated,
+            "parallel": config.parallel,
+        }
+        return AppletMessage(
+            content=output_content,
+            context=output_context,
+            metadata=output_metadata,
+        )
+
+    def _resolve_config(self, message: AppletMessage) -> ForEachNodeConfigModel:
+        node_data = message.metadata.get("node_data", {})
+        if not isinstance(node_data, dict):
+            node_data = {}
+
+        context_config = message.context.get("for_each_config", {})
+        if not isinstance(context_config, dict):
+            context_config = {}
+
+        metadata_config = message.metadata.get("for_each_config", {})
+        if not isinstance(metadata_config, dict):
+            metadata_config = {}
+
+        merged = {**context_config, **metadata_config, **node_data}
+        config_payload = {
+            "label": merged.get("label", "For-Each"),
+            "array_source": merged.get(
+                "array_source",
+                merged.get("arraySource", merged.get("source", "{{input}}")),
+            ),
+            "max_iterations": merged.get(
+                "max_iterations",
+                merged.get("maxIterations", merged.get("limit", 1000)),
+            ),
+            "parallel": merged.get("parallel", False),
+            "concurrency_limit": merged.get(
+                "concurrency_limit",
+                merged.get("concurrencyLimit", 10),
+            ),
+            "extra": merged.get("extra", {}),
+        }
+        return ForEachNodeConfigModel.model_validate(config_payload)
+
+    def _template_data(self, message: AppletMessage) -> Dict[str, Any]:
+        context = message.context if isinstance(message.context, dict) else {}
+        results = context.get("results", {})
+        if not isinstance(results, dict):
+            results = {}
+        return {
+            "input": message.content,
+            "content": message.content,
+            "context": context,
+            "results": results,
+            "metadata": message.metadata,
+            "run_id": context.get("run_id", message.metadata.get("run_id")),
+            "node_id": message.metadata.get("node_id"),
+        }
+
+    @staticmethod
+    def _coerce_to_list(value: Any) -> Optional[List[Any]]:
+        if isinstance(value, list):
+            return value
+        if isinstance(value, str):
+            value = value.strip()
+            if value.startswith("["):
+                try:
+                    parsed = json.loads(value)
+                    if isinstance(parsed, list):
+                        return parsed
+                except (json.JSONDecodeError, ValueError):
+                    pass
+            return None
+        if isinstance(value, dict):
+            return None
+        try:
+            return list(value)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _build_iteration_message(
+        item: Any,
+        index: int,
+        message: AppletMessage,
+        node_id: str,
+        run_id: Optional[str],
+    ) -> AppletMessage:
+        iteration_context = {
+            **message.context,
+            "for_each_item": item,
+            "for_each_index": index,
+            "for_each_node_id": node_id,
+        }
+        iteration_metadata = {
+            **message.metadata,
+            "for_each_item": item,
+            "for_each_index": index,
+            "parent_node_id": node_id,
+        }
+        return AppletMessage(
+            content=item,
+            context=iteration_context,
+            metadata=iteration_metadata,
+        )
+
+    async def _execute_single_iteration(
+        self,
+        item: Any,
+        index: int,
+        message: AppletMessage,
+        node_id: str,
+        run_id: Optional[str],
+    ) -> Dict[str, Any]:
+        iteration_msg = self._build_iteration_message(item, index, message, node_id, run_id)
+
+        downstream_nodes = self._get_downstream_nodes(message)
+
+        if not downstream_nodes:
+            return {"index": index, "item": item, "output": item}
+
+        current_output: Any = item
+        current_msg = iteration_msg
+
+        for downstream in downstream_nodes:
+            try:
+                applet = await Orchestrator.load_applet(downstream["type"].lower())
+                sub_metadata = {**current_msg.metadata}
+                if "data" in downstream and isinstance(downstream["data"], dict):
+                    sub_metadata["node_data"] = downstream["data"]
+                sub_msg = AppletMessage(
+                    content=current_msg.content,
+                    context=current_msg.context,
+                    metadata=sub_metadata,
+                )
+                response = await applet.on_message(sub_msg)
+                current_output = response.content
+                current_msg = response
+            except Exception as exc:
+                return {
+                    "index": index,
+                    "item": item,
+                    "error": str(exc),
+                    "failed_at_node": downstream.get("id", downstream.get("type")),
+                }
+
+        return {"index": index, "item": item, "output": current_output}
+
+    def _get_downstream_nodes(self, message: AppletMessage) -> List[Dict[str, Any]]:
+        node_data = message.metadata.get("node_data", {})
+        if not isinstance(node_data, dict):
+            return []
+        sub_nodes = node_data.get("sub_nodes", node_data.get("subNodes", []))
+        if isinstance(sub_nodes, list):
+            return [n for n in sub_nodes if isinstance(n, dict) and "type" in n]
+        return []
+
+    async def _run_sequential(
+        self,
+        items: List[Any],
+        message: AppletMessage,
+        node_id: str,
+        run_id: Optional[str],
+    ) -> List[Dict[str, Any]]:
+        results: List[Dict[str, Any]] = []
+        for index, item in enumerate(items):
+            result = await self._execute_single_iteration(
+                item, index, message, node_id, run_id
+            )
+            results.append(result)
+        return results
+
+    async def _run_parallel(
+        self,
+        items: List[Any],
+        message: AppletMessage,
+        config: ForEachNodeConfigModel,
+        node_id: str,
+        run_id: Optional[str],
+    ) -> List[Dict[str, Any]]:
+        semaphore = asyncio.Semaphore(config.concurrency_limit)
+
+        async def _guarded(item: Any, index: int) -> Dict[str, Any]:
+            async with semaphore:
+                return await self._execute_single_iteration(
+                    item, index, message, node_id, run_id
+                )
+
+        tasks = [_guarded(item, idx) for idx, item in enumerate(items)]
+        return list(await asyncio.gather(*tasks))
+
+
 applet_registry["llm"] = LLMNodeApplet
 applet_registry[IMAGE_NODE_TYPE] = ImageGenNodeApplet
 applet_registry[MEMORY_NODE_TYPE] = MemoryNodeApplet
 applet_registry[HTTP_REQUEST_NODE_TYPE] = HTTPRequestNodeApplet
 applet_registry[CODE_NODE_TYPE] = CodeNodeApplet
 applet_registry[TRANSFORM_NODE_TYPE] = TransformNodeApplet
+applet_registry[IF_ELSE_NODE_TYPE] = IfElseNodeApplet
+applet_registry[FOR_EACH_NODE_TYPE] = ForEachNodeApplet
 
 
 # ============================================================
@@ -3859,6 +4441,29 @@ class Orchestrator:
             applet_registry[TRANSFORM_NODE_TYPE] = TransformNodeApplet
             return TransformNodeApplet()
 
+        if normalized_type in {
+            IF_ELSE_NODE_TYPE,
+            "ifelse",
+            "if-else",
+            "conditional",
+            "condition",
+            "condition_node",
+            "condition-node",
+        }:
+            applet_registry[IF_ELSE_NODE_TYPE] = IfElseNodeApplet
+            return IfElseNodeApplet()
+
+        if normalized_type in {
+            FOR_EACH_NODE_TYPE,
+            "foreach",
+            "for-each",
+            "for_each_node",
+            "for-each-node",
+            "loop",
+        }:
+            applet_registry[FOR_EACH_NODE_TYPE] = ForEachNodeApplet
+            return ForEachNodeApplet()
+
         try:
             module_path = f"apps.applets.{normalized_type}.applet"
             module = importlib.import_module(module_path)
@@ -3873,6 +4478,185 @@ class Orchestrator:
     def create_run_id() -> str:
         """Generate a unique run ID."""
         return str(uuid.uuid4())
+
+    @staticmethod
+    def _collect_outgoing_targets(outgoing_edges: List[Dict[str, Any]]) -> List[str]:
+        """Collect unique target ids from outgoing edges while preserving order."""
+        targets: List[str] = []
+        for edge in outgoing_edges:
+            target = edge.get("target")
+            if isinstance(target, str) and target and target not in targets:
+                targets.append(target)
+        return targets
+
+    @staticmethod
+    def _branch_from_hint(hint: Any) -> Optional[str]:
+        """Infer a branch from an arbitrary string hint."""
+        if hint is None:
+            return None
+        text = str(hint).strip().lower()
+        if not text:
+            return None
+
+        normalized = text.replace("-", "_")
+        if normalized in _TRUE_BRANCH_HINTS:
+            return "true"
+        if normalized in _FALSE_BRANCH_HINTS:
+            return "false"
+
+        tokens = [token for token in re.split(r"[^a-z0-9]+", normalized) if token]
+        has_true = any(token in _TRUE_BRANCH_HINTS for token in tokens)
+        has_false = any(token in _FALSE_BRANCH_HINTS for token in tokens)
+        if has_true and not has_false:
+            return "true"
+        if has_false and not has_true:
+            return "false"
+        return None
+
+    @staticmethod
+    def _extract_if_else_branch(response: Optional[AppletMessage]) -> str:
+        """Resolve true/false routing branch from an if/else applet response."""
+        if response is None:
+            return "false"
+
+        if isinstance(response.metadata, dict):
+            branch = Orchestrator._branch_from_hint(response.metadata.get("branch"))
+            if branch:
+                return branch
+            raw_result = response.metadata.get("condition_result")
+            branch = Orchestrator._branch_from_hint(raw_result)
+            if branch:
+                return branch
+            if isinstance(raw_result, bool):
+                return "true" if raw_result else "false"
+            if isinstance(raw_result, (int, float)):
+                return "true" if raw_result != 0 else "false"
+
+        if isinstance(response.content, dict):
+            branch = Orchestrator._branch_from_hint(response.content.get("branch"))
+            if branch:
+                return branch
+            raw_result = response.content.get("result")
+            branch = Orchestrator._branch_from_hint(raw_result)
+            if branch:
+                return branch
+            if isinstance(raw_result, bool):
+                return "true" if raw_result else "false"
+            if isinstance(raw_result, (int, float)):
+                return "true" if raw_result != 0 else "false"
+
+        return "false"
+
+    @staticmethod
+    def _branch_target_from_node_data(node: Dict[str, Any], branch: str) -> Optional[str]:
+        """Read explicit branch target ids from if/else node data."""
+        node_data = node.get("data", {})
+        if not isinstance(node_data, dict):
+            return None
+
+        keys = (
+            ("true_target", "trueTarget", "on_true", "onTrue", "then_target", "thenTarget")
+            if branch == "true"
+            else ("false_target", "falseTarget", "on_false", "onFalse", "else_target", "elseTarget")
+        )
+        for key in keys:
+            value = node_data.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return None
+
+    @staticmethod
+    def _infer_edge_branch(edge: Dict[str, Any]) -> Optional[str]:
+        """Infer true/false branch from edge metadata."""
+        candidates: List[Any] = [
+            edge.get("branch"),
+            edge.get("label"),
+            edge.get("sourceHandle"),
+            edge.get("source_handle"),
+            edge.get("targetHandle"),
+            edge.get("target_handle"),
+            edge.get("id"),
+        ]
+
+        edge_data = edge.get("data")
+        if isinstance(edge_data, dict):
+            candidates.extend(
+                [
+                    edge_data.get("branch"),
+                    edge_data.get("label"),
+                    edge_data.get("sourceHandle"),
+                    edge_data.get("source_handle"),
+                    edge_data.get("targetHandle"),
+                    edge_data.get("target_handle"),
+                ]
+            )
+
+        for candidate in candidates:
+            branch = Orchestrator._branch_from_hint(candidate)
+            if branch:
+                return branch
+        return None
+
+    @staticmethod
+    def _resolve_next_targets(
+        node: Dict[str, Any],
+        outgoing_edges: List[Dict[str, Any]],
+        response: Optional[AppletMessage] = None,
+    ) -> List[str]:
+        """Resolve outgoing targets, applying conditional routing for if/else nodes."""
+        default_targets = Orchestrator._collect_outgoing_targets(outgoing_edges)
+        node_type = str(node.get("type", "")).strip().lower()
+        if node_type != IF_ELSE_NODE_TYPE:
+            return default_targets
+
+        if not outgoing_edges:
+            return []
+
+        selected_branch = Orchestrator._extract_if_else_branch(response)
+        explicit_target = Orchestrator._branch_target_from_node_data(node, selected_branch)
+        if explicit_target and explicit_target in default_targets:
+            return [explicit_target]
+
+        branch_targets: List[str] = []
+        for index, edge in enumerate(outgoing_edges):
+            inferred_branch = Orchestrator._infer_edge_branch(edge)
+            if inferred_branch is None:
+                if len(outgoing_edges) >= 2:
+                    inferred_branch = "true" if index == 0 else "false" if index == 1 else None
+                else:
+                    inferred_branch = "true" if index == 0 else None
+
+            if inferred_branch != selected_branch:
+                continue
+
+            target = edge.get("target")
+            if isinstance(target, str) and target and target not in branch_targets:
+                branch_targets.append(target)
+
+        if branch_targets:
+            return [branch_targets[0]]
+
+        if selected_branch == "true":
+            return default_targets[:1]
+        if len(default_targets) > 1:
+            return [default_targets[1]]
+        return []
+
+    @staticmethod
+    def _mark_animated_edges(
+        flow_edges: List[Dict[str, Any]],
+        source_node_id: str,
+        selected_targets: List[str],
+    ) -> None:
+        """Mark selected edges as animated for runtime visualization."""
+        if not selected_targets:
+            return
+        selected_target_set = set(selected_targets)
+        for edge in flow_edges:
+            if edge.get("source") != source_node_id:
+                continue
+            if edge.get("target") in selected_target_set:
+                edge["animated"] = True
 
     @staticmethod
     def migrate_legacy_writer_nodes(flow: Dict[str, Any]) -> tuple[Dict[str, Any], bool]:
@@ -4177,16 +4961,37 @@ class Orchestrator:
         try:
             status = await workflow_run_repo.get_by_run_id(run_id)
 
-            nodes_by_id = {node["id"]: node for node in flow["nodes"]}
+            flow_nodes = flow.get("nodes", [])
+            flow_edges = flow.get("edges", [])
 
-            graph = {}
-            for edge in flow["edges"]:
-                if edge["source"] not in graph:
-                    graph[edge["source"]] = []
-                graph[edge["source"]].append(edge["target"])
+            nodes_by_id = {
+                node["id"]: node
+                for node in flow_nodes
+                if isinstance(node, dict) and isinstance(node.get("id"), str)
+            }
 
-            target_nodes = set(edge["target"] for edge in flow["edges"])
-            start_nodes = [node["id"] for node in flow["nodes"] if node["id"] not in target_nodes]
+            edges_by_source: Dict[str, List[Dict[str, Any]]] = {}
+            for edge in flow_edges:
+                if not isinstance(edge, dict):
+                    continue
+                source = edge.get("source")
+                target = edge.get("target")
+                if not isinstance(source, str) or not source:
+                    continue
+                if not isinstance(target, str) or not target:
+                    continue
+                edges_by_source.setdefault(source, []).append(edge)
+
+            target_nodes = {
+                edge.get("target")
+                for edge in flow_edges
+                if isinstance(edge, dict) and isinstance(edge.get("target"), str)
+            }
+            start_nodes = [
+                node["id"]
+                for node in flow_nodes
+                if isinstance(node, dict) and isinstance(node.get("id"), str) and node["id"] not in target_nodes
+            ]
 
             if not start_nodes:
                 if status and isinstance(status, dict):
@@ -4226,7 +5031,10 @@ class Orchestrator:
                         continue
 
                     visited.add(node_id)
-                    node = nodes_by_id[node_id]
+                    node = nodes_by_id.get(node_id)
+                    if not isinstance(node, dict):
+                        continue
+                    outgoing_edges = edges_by_source.get(node_id, [])
 
                     if status and isinstance(status, dict):
                         status["current_applet"] = node["type"]
@@ -4253,8 +5061,7 @@ class Orchestrator:
                                 if status and isinstance(status, dict):
                                     status["input_data"] = parsed_input
 
-                        if node_id in graph:
-                            next_nodes.extend(graph[node_id])
+                        next_nodes.extend(Orchestrator._collect_outgoing_targets(outgoing_edges))
                         continue
 
                     try:
@@ -4297,12 +5104,17 @@ class Orchestrator:
                             broadcast_data["completed_applets"] = memory_completed_applets
                             await broadcast_status_fn(broadcast_data)
 
-                        if node_id in graph:
-                            next_nodes.extend(graph[node_id])
-
-                            for edge in flow["edges"]:
-                                if edge["source"] == node_id:
-                                    edge["animated"] = True
+                        selected_targets = Orchestrator._resolve_next_targets(
+                            node=node,
+                            outgoing_edges=outgoing_edges,
+                            response=response,
+                        )
+                        next_nodes.extend(selected_targets)
+                        Orchestrator._mark_animated_edges(
+                            flow_edges=flow_edges,
+                            source_node_id=node_id,
+                            selected_targets=selected_targets,
+                        )
 
                     except Exception as e:
                         logger.error(f"Error executing applet '{node['type']}': {e}")
