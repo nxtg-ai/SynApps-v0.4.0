@@ -1,12 +1,12 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import AppletNode from './AppletNode';
-import { NodeProps } from 'reactflow';
+import type { Node, NodeProps } from '@xyflow/react';
 import { vi } from 'vitest';
 
 // Mock ReactFlow as it's not easy to test with its full functionality
-vi.mock('reactflow', async () => ({
-  ...(await vi.importActual('reactflow')),
+vi.mock('@xyflow/react', async () => ({
+  ...(await vi.importActual('@xyflow/react')),
   Handle: ({ type, position }: { type: string; position: string }) => (
     <div data-testid={`handle-${type}`} data-position={position}></div>
   ),
@@ -19,17 +19,17 @@ vi.mock('reactflow', async () => ({
 }));
 
 describe('AppletNode Component', () => {
-  const defaultProps: NodeProps = {
+  type AppletFlowNode = Node<{ label?: string; description?: string; status?: string }, string>;
+
+  const defaultProps = {
     id: 'test-node',
     type: 'writer',
     data: { label: 'Test Writer' },
     selected: false,
     dragging: false,
     zIndex: 1,
-    xPos: 100,
-    yPos: 100,
     isConnectable: true
-  };
+  } as unknown as NodeProps<AppletFlowNode>;
 
   test('renders with correct label', () => {
     render(<AppletNode {...defaultProps} />);

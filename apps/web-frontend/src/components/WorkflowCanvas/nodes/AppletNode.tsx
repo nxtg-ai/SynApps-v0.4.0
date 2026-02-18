@@ -4,10 +4,19 @@
  * Enhanced with modern UI/UX design
  */
 import React, { memo, useEffect, useState } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import { Handle, Position } from '@xyflow/react';
+import type { Node, NodeProps } from '@xyflow/react';
 import './Nodes.css';
 
-const AppletNode: React.FC<NodeProps> = ({ data, id, type, selected }) => {
+type AppletNodeData = {
+  label?: string;
+  description?: string;
+  status?: string;
+};
+
+type AppletFlowNode = Node<AppletNodeData, string>;
+
+const AppletNode: React.FC<NodeProps<AppletFlowNode>> = ({ data, id, type, selected }) => {
   const appletType = type || 'applet';
   const status = data.status || 'idle';
   const [isAnimating, setIsAnimating] = useState(false);

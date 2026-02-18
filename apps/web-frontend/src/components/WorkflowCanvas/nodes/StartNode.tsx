@@ -4,10 +4,17 @@
  * Enhanced with modern UI/UX design
  */
 import React, { memo, useState, useEffect } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import { Handle, Position } from '@xyflow/react';
+import type { Node, NodeProps } from '@xyflow/react';
 import './Nodes.css';
 
-const StartNode: React.FC<NodeProps> = ({ data, selected }) => {
+type TerminalNodeData = {
+  description?: string;
+};
+
+type TerminalFlowNode = Node<TerminalNodeData, string>;
+
+const StartNode: React.FC<NodeProps<TerminalFlowNode>> = ({ data, selected }) => {
   const [isAnimating, setIsAnimating] = useState(false);
   
   // Add subtle entrance animation on mount

@@ -3,7 +3,8 @@
  * Visual editor for creating and visualizing AI workflows
  */
 import React, { useState, useEffect, useCallback, useRef, KeyboardEvent } from 'react';
-import ReactFlow, {
+import {
+  ReactFlow,
   ReactFlowProvider,
   Background,
   Controls,
@@ -20,8 +21,8 @@ import ReactFlow, {
   ConnectionLineType,
   NodeRemoveChange,
   ReactFlowInstance
-} from 'reactflow';
-import 'reactflow/dist/style.css';
+} from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
 import anime from 'animejs';
 import { Flow, WorkflowRunStatus } from '../../types';
 import { generateId } from '../../utils/flowUtils';
@@ -108,7 +109,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow: propFlow, onFlowC
   
   // Reference to the ReactFlow wrapper div
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
-  const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
+  const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance<Node, Edge> | null>(null);
   
   // Reference to track pending flow updates that should happen after render
   const pendingFlowUpdateRef = useRef<{
@@ -187,8 +188,8 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow: propFlow, onFlowC
         id: generateId(),
         source: pendingUpdate.connection.source || '',
         target: pendingUpdate.connection.target || '',
-        sourceHandle: pendingUpdate.connection.sourceHandle,
-        targetHandle: pendingUpdate.connection.targetHandle
+        sourceHandle: pendingUpdate.connection.sourceHandle ?? null,
+        targetHandle: pendingUpdate.connection.targetHandle ?? null
       };
       
       const updatedFlow = {
@@ -316,12 +317,12 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow: propFlow, onFlowC
         id: generateId(),
         source: connection.source || '',
         target: connection.target || '',
-        sourceHandle: connection.sourceHandle,
-        targetHandle: connection.targetHandle
+        sourceHandle: connection.sourceHandle ?? null,
+        targetHandle: connection.targetHandle ?? null
       };
       
       setEdges((eds) => {
-        return addEdge(newEdge, eds);
+        return addEdge(newEdge as Edge, eds);
       });
     },
     [readonly]
@@ -460,15 +461,14 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow: propFlow, onFlowC
       if (readonly) return;
       
       if (reactFlowWrapper.current && reactFlowInstance) {
-        const reactFlowBounds = reactFlowWrapper.current.getBoundingClientRect();
         const nodeData = event.dataTransfer.getData('application/reactflow');
         
         if (!nodeData) return;
         
         const data = JSON.parse(nodeData);
-        const position = reactFlowInstance.project({
-          x: event.clientX - reactFlowBounds.left,
-          y: event.clientY - reactFlowBounds.top,
+        const position = reactFlowInstance.screenToFlowPosition({
+          x: event.clientX,
+          y: event.clientY,
         });
         
         const newNodeId = generateId();
