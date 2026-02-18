@@ -2,7 +2,7 @@
   "version": "1.1.0",
   "project_name": "synapps",
   "created_at": "2026-02-15T03:04:41.518674601Z",
-  "updated_at": "2026-02-18T02:53:38.122411184Z",
+  "updated_at": "2026-02-18T02:59:01.531520900Z",
   "tools": [
     {
       "name": "claude",
@@ -39,18 +39,18 @@
     "blocked": 0
   },
   "active_locks": {
-    "T-070": {
-      "task_id": "T-070",
-      "agent": "claude",
-      "locked_at": "2026-02-18T02:46:10.086271583Z",
-      "files": [
-        "apps/orchestrator/main.py"
-      ]
-    },
     "T-068": {
       "task_id": "T-068",
       "agent": "gemini",
       "locked_at": "2026-02-18T02:43:34.595173618Z",
+      "files": [
+        "apps/orchestrator/main.py"
+      ]
+    },
+    "T-070": {
+      "task_id": "T-070",
+      "agent": "claude",
+      "locked_at": "2026-02-18T02:46:10.086271583Z",
       "files": [
         "apps/orchestrator/main.py"
       ]
@@ -60,9 +60,9 @@
     "codex": "subscription"
   },
   "agent_permissions": {
+    "codex": "yolo",
     "gemini": "yolo",
-    "claude": "yolo",
-    "codex": "yolo"
+    "claude": "yolo"
   },
   "git": {
     "auto_commit": true,
