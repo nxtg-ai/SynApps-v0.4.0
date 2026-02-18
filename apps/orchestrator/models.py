@@ -18,6 +18,95 @@ class Base(DeclarativeBase):
     """SQLAlchemy declarative base."""
 
 
+class User(Base):
+    """ORM model for authenticated users."""
+
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    email: Mapped[str] = mapped_column(String, nullable=False, unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[float] = mapped_column(Float, nullable=False)
+    updated_at: Mapped[float] = mapped_column(Float, nullable=False)
+
+    refresh_tokens: Mapped[List["RefreshToken"]] = relationship(
+        "RefreshToken",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    api_keys: Mapped[List["UserAPIKey"]] = relationship(
+        "UserAPIKey",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert ORM model to dictionary."""
+        return {
+            "id": self.id,
+            "email": self.email,
+            "is_active": self.is_active,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+        }
+
+
+class RefreshToken(Base):
+    """ORM model for persisted refresh tokens."""
+
+    __tablename__ = "refresh_tokens"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    token_hash: Mapped[str] = mapped_column(String, nullable=False, unique=True, index=True)
+    expires_at: Mapped[float] = mapped_column(Float, nullable=False)
+    revoked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[float] = mapped_column(Float, nullable=False)
+    last_used_at: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    user: Mapped["User"] = relationship("User", back_populates="refresh_tokens")
+
+
+class UserAPIKey(Base):
+    """ORM model for encrypted user API keys."""
+
+    __tablename__ = "user_api_keys"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String, nullable=False, default="default")
+    key_prefix: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    encrypted_key: Mapped[str] = mapped_column(String, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[float] = mapped_column(Float, nullable=False)
+    last_used_at: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    user: Mapped["User"] = relationship("User", back_populates="api_keys")
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert ORM model to dictionary."""
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "name": self.name,
+            "key_prefix": self.key_prefix,
+            "is_active": self.is_active,
+            "created_at": self.created_at,
+            "last_used_at": self.last_used_at,
+        }
+
+
 class Flow(Base):
     """ORM model for workflow flows."""
 
@@ -197,6 +286,86 @@ class WorkflowRunStatusModel(BaseModel):
         if result.get("results") is None:
             result["results"] = {}
         return result
+
+
+class AuthRegisterRequestModel(BaseModel):
+    """Registration payload for email/password authentication."""
+
+    email: str = Field(..., min_length=3, max_length=320)
+    password: str = Field(..., min_length=8, max_length=256)
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if "@" not in normalized or normalized.startswith("@") or normalized.endswith("@"):
+            raise ValueError("email must be a valid email address")
+        return normalized
+
+
+class AuthLoginRequestModel(BaseModel):
+    """Login payload for email/password authentication."""
+
+    email: str = Field(..., min_length=3, max_length=320)
+    password: str = Field(..., min_length=1, max_length=256)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        return value.strip().lower()
+
+
+class AuthRefreshRequestModel(BaseModel):
+    """Refresh token payload used to issue a new access token pair."""
+
+    refresh_token: str = Field(..., min_length=10, max_length=4096)
+
+
+class AuthTokenResponseModel(BaseModel):
+    """Access/refresh token response payload."""
+
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    access_expires_in: int
+    refresh_expires_in: int
+
+
+class UserProfileModel(BaseModel):
+    """Authenticated user profile payload."""
+
+    id: str
+    email: str
+    is_active: bool
+    created_at: float
+
+
+class APIKeyCreateRequestModel(BaseModel):
+    """Payload for creating a user API key."""
+
+    name: str = Field("default", min_length=1, max_length=100)
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        return value.strip()
+
+
+class APIKeyResponseModel(BaseModel):
+    """Metadata payload for stored API keys."""
+
+    id: str
+    name: str
+    key_prefix: str
+    is_active: bool
+    created_at: float
+    last_used_at: Optional[float] = None
+
+
+class APIKeyCreateResponseModel(APIKeyResponseModel):
+    """Create response that includes the one-time plain API key value."""
+
+    api_key: str
 
 
 SUPPORTED_LLM_PROVIDERS = ("openai", "anthropic", "google", "ollama", "custom")

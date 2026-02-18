@@ -7,12 +7,16 @@ between applets.
 """
 import asyncio
 from abc import ABC, abstractmethod
+import base64
+import hashlib
+import hmac
 import importlib
 import json
 import logging
 import math
 import os
 import re
+import secrets
 import shutil
 import sqlite3
 import sys
@@ -34,19 +38,29 @@ load_dotenv(dotenv_path=dotenv_path)
 
 from fastapi import (
     Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect,
-    BackgroundTasks, APIRouter, Query, Request,
+    BackgroundTasks, APIRouter, Query, Request, Header,
 )
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import httpx
+import jwt
 from pydantic import BaseModel, Field, field_validator
+from cryptography.fernet import Fernet, InvalidToken
+from sqlalchemy import select
 
 # Import database modules
 from contextlib import asynccontextmanager
-from apps.orchestrator.db import init_db, close_db_connections
+from apps.orchestrator.db import init_db, close_db_connections, get_db_session
 from apps.orchestrator.repositories import FlowRepository, WorkflowRunRepository
 from apps.orchestrator.models import (
+    APIKeyCreateRequestModel,
+    APIKeyCreateResponseModel,
+    APIKeyResponseModel,
+    AuthLoginRequestModel,
+    AuthRefreshRequestModel,
+    AuthRegisterRequestModel,
+    AuthTokenResponseModel,
     CodeNodeConfigModel,
     FlowModel,
     FlowNodeModel,
@@ -72,9 +86,13 @@ from apps.orchestrator.models import (
     LLMResponseModel,
     LLMStreamChunkModel,
     LLMUsageModel,
+    RefreshToken as AuthRefreshToken,
     SUPPORTED_MEMORY_BACKENDS,
     SUPPORTED_IMAGE_PROVIDERS,
     SUPPORTED_LLM_PROVIDERS,
+    User as AuthUser,
+    UserAPIKey as AuthUserAPIKey,
+    UserProfileModel,
 )
 
 try:
@@ -95,6 +113,17 @@ logger = logging.getLogger("orchestrator")
 
 API_VERSION = "1.0.0"
 WS_AUTH_TOKEN = os.environ.get("WS_AUTH_TOKEN")
+JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "synapps-dev-jwt-secret-change-me")
+JWT_ALGORITHM = os.environ.get("JWT_ALGORITHM", "HS256")
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.environ.get("JWT_ACCESS_EXPIRE_MINUTES", "15"))
+REFRESH_TOKEN_EXPIRE_DAYS = int(os.environ.get("JWT_REFRESH_EXPIRE_DAYS", "14"))
+PASSWORD_HASH_ITERATIONS = int(os.environ.get("PASSWORD_HASH_ITERATIONS", "390000"))
+API_KEY_VALUE_PREFIX = os.environ.get("API_KEY_PREFIX", "synapps")
+API_KEY_LOOKUP_PREFIX_LEN = int(os.environ.get("API_KEY_LOOKUP_PREFIX_LEN", "18"))
+ALLOW_ANONYMOUS_WHEN_NO_USERS = os.environ.get(
+    "ALLOW_ANONYMOUS_WHEN_NO_USERS",
+    "true",
+).strip().lower() in {"1", "true", "yes"}
 LEGACY_WRITER_NODE_TYPE = "writer"
 LEGACY_ARTIST_NODE_TYPE = "artist"
 LEGACY_MEMORY_NODE_TYPE = "memory"
@@ -338,6 +367,262 @@ class AISuggestRequest(BaseModel):
     """Strictly validated request body for AI suggestions."""
     prompt: str = Field(..., min_length=1, max_length=5000, description="The prompt for AI suggestion")
     context: Optional[str] = Field(None, max_length=10000, description="Optional context for the suggestion")
+
+
+# ============================================================
+# Authentication Utilities
+# ============================================================
+
+def _utc_now() -> float:
+    return time.time()
+
+
+def _hash_sha256(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _derive_fernet_key() -> bytes:
+    configured = os.environ.get("FERNET_KEY", "").strip()
+    if configured:
+        try:
+            return configured.encode("utf-8")
+        except Exception:
+            logger.warning("Invalid FERNET_KEY value; falling back to derived key")
+    digest = hashlib.sha256(JWT_SECRET_KEY.encode("utf-8")).digest()
+    return base64.urlsafe_b64encode(digest)
+
+
+FERNET_CIPHER = Fernet(_derive_fernet_key())
+
+
+def _encrypt_api_key(plain_value: str) -> str:
+    return FERNET_CIPHER.encrypt(plain_value.encode("utf-8")).decode("utf-8")
+
+
+def _decrypt_api_key(encrypted_value: str) -> Optional[str]:
+    try:
+        return FERNET_CIPHER.decrypt(encrypted_value.encode("utf-8")).decode("utf-8")
+    except (InvalidToken, ValueError, TypeError):
+        return None
+
+
+def _hash_password(password: str) -> str:
+    salt = secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt,
+        PASSWORD_HASH_ITERATIONS,
+    )
+    salt_text = base64.urlsafe_b64encode(salt).decode("utf-8")
+    hash_text = base64.urlsafe_b64encode(digest).decode("utf-8")
+    return f"pbkdf2_sha256${PASSWORD_HASH_ITERATIONS}${salt_text}${hash_text}"
+
+
+def _verify_password(password: str, password_hash: str) -> bool:
+    try:
+        scheme, raw_iterations, salt_text, hash_text = password_hash.split("$", 3)
+        if scheme != "pbkdf2_sha256":
+            return False
+        iterations = int(raw_iterations)
+        salt = base64.urlsafe_b64decode(salt_text.encode("utf-8"))
+        expected = base64.urlsafe_b64decode(hash_text.encode("utf-8"))
+    except Exception:
+        return False
+
+    candidate = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt,
+        iterations,
+    )
+    return hmac.compare_digest(candidate, expected)
+
+
+def _create_access_token(user: AuthUser) -> tuple[str, int]:
+    now = int(_utc_now())
+    expiry = now + ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    payload = {
+        "sub": user.id,
+        "email": user.email,
+        "token_type": "access",
+        "iat": now,
+        "exp": expiry,
+    }
+    token = jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
+    return token, expiry - now
+
+
+def _create_refresh_token(user: AuthUser) -> tuple[str, float, int]:
+    now = int(_utc_now())
+    expiry = now + REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
+    payload = {
+        "sub": user.id,
+        "email": user.email,
+        "token_type": "refresh",
+        "jti": str(uuid.uuid4()),
+        "iat": now,
+        "exp": expiry,
+    }
+    token = jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
+    return token, float(expiry), expiry - now
+
+
+def _decode_token(token: str, expected_type: str) -> Dict[str, Any]:
+    try:
+        payload = jwt.decode(
+            token,
+            JWT_SECRET_KEY,
+            algorithms=[JWT_ALGORITHM],
+        )
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    token_type = payload.get("token_type")
+    if token_type != expected_type:
+        raise HTTPException(status_code=401, detail="Invalid token type")
+    return payload
+
+
+def _issue_api_tokens(user: AuthUser) -> tuple[AuthTokenResponseModel, str, float]:
+    access_token, access_expires_in = _create_access_token(user)
+    refresh_token, refresh_expires_at, refresh_expires_in = _create_refresh_token(user)
+    response_payload = AuthTokenResponseModel(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        token_type="bearer",
+        access_expires_in=access_expires_in,
+        refresh_expires_in=refresh_expires_in,
+    )
+    return response_payload, refresh_token, refresh_expires_at
+
+
+def _normalize_key_header_value(raw_value: str) -> str:
+    return raw_value.strip()
+
+
+def _api_key_lookup_prefix(api_key_value: str) -> str:
+    return api_key_value[:API_KEY_LOOKUP_PREFIX_LEN]
+
+
+def _user_to_principal(user: AuthUser) -> Dict[str, Any]:
+    return {
+        "id": user.id,
+        "email": user.email,
+        "is_active": user.is_active,
+        "created_at": user.created_at,
+    }
+
+
+async def _store_refresh_token(
+    user_id: str,
+    refresh_token: str,
+    expires_at: float,
+) -> None:
+    token_hash = _hash_sha256(refresh_token)
+    async with get_db_session() as session:
+        session.add(
+            AuthRefreshToken(
+                id=str(uuid.uuid4()),
+                user_id=user_id,
+                token_hash=token_hash,
+                expires_at=expires_at,
+                revoked=False,
+                created_at=_utc_now(),
+                last_used_at=None,
+            )
+        )
+
+
+async def _authenticate_user_by_jwt(access_token: str) -> Dict[str, Any]:
+    payload = _decode_token(access_token, expected_type="access")
+    user_id = payload.get("sub")
+    if not isinstance(user_id, str) or not user_id:
+        raise HTTPException(status_code=401, detail="Invalid access token subject")
+
+    async with get_db_session() as session:
+        result = await session.execute(
+            select(AuthUser).where(AuthUser.id == user_id)
+        )
+        user = result.scalars().first()
+        if not user or not user.is_active:
+            raise HTTPException(status_code=401, detail="User is not active")
+        return _user_to_principal(user)
+
+
+async def _authenticate_user_by_api_key(api_key_value: str) -> Dict[str, Any]:
+    normalized_key = _normalize_key_header_value(api_key_value)
+    if not normalized_key:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+    lookup_prefix = _api_key_lookup_prefix(normalized_key)
+
+    async with get_db_session() as session:
+        query = select(AuthUserAPIKey).where(
+            AuthUserAPIKey.is_active == True,  # noqa: E712 - SQLAlchemy boolean comparison
+            AuthUserAPIKey.key_prefix == lookup_prefix,
+        )
+        result = await session.execute(query)
+        candidates = result.scalars().all()
+
+        for credential in candidates:
+            plain_key = _decrypt_api_key(credential.encrypted_key)
+            if plain_key is None:
+                continue
+            if not hmac.compare_digest(plain_key, normalized_key):
+                continue
+
+            user_result = await session.execute(
+                select(AuthUser).where(AuthUser.id == credential.user_id)
+            )
+            user = user_result.scalars().first()
+            if not user or not user.is_active:
+                break
+
+            credential.last_used_at = _utc_now()
+            return _user_to_principal(user)
+
+    raise HTTPException(status_code=401, detail="Invalid API key")
+
+
+async def _can_use_anonymous_bootstrap() -> bool:
+    if not ALLOW_ANONYMOUS_WHEN_NO_USERS:
+        return False
+    try:
+        async with get_db_session() as session:
+            result = await session.execute(select(AuthUser.id).limit(1))
+            first_user_id = result.scalar_one_or_none()
+            return first_user_id is None
+    except Exception:
+        # Allow bootstrap traffic before auth tables are initialized.
+        return True
+
+
+async def get_authenticated_user(
+    authorization: Optional[str] = Header(None, alias="Authorization"),
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+) -> Dict[str, Any]:
+    if x_api_key:
+        return await _authenticate_user_by_api_key(x_api_key)
+
+    if authorization:
+        auth_text = authorization.strip()
+        if auth_text.lower().startswith("bearer "):
+            return await _authenticate_user_by_jwt(auth_text[7:].strip())
+        if auth_text.lower().startswith("apikey "):
+            return await _authenticate_user_by_api_key(auth_text[7:].strip())
+
+    if await _can_use_anonymous_bootstrap():
+        return {
+            "id": "anonymous",
+            "email": "anonymous@local",
+            "is_active": True,
+            "created_at": _utc_now(),
+        }
+
+    raise HTTPException(status_code=401, detail="Authentication required")
 
 
 # ============================================================
@@ -5147,8 +5432,37 @@ class Orchestrator:
         workflow_run_repo: WorkflowRunRepository,
         broadcast_status_fn,
     ):
+        """Execute a flow with parallel independent-node support.
+
+        The engine performs a BFS traversal where each wave of ``current_nodes``
+        is partitioned into *parallel groups* (independent nodes that share no
+        mutual edges) and *sequential groups* (merge/fan-in nodes that need all
+        inputs).  Parallel groups are dispatched concurrently via
+        ``asyncio.gather`` with a configurable semaphore.
+        """
         status = None
-        memory_completed_applets = []
+        memory_completed_applets: List[str] = []
+        context: Dict[str, Any] = {}
+
+        async def _fail(error_msg: str, error_details: Optional[Dict[str, Any]] = None) -> None:
+            nonlocal status
+            if status and isinstance(status, dict):
+                status["status"] = "error"
+                status["error"] = error_msg
+                if error_details:
+                    status["error_details"] = error_details
+                status["end_time"] = time.time()
+                status["results"] = context.get("results", {})
+                status["completed_applets"] = list(memory_completed_applets)
+                await workflow_run_repo.save(status)
+                await broadcast_status_fn(status)
+            else:
+                await broadcast_status_fn({
+                    "run_id": run_id,
+                    "status": "error",
+                    "error": error_msg,
+                    "completed_applets": list(memory_completed_applets),
+                })
 
         try:
             status = await workflow_run_repo.get_by_run_id(run_id)
@@ -5156,7 +5470,7 @@ class Orchestrator:
             flow_nodes = flow.get("nodes", [])
             flow_edges = flow.get("edges", [])
 
-            nodes_by_id = {
+            nodes_by_id: Dict[str, Dict[str, Any]] = {
                 node["id"]: node
                 for node in flow_nodes
                 if isinstance(node, dict) and isinstance(node.get("id"), str)
@@ -5191,27 +5505,13 @@ class Orchestrator:
             scheduled_nodes = set(start_nodes)
 
             if not start_nodes:
-                if status and isinstance(status, dict):
-                    status["status"] = "error"
-                    status["error"] = "No start node found in flow"
-                    status["end_time"] = time.time()
-                    await workflow_run_repo.save(status)
-                    broadcast_data = status.copy()
-                    broadcast_data["completed_applets"] = memory_completed_applets
-                    await broadcast_status_fn(broadcast_data)
-                else:
-                    await broadcast_status_fn({
-                        "run_id": run_id,
-                        "status": "error",
-                        "error": "No start node found in flow and status record is invalid",
-                        "completed_applets": []
-                    })
+                await _fail("No start node found in flow")
                 return
 
             context = {
                 "input": input_data,
                 "results": {},
-                "run_id": run_id
+                "run_id": run_id,
             }
             merge_inputs_by_node: Dict[str, List[Any]] = {}
             merge_input_sources_by_node: Dict[str, List[str]] = {}
@@ -5219,258 +5519,319 @@ class Orchestrator:
             if status and isinstance(status, dict):
                 status["input_data"] = input_data
 
-            current_nodes = start_nodes
-            visited = set()
+            # Read configurable concurrency limit
+            flow_concurrency = ENGINE_MAX_CONCURRENCY
+            flow_meta = flow.get("data", flow.get("metadata", {}))
+            if isinstance(flow_meta, dict):
+                raw_conc = flow_meta.get(
+                    "engine_max_concurrency",
+                    flow_meta.get("engineMaxConcurrency"),
+                )
+                if raw_conc is not None:
+                    try:
+                        flow_concurrency = max(1, int(raw_conc))
+                    except (ValueError, TypeError):
+                        pass
+            engine_semaphore = asyncio.Semaphore(flow_concurrency)
+
+            visited: set = set()
+            failed_node_id: Optional[str] = None
+
+            # ----------------------------------------------------------------
+            # _execute_single_node — extracted for reuse in parallel dispatch
+            # ----------------------------------------------------------------
+            async def _execute_single_node(node_id: str) -> Optional[List[str]]:
+                """Execute one node and return its downstream target IDs.
+
+                Returns ``None`` on fatal (non-fallback) error to signal abort.
+                """
+                nonlocal failed_node_id
+
+                node = nodes_by_id.get(node_id)
+                if not isinstance(node, dict):
+                    return []
+                node_type = str(node.get("type", "")).strip().lower()
+                outgoing_edges = edges_by_source.get(node_id, [])
+
+                # -- merge gate: defer if not all inputs arrived --
+                if node_type == MERGE_NODE_TYPE:
+                    required = incoming_sources_by_target.get(node_id, [])
+                    received = merge_input_sources_by_node.get(node_id, [])
+                    missing = [s for s in required if s not in received]
+                    if missing and any(s in scheduled_nodes and s not in visited for s in missing):
+                        return [node_id]  # re-enqueue
+
+                visited.add(node_id)
+
+                if status and isinstance(status, dict):
+                    status["current_applet"] = node.get("type")
+                    status["progress"] = status.get("progress", 0) + 1
+
+                if node_id not in memory_completed_applets:
+                    memory_completed_applets.append(node_id)
+
+                if status and isinstance(status, dict):
+                    bcast = status.copy()
+                    bcast["completed_applets"] = list(memory_completed_applets)
+                    await workflow_run_repo.save(status)
+                    await broadcast_status_fn(bcast)
+
+                # -- start / end passthrough --
+                if node_type in ("start", "end"):
+                    if (
+                        node_type == "start"
+                        and isinstance(node.get("data"), dict)
+                        and "parsedInputData" in node["data"]
+                    ):
+                        parsed_input = node["data"]["parsedInputData"]
+                        if parsed_input and isinstance(parsed_input, dict):
+                            context["input"] = parsed_input
+                            if status and isinstance(status, dict):
+                                status["input_data"] = parsed_input
+
+                    next_targets = Orchestrator._collect_outgoing_targets(outgoing_edges)
+                    passthrough_output = context.get("input", input_data)
+                    for tid in next_targets:
+                        scheduled_nodes.add(tid)
+                        tn = nodes_by_id.get(tid)
+                        if isinstance(tn, dict) and str(tn.get("type", "")).strip().lower() == MERGE_NODE_TYPE:
+                            merge_inputs_by_node.setdefault(tid, []).append(passthrough_output)
+                            ms = merge_input_sources_by_node.setdefault(tid, [])
+                            if node_id not in ms:
+                                ms.append(node_id)
+                    return next_targets
+
+                # -- normal applet execution with retry / timeout / fallback --
+                node_data = node.get("data", {})
+                if not isinstance(node_data, dict):
+                    node_data = {}
+
+                timeout_seconds = float(node_data.get("timeout_seconds", 60.0))
+                retry_config = node_data.get("retry_config", {})
+                if not isinstance(retry_config, dict):
+                    retry_config = {}
+                max_retries = int(retry_config.get("max_retries", 0))
+                retry_delay = float(retry_config.get("delay", 1.0))
+                retry_backoff = float(retry_config.get("backoff", 2.0))
+                fallback_node_id_cfg = node_data.get("fallback_node_id")
+
+                attempts = 0
+                last_error: Optional[NodeError] = None
+                success = False
+                response: Optional[AppletMessage] = None
+
+                while attempts <= max_retries:
+                    try:
+                        if attempts > 0:
+                            wait_time = retry_delay * (retry_backoff ** (attempts - 1))
+                            logger.info(
+                                f"Retrying node {node_id} (attempt {attempts}/{max_retries}) after {wait_time}s"
+                            )
+                            await asyncio.sleep(wait_time)
+
+                        applet = await Orchestrator.load_applet(node_type)
+
+                        message_content: Any = input_data
+                        if node_type == MERGE_NODE_TYPE:
+                            node_inputs = list(merge_inputs_by_node.get(node_id, []))
+                            node_sources = list(merge_input_sources_by_node.get(node_id, []))
+                            message_content = {
+                                "inputs": node_inputs,
+                                "sources": node_sources,
+                                "count": len(node_inputs),
+                                "input": input_data,
+                            }
+                        message_metadata: Dict[str, Any] = {
+                            "node_id": node_id,
+                            "run_id": run_id,
+                        }
+                        message_metadata["node_data"] = node_data
+
+                        if node_type == "writer" and "systemPrompt" in node_data:
+                            message_metadata["system_prompt"] = node_data["systemPrompt"]
+                        if node_type == "artist":
+                            if "systemPrompt" in node_data:
+                                message_metadata["system_prompt"] = node_data["system_prompt"]
+                            if "generator" in node_data:
+                                message_metadata["generator"] = node_data["generator"]
+
+                        message = AppletMessage(
+                            content=message_content,
+                            context=context,
+                            metadata=message_metadata,
+                        )
+
+                        async with engine_semaphore:
+                            response = await asyncio.wait_for(
+                                applet.on_message(message),
+                                timeout=timeout_seconds,
+                            )
+
+                        context["results"][node_id] = {
+                            "type": node["type"],
+                            "output": response.content,
+                            "status": "success",
+                        }
+                        context.update(response.context)
+                        success = True
+                        break
+
+                    except asyncio.TimeoutError:
+                        last_error = NodeError(
+                            NodeErrorCode.TIMEOUT,
+                            f"Node execution timed out after {timeout_seconds}s",
+                            node_id=node_id,
+                        )
+                        logger.warning(
+                            f"Timeout in node {node_id} (attempt {attempts + 1}/{max_retries + 1})"
+                        )
+                    except Exception as e:
+                        last_error = NodeError(
+                            NodeErrorCode.EXECUTION_ERROR,
+                            str(e),
+                            node_id=node_id,
+                        )
+                        logger.error(
+                            f"Error in node {node_id} (attempt {attempts + 1}/{max_retries + 1}): {e}"
+                        )
+                    attempts += 1
+
+                if not success:
+                    if fallback_node_id_cfg:
+                        logger.info(f"Using fallback path for node {node_id} -> {fallback_node_id_cfg}")
+                        context["results"][node_id] = {
+                            "type": node["type"],
+                            "error": last_error.to_dict() if last_error else {"message": "Unknown error"},
+                            "status": "fallback",
+                        }
+                        if node_id not in memory_completed_applets:
+                            memory_completed_applets.append(node_id)
+                        if status and isinstance(status, dict):
+                            status["results"] = context["results"]
+                            status["completed_applets"] = list(memory_completed_applets)
+                            await workflow_run_repo.save(status)
+                            await broadcast_status_fn(status)
+                        if fallback_node_id_cfg in nodes_by_id:
+                            scheduled_nodes.add(fallback_node_id_cfg)
+                            return [fallback_node_id_cfg]
+                        return []
+
+                    # Fatal failure — no fallback
+                    failed_node_id = node_id
+                    err_msg = (
+                        f"Error in applet '{node['type']}': "
+                        f"{last_error.message if last_error else 'Unknown error'}"
+                    )
+                    await _fail(err_msg, last_error.to_dict() if last_error else None)
+                    return None
+
+                if node_id not in memory_completed_applets:
+                    memory_completed_applets.append(node_id)
+
+                if status and isinstance(status, dict):
+                    status["results"] = context["results"]
+                    status["completed_applets"] = list(memory_completed_applets)
+                    await workflow_run_repo.save(status)
+                    await broadcast_status_fn(status)
+
+                selected_targets = Orchestrator._resolve_next_targets(
+                    node=node,
+                    outgoing_edges=outgoing_edges,
+                    response=response,
+                )
+                for tid in selected_targets:
+                    scheduled_nodes.add(tid)
+                    tn = nodes_by_id.get(tid)
+                    if isinstance(tn, dict) and str(tn.get("type", "")).strip().lower() == MERGE_NODE_TYPE:
+                        merge_inputs_by_node.setdefault(tid, []).append(
+                            response.content if response else None
+                        )
+                        ms = merge_input_sources_by_node.setdefault(tid, [])
+                        if node_id not in ms:
+                            ms.append(node_id)
+
+                Orchestrator._mark_animated_edges(
+                    flow_edges=flow_edges,
+                    source_node_id=node_id,
+                    selected_targets=selected_targets,
+                )
+                return selected_targets
+
+            # ================================================================
+            # Main execution loop — BFS with parallel independent nodes
+            # ================================================================
+            current_nodes = list(start_nodes)
 
             while current_nodes:
                 next_nodes: List[str] = []
 
-                for node_id in current_nodes:
-                    if node_id in visited:
+                # Partition into ready and deferred (merge nodes still waiting)
+                ready: List[str] = []
+                deferred: List[str] = []
+                for nid in current_nodes:
+                    if nid in visited:
                         continue
-
-                    node = nodes_by_id.get(node_id)
+                    node = nodes_by_id.get(nid)
                     if not isinstance(node, dict):
                         continue
-                    node_type = str(node.get("type", "")).strip().lower()
-                    outgoing_edges = edges_by_source.get(node_id, [])
-
-                    if node_type == MERGE_NODE_TYPE:
-                        required_sources = incoming_sources_by_target.get(node_id, [])
-                        received_sources = merge_input_sources_by_node.get(node_id, [])
-                        missing_sources = [source for source in required_sources if source not in received_sources]
-                        # Wait while a missing upstream node may still contribute to this merge.
-                        if missing_sources and any(
-                            source in scheduled_nodes and source not in visited
-                            for source in missing_sources
-                        ):
-                            if node_id not in next_nodes:
-                                next_nodes.append(node_id)
-                            scheduled_nodes.add(node_id)
+                    nt = str(node.get("type", "")).strip().lower()
+                    if nt == MERGE_NODE_TYPE:
+                        req = incoming_sources_by_target.get(nid, [])
+                        recv = merge_input_sources_by_node.get(nid, [])
+                        missing = [s for s in req if s not in recv]
+                        if missing and any(s in scheduled_nodes and s not in visited for s in missing):
+                            deferred.append(nid)
                             continue
+                    ready.append(nid)
 
-                    visited.add(node_id)
+                # Group ready nodes into parallel-safe groups
+                groups = Orchestrator._detect_parallel_groups(ready, nodes_by_id)
 
-                    if status and isinstance(status, dict):
-                        status["current_applet"] = node["type"]
-                        status["progress"] += 1
+                for group in groups:
+                    if failed_node_id:
+                        break
 
-                    if node_id not in memory_completed_applets:
-                        memory_completed_applets.append(node_id)
+                    if len(group) == 1:
+                        # Single node — execute directly
+                        result_targets = await _execute_single_node(group[0])
+                        if result_targets is None:
+                            break
+                        for tid in result_targets:
+                            if tid not in next_nodes:
+                                next_nodes.append(tid)
+                    else:
+                        # Parallel group — execute concurrently
+                        async def _run_node(nid: str) -> tuple:
+                            targets = await _execute_single_node(nid)
+                            return (nid, targets)
 
-                    if status and isinstance(status, dict):
-                        broadcast_data = status.copy()
-                        broadcast_data["completed_applets"] = memory_completed_applets
-                        await workflow_run_repo.save(status)
-                        await broadcast_status_fn(broadcast_data)
+                        parallel_results = await asyncio.gather(
+                            *[_run_node(nid) for nid in group],
+                            return_exceptions=True,
+                        )
 
-                    if node_type in ["start", "end"]:
-                        if (
-                            node_type == "start"
-                            and "data" in node
-                            and "parsedInputData" in node["data"]
-                        ):
-                            parsed_input = node["data"]["parsedInputData"]
-                            if parsed_input and isinstance(parsed_input, dict):
-                                context["input"] = parsed_input
-                                if status and isinstance(status, dict):
-                                    status["input_data"] = parsed_input
-
-                        next_targets = Orchestrator._collect_outgoing_targets(outgoing_edges)
-                        start_or_end_output = context.get("input", input_data)
-                        for target_id in next_targets:
-                            if target_id not in next_nodes:
-                                next_nodes.append(target_id)
-                            scheduled_nodes.add(target_id)
-
-                            target_node = nodes_by_id.get(target_id)
-                            if not isinstance(target_node, dict):
-                                continue
-                            target_type = str(target_node.get("type", "")).strip().lower()
-                            if target_type != MERGE_NODE_TYPE:
-                                continue
-
-                            merge_inputs_by_node.setdefault(target_id, []).append(start_or_end_output)
-                            merge_sources = merge_input_sources_by_node.setdefault(target_id, [])
-                            if node_id not in merge_sources:
-                                merge_sources.append(node_id)
-                        continue
-
-                    try:
-                        # Extract configuration for retry, timeout, and fallback
-                        node_data = node.get("data", {})
-                        if not isinstance(node_data, dict):
-                            node_data = {}
-
-                        timeout_seconds = float(node_data.get("timeout_seconds", 60.0))
-                        retry_config = node_data.get("retry_config", {})
-                        if not isinstance(retry_config, dict):
-                            retry_config = {}
-
-                        max_retries = int(retry_config.get("max_retries", 0))
-                        retry_delay = float(retry_config.get("delay", 1.0))
-                        retry_backoff = float(retry_config.get("backoff", 2.0))
-                        fallback_node_id = node_data.get("fallback_node_id")
-
-                        attempts = 0
-                        last_error = None
-                        success = False
-                        response = None
-
-                        while attempts <= max_retries:
-                            try:
-                                if attempts > 0:
-                                    wait_time = retry_delay * (retry_backoff ** (attempts - 1))
-                                    logger.info(f"Retrying node {node_id} (attempt {attempts}/{max_retries}) after {wait_time}s")
-                                    await asyncio.sleep(wait_time)
-
-                                applet = await Orchestrator.load_applet(node_type)
-
-                                message_content = input_data
-                                if node_type == MERGE_NODE_TYPE:
-                                    node_inputs = list(merge_inputs_by_node.get(node_id, []))
-                                    node_sources = list(merge_input_sources_by_node.get(node_id, []))
-                                    message_content = {
-                                        "inputs": node_inputs,
-                                        "sources": node_sources,
-                                        "count": len(node_inputs),
-                                        "input": input_data,
-                                    }
-                                message_metadata = {"node_id": node_id, "run_id": run_id}
-                                message_metadata["node_data"] = node_data
-
-                                if node_type == "writer" and "systemPrompt" in node_data:
-                                    message_metadata["system_prompt"] = node_data["systemPrompt"]
-
-                                if node_type == "artist":
-                                    if "systemPrompt" in node_data:
-                                        message_metadata["system_prompt"] = node_data["system_prompt"]
-                                    if "generator" in node_data:
-                                        message_metadata["generator"] = node_data["generator"]
-
-                                message = AppletMessage(
-                                    content=message_content,
-                                    context=context,
-                                    metadata=message_metadata
-                                )
-
-                                # Execute with timeout
-                                response = await asyncio.wait_for(
-                                    applet.on_message(message),
-                                    timeout=timeout_seconds
-                                )
-
-                                # Success!
-                                context["results"][node_id] = {
-                                    "type": node["type"],
-                                    "output": response.content,
-                                    "status": "success"
-                                }
-                                context.update(response.context)
-                                success = True
+                        for pr in parallel_results:
+                            if failed_node_id:
                                 break
+                            if isinstance(pr, BaseException):
+                                logger.error(f"Unexpected parallel node error: {pr}")
+                                await _fail(f"Unexpected parallel execution error: {pr}")
+                                failed_node_id = "parallel_group"
+                                break
+                            _nid, result_targets = pr
+                            if result_targets is None:
+                                break
+                            for tid in result_targets:
+                                if tid not in next_nodes:
+                                    next_nodes.append(tid)
 
-                            except asyncio.TimeoutError:
-                                last_error = NodeError(
-                                    NodeErrorCode.TIMEOUT,
-                                    f"Node execution timed out after {timeout_seconds}s",
-                                    node_id=node_id
-                                )
-                                logger.warning(f"Timeout in node {node_id} (attempt {attempts+1}/{max_retries+1})")
-                            except Exception as e:
-                                last_error = NodeError(
-                                    NodeErrorCode.EXECUTION_ERROR,
-                                    str(e),
-                                    node_id=node_id
-                                )
-                                logger.error(f"Error in node {node_id} (attempt {attempts+1}/{max_retries+1}): {e}")
-                            attempts += 1
+                if failed_node_id:
+                    return
 
-                        if not success:
-                            if fallback_node_id:
-                                logger.info(f"Using fallback path for node {node_id} -> {fallback_node_id}")
-                                context["results"][node_id] = {
-                                    "type": node["type"],
-                                    "error": last_error.to_dict() if last_error else {"message": "Unknown error"},
-                                    "status": "fallback"
-                                }
-                                if fallback_node_id in nodes_by_id:
-                                    if fallback_node_id not in next_nodes:
-                                        next_nodes.append(fallback_node_id)
-                                    scheduled_nodes.add(fallback_node_id)
-                                
-                                if node_id not in memory_completed_applets:
-                                    memory_completed_applets.append(node_id)
-                                
-                                if status and isinstance(status, dict):
-                                    status["results"] = context["results"]
-                                    status["completed_applets"] = memory_completed_applets
-                                    await workflow_run_repo.save(status)
-                                    await broadcast_status_fn(status)
-                                continue # Skip normal children
-                            else:
-                                # Final failure
-                                logger.error(f"Node {node_id} failed after {attempts} attempts")
-                                if status and isinstance(status, dict):
-                                    status["status"] = "error"
-                                    status["error"] = f"Error in applet '{node['type']}': {str(last_error.message if last_error else 'Unknown error')}"
-                                    if last_error:
-                                        status["error_details"] = last_error.to_dict()
-                                    status["end_time"] = time.time()
-                                    status["results"] = context["results"]
-                                    status["completed_applets"] = memory_completed_applets
-                                    await workflow_run_repo.save(status)
-                                    await broadcast_status_fn(status)
-                                return
-
-                        if node_id not in memory_completed_applets:
-                            memory_completed_applets.append(node_id)
-
-                        if status and isinstance(status, dict):
-                            status["results"] = context["results"]
-                            status["completed_applets"] = memory_completed_applets
-                            await workflow_run_repo.save(status)
-                            await broadcast_status_fn(status)
-
-                        selected_targets = Orchestrator._resolve_next_targets(
-                            node=node,
-                            outgoing_edges=outgoing_edges,
-                            response=response,
-                        )
-                        for target_id in selected_targets:
-                            if target_id not in next_nodes:
-                                next_nodes.append(target_id)
-                            scheduled_nodes.add(target_id)
-
-                            target_node = nodes_by_id.get(target_id)
-                            if not isinstance(target_node, dict):
-                                continue
-                            target_type = str(target_node.get("type", "")).strip().lower()
-                            if target_type != MERGE_NODE_TYPE:
-                                continue
-
-                            merge_inputs_by_node.setdefault(target_id, []).append(response.content)
-                            merge_sources = merge_input_sources_by_node.setdefault(target_id, [])
-                            if node_id not in merge_sources:
-                                merge_sources.append(node_id)
-                        Orchestrator._mark_animated_edges(
-                            flow_edges=flow_edges,
-                            source_node_id=node_id,
-                            selected_targets=selected_targets,
-                        )
-
-                    except Exception as e:
-                        logger.error(f"Unexpected error executing node '{node['type']}': {e}")
-                        if status and isinstance(status, dict):
-                            status["status"] = "error"
-                            status["error"] = f"Unexpected error in applet '{node['type']}': {str(e)}"
-                            status["end_time"] = time.time()
-                            status["results"] = context["results"]
-                            status["completed_applets"] = memory_completed_applets
-                            await workflow_run_repo.save(status)
-                            await broadcast_status_fn(status)
-                        return
-
+                # Re-enqueue deferred merge nodes
+                for nid in deferred:
+                    if nid not in next_nodes:
+                        next_nodes.append(nid)
 
                 current_nodes = next_nodes
 
@@ -5500,8 +5861,10 @@ class Orchestrator:
                     "run_id": run_id,
                     "status": "error",
                     "error": f"Workflow execution error: {str(e)}",
-                    "completed_applets": memory_completed_applets
+                    "completed_applets": memory_completed_applets,
                 })
+
+
 
 
 # ============================================================
@@ -5511,10 +5874,205 @@ class Orchestrator:
 v1 = APIRouter(prefix="/api/v1", tags=["v1"])
 
 
+@v1.post("/auth/register", response_model=AuthTokenResponseModel, status_code=201)
+async def register(body: AuthRegisterRequestModel):
+    """Register a user with email/password and issue JWT access/refresh tokens."""
+    now = _utc_now()
+    async with get_db_session() as session:
+        existing_result = await session.execute(
+            select(AuthUser).where(AuthUser.email == body.email)
+        )
+        if existing_result.scalars().first():
+            raise HTTPException(status_code=409, detail="Email already registered")
+
+        user = AuthUser(
+            id=str(uuid.uuid4()),
+            email=body.email,
+            password_hash=_hash_password(body.password),
+            is_active=True,
+            created_at=now,
+            updated_at=now,
+        )
+        session.add(user)
+
+    token_response, refresh_token, refresh_expires_at = _issue_api_tokens(user)
+    await _store_refresh_token(user.id, refresh_token, refresh_expires_at)
+    return token_response
+
+
+@v1.post("/auth/login", response_model=AuthTokenResponseModel)
+async def login(body: AuthLoginRequestModel):
+    """Authenticate via email/password and issue JWT access/refresh tokens."""
+    async with get_db_session() as session:
+        user_result = await session.execute(
+            select(AuthUser).where(AuthUser.email == body.email)
+        )
+        user = user_result.scalars().first()
+        if not user or not user.is_active:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        if not _verify_password(body.password, user.password_hash):
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        user.updated_at = _utc_now()
+
+    token_response, refresh_token, refresh_expires_at = _issue_api_tokens(user)
+    await _store_refresh_token(user.id, refresh_token, refresh_expires_at)
+    return token_response
+
+
+@v1.post("/auth/refresh", response_model=AuthTokenResponseModel)
+async def refresh_token(body: AuthRefreshRequestModel):
+    """Rotate a valid refresh token and return a new access/refresh pair."""
+    raw_refresh = body.refresh_token.strip()
+    payload = _decode_token(raw_refresh, expected_type="refresh")
+    user_id = payload.get("sub")
+    if not isinstance(user_id, str) or not user_id:
+        raise HTTPException(status_code=401, detail="Invalid refresh token subject")
+
+    refresh_hash = _hash_sha256(raw_refresh)
+    now = _utc_now()
+
+    async with get_db_session() as session:
+        refresh_result = await session.execute(
+            select(AuthRefreshToken).where(AuthRefreshToken.token_hash == refresh_hash)
+        )
+        stored_refresh = refresh_result.scalars().first()
+        if not stored_refresh or stored_refresh.revoked:
+            raise HTTPException(status_code=401, detail="Refresh token revoked")
+        if stored_refresh.expires_at <= now:
+            stored_refresh.revoked = True
+            raise HTTPException(status_code=401, detail="Refresh token expired")
+        if stored_refresh.user_id != user_id:
+            raise HTTPException(status_code=401, detail="Refresh token user mismatch")
+
+        user_result = await session.execute(
+            select(AuthUser).where(AuthUser.id == user_id)
+        )
+        user = user_result.scalars().first()
+        if not user or not user.is_active:
+            raise HTTPException(status_code=401, detail="User is not active")
+
+        stored_refresh.revoked = True
+        stored_refresh.last_used_at = now
+        user.updated_at = now
+
+    token_response, new_refresh_token, refresh_expires_at = _issue_api_tokens(user)
+    await _store_refresh_token(user.id, new_refresh_token, refresh_expires_at)
+    return token_response
+
+
+@v1.post("/auth/logout")
+async def logout(body: AuthRefreshRequestModel):
+    """Revoke a refresh token."""
+    raw_refresh = body.refresh_token.strip()
+    refresh_hash = _hash_sha256(raw_refresh)
+
+    async with get_db_session() as session:
+        refresh_result = await session.execute(
+            select(AuthRefreshToken).where(AuthRefreshToken.token_hash == refresh_hash)
+        )
+        stored_refresh = refresh_result.scalars().first()
+        if stored_refresh:
+            stored_refresh.revoked = True
+            stored_refresh.last_used_at = _utc_now()
+
+    return {"message": "Logged out"}
+
+
+@v1.get("/auth/me", response_model=UserProfileModel)
+async def auth_me(current_user: Dict[str, Any] = Depends(get_authenticated_user)):
+    """Return the authenticated user profile."""
+    return UserProfileModel(
+        id=current_user["id"],
+        email=current_user["email"],
+        is_active=current_user["is_active"],
+        created_at=current_user["created_at"],
+    )
+
+
+@v1.post("/auth/api-keys", response_model=APIKeyCreateResponseModel, status_code=201)
+async def create_api_key(
+    body: APIKeyCreateRequestModel,
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
+    """Create an API key for header-based authentication."""
+    plain_key = f"{API_KEY_VALUE_PREFIX}_{secrets.token_urlsafe(32)}"
+    now = _utc_now()
+    api_key_record = AuthUserAPIKey(
+        id=str(uuid.uuid4()),
+        user_id=current_user["id"],
+        name=body.name,
+        key_prefix=_api_key_lookup_prefix(plain_key),
+        encrypted_key=_encrypt_api_key(plain_key),
+        is_active=True,
+        created_at=now,
+        last_used_at=None,
+    )
+
+    async with get_db_session() as session:
+        session.add(api_key_record)
+
+    return APIKeyCreateResponseModel(
+        id=api_key_record.id,
+        name=api_key_record.name,
+        key_prefix=api_key_record.key_prefix,
+        is_active=api_key_record.is_active,
+        created_at=api_key_record.created_at,
+        last_used_at=api_key_record.last_used_at,
+        api_key=plain_key,
+    )
+
+
+@v1.get("/auth/api-keys", response_model=List[APIKeyResponseModel])
+async def list_api_keys(current_user: Dict[str, Any] = Depends(get_authenticated_user)):
+    """List active API keys for the authenticated user."""
+    async with get_db_session() as session:
+        result = await session.execute(
+            select(AuthUserAPIKey).where(
+                AuthUserAPIKey.user_id == current_user["id"],
+                AuthUserAPIKey.is_active == True,  # noqa: E712 - SQLAlchemy boolean comparison
+            )
+        )
+        records = result.scalars().all()
+        return [
+            APIKeyResponseModel(
+                id=record.id,
+                name=record.name,
+                key_prefix=record.key_prefix,
+                is_active=record.is_active,
+                created_at=record.created_at,
+                last_used_at=record.last_used_at,
+            )
+            for record in records
+        ]
+
+
+@v1.delete("/auth/api-keys/{api_key_id}")
+async def revoke_api_key(
+    api_key_id: str,
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
+    """Revoke a user API key."""
+    async with get_db_session() as session:
+        result = await session.execute(
+            select(AuthUserAPIKey).where(
+                AuthUserAPIKey.id == api_key_id,
+                AuthUserAPIKey.user_id == current_user["id"],
+            )
+        )
+        record = result.scalars().first()
+        if not record:
+            raise HTTPException(status_code=404, detail="API key not found")
+        record.is_active = False
+        record.last_used_at = _utc_now()
+
+    return {"message": "API key revoked"}
+
+
 @v1.get("/applets")
 async def list_applets(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
 ):
     """List all registered applets with their metadata (paginated)."""
     result = []
@@ -5544,21 +6102,24 @@ async def list_applets(
 
 
 @v1.get("/llm/providers")
-async def list_llm_providers():
+async def list_llm_providers(current_user: Dict[str, Any] = Depends(get_authenticated_user)):
     """List supported LLM providers and model catalogs."""
     providers = [provider.model_dump() for provider in LLMProviderRegistry.list_providers()]
     return {"providers": providers}
 
 
 @v1.get("/image/providers")
-async def list_image_providers():
+async def list_image_providers(current_user: Dict[str, Any] = Depends(get_authenticated_user)):
     """List supported image generation providers and model catalogs."""
     providers = [provider.model_dump() for provider in ImageProviderRegistry.list_providers()]
     return {"providers": providers}
 
 
 @v1.post("/flows", status_code=201)
-async def create_flow(flow: CreateFlowRequest):
+async def create_flow(
+    flow: CreateFlowRequest,
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
     """Create or update a flow with strict validation."""
     flow_id = flow.id if flow.id else str(uuid.uuid4())
 
@@ -5575,6 +6136,7 @@ async def create_flow(flow: CreateFlowRequest):
 async def list_flows(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
 ):
     """List all flows with pagination."""
     flows = await FlowRepository.get_all()
@@ -5587,7 +6149,10 @@ async def list_flows(
 
 
 @v1.get("/flows/{flow_id}")
-async def get_flow(flow_id: str):
+async def get_flow(
+    flow_id: str,
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
     """Get a flow by ID."""
     flow = await FlowRepository.get_by_id(flow_id)
     if not flow:
@@ -5597,7 +6162,10 @@ async def get_flow(flow_id: str):
 
 
 @v1.delete("/flows/{flow_id}")
-async def delete_flow(flow_id: str):
+async def delete_flow(
+    flow_id: str,
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
     """Delete a flow."""
     flow = await FlowRepository.get_by_id(flow_id)
     if not flow:
@@ -5607,7 +6175,11 @@ async def delete_flow(flow_id: str):
 
 
 @v1.post("/flows/{flow_id}/run")
-async def run_flow(flow_id: str, body: RunFlowRequest):
+async def run_flow(
+    flow_id: str,
+    body: RunFlowRequest,
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
     """Run a flow with the given input data."""
     flow = await FlowRepository.get_by_id(flow_id)
     if not flow:
@@ -5621,6 +6193,7 @@ async def run_flow(flow_id: str, body: RunFlowRequest):
 async def list_runs(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
 ):
     """List all workflow runs with pagination."""
     runs = await WorkflowRunRepository.get_all()
@@ -5628,7 +6201,10 @@ async def list_runs(
 
 
 @v1.get("/runs/{run_id}")
-async def get_run(run_id: str):
+async def get_run(
+    run_id: str,
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
     """Get a workflow run by ID."""
     run = await WorkflowRunRepository.get_by_run_id(run_id)
     if not run:
@@ -5637,7 +6213,10 @@ async def get_run(run_id: str):
 
 
 @v1.post("/ai/suggest")
-async def ai_suggest(body: AISuggestRequest):
+async def ai_suggest(
+    body: AISuggestRequest,
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
     """Generate code suggestions using AI."""
     raise HTTPException(
         status_code=501,
