@@ -2,7 +2,7 @@
   "id": "V-017",
   "title": "Verify: Implement Design Tokens and Dark Mode",
   "description": "Run automated tests for task T-018.\nReview changes and verify acceptance criteria.\nOriginal: Define and implement design tokens for colors, spacing, and typography. Set dark mode as default with toggle support.\nCriteria:\n- Design tokens defined and used throughout styles\n- Dark mode is default, toggle works\n- All components visually consistent",
-  "status": "pending",
+  "status": "completed",
   "assigned_to": "codex",
   "task_type": "review",
   "depends_on": [
@@ -17,8 +17,8 @@
     "All components visually consistent"
   ],
   "created_at": "2026-02-18T03:57:57.745082299Z",
-  "updated_at": "2026-02-18T03:57:57.745082299Z",
-  "completed_at": null,
+  "updated_at": "2026-02-18T19:16:53.873710446Z",
+  "completed_at": "2026-02-18T19:16:53.873710392Z",
   "parent_task": "T-018",
   "phase": "verify",
   "retry_count": 0
