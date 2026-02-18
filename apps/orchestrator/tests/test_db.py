@@ -62,6 +62,10 @@ async def test_init_db_success():
         mock_connection.run_sync.assert_called_once_with(Base.metadata.create_all)
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(
+    not importlib.util.find_spec("asyncpg"),
+    reason="asyncpg not installed",
+)
 async def test_postgres_engine_creation(monkeypatch):
     """Test that the PostgreSQL engine branch is taken when DATABASE_URL starts with postgres."""
     monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://user:password@host:5432/dbname")
