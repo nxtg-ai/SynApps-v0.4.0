@@ -1320,14 +1320,17 @@ async def broadcast_status(status: Dict[str, Any]):
 
     message = _ws_message("workflow.status", broadcast_data)
 
-    # Primary path: session-managed clients
-    if ws_manager.connected_websockets:
-        await ws_manager.broadcast(message)
+    # Always route through session manager so messages are buffered for replay.
+    await ws_manager.broadcast(message)
 
     # Legacy path: bare websockets appended to connected_clients directly (tests)
     if connected_clients:
+        managed_ws_ids = {id(ws) for ws in ws_manager.connected_websockets}
         disconnected = []
         for client in connected_clients:
+            # Avoid double-sending to sockets already tracked by ws_manager.
+            if id(client) in managed_ws_ids:
+                continue
             try:
                 await client.send_json(message)
             except Exception as e:
@@ -7287,13 +7290,16 @@ async def websocket_endpoint(websocket: WebSocket):
 
     user_id: str = user.get("id", "anonymous")
 
-    # Accept session_id and last_seq from query params for reconnection
+    # Accept session_id and optional last_seq from query params for reconnection.
+    # If last_seq is explicitly provided (including "0"), replay logic will use it.
     requested_session_id = websocket.query_params.get("session_id")
-    last_seq_raw = websocket.query_params.get("last_seq", "0")
-    try:
-        last_seq = int(last_seq_raw)
-    except (ValueError, TypeError):
-        last_seq = 0
+    last_seq_raw = websocket.query_params.get("last_seq")
+    last_seq: Optional[int] = None
+    if last_seq_raw is not None:
+        try:
+            last_seq = int(last_seq_raw)
+        except (ValueError, TypeError):
+            last_seq = 0
 
     # --- Session creation / resumption ---
     session, reconnected = ws_manager.create_session(
@@ -7320,7 +7326,7 @@ async def websocket_endpoint(websocket: WebSocket):
     }))
 
     # --- Replay missed messages on reconnect ---
-    if reconnected and last_seq > 0:
+    if reconnected and last_seq is not None:
         missed = ws_manager.get_missed_messages(last_seq)
         if missed:
             await websocket.send_json(_ws_message("replay.start", {
