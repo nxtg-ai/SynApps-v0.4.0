@@ -2,7 +2,7 @@
   "id": "T-049",
   "title": "Update ReactFlow to v12",
   "description": "Upgrade ReactFlow to version 12 in the frontend. Refactor any breaking changes and ensure compatibility with TypeScript.",
-  "status": "pending",
+  "status": "in_progress",
   "assigned_to": "codex",
   "task_type": "implement",
   "depends_on": [
@@ -17,7 +17,7 @@
     "No runtime errors related to ReactFlow"
   ],
   "created_at": "2026-02-16T06:27:01.699013883Z",
-  "updated_at": "2026-02-16T06:27:01.699013883Z",
+  "updated_at": "2026-02-18T00:48:27.771493794Z",
   "completed_at": null,
   "plan_version": 3,
   "retry_count": 0
