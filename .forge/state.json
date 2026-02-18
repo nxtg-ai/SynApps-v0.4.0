@@ -2,7 +2,7 @@
   "version": "1.1.0",
   "project_name": "synapps",
   "created_at": "2026-02-15T03:04:41.518674601Z",
-  "updated_at": "2026-02-18T17:43:41.407073382Z",
+  "updated_at": "2026-02-18T18:43:25.139822121Z",
   "tools": [
     {
       "name": "claude",
@@ -38,7 +38,17 @@
     "failed": 0,
     "blocked": 0
   },
-  "active_locks": {},
+  "active_locks": {
+    "V-016": {
+      "task_id": "V-016",
+      "agent": "claude",
+      "locked_at": "2026-02-18T18:42:38.857229454Z",
+      "files": [
+        "apps/web-frontend/package.json",
+        "apps/web-frontend/src/"
+      ]
+    }
+  },
   "agent_auth": {
     "codex": "subscription"
   },
