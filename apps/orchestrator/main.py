@@ -12,10 +12,12 @@ import json
 import logging
 import math
 import os
+import sqlite3
 import sys
 import time
 import uuid
 from enum import Enum
+import threading
 from typing import Any, AsyncIterator, Dict, List, Optional, Type
 from pathlib import Path
 
@@ -53,12 +55,15 @@ from apps.orchestrator.models import (
     ImageProviderInfoModel,
     LLMMessageModel,
     LLMModelInfoModel,
+    MemoryNodeConfigModel,
+    MemorySearchResultModel,
     LLMNodeConfigModel,
     LLMProviderInfoModel,
     LLMRequestModel,
     LLMResponseModel,
     LLMStreamChunkModel,
     LLMUsageModel,
+    SUPPORTED_MEMORY_BACKENDS,
     SUPPORTED_IMAGE_PROVIDERS,
     SUPPORTED_LLM_PROVIDERS,
 )
@@ -80,6 +85,16 @@ LEGACY_WRITER_NODE_TYPE = "writer"
 LEGACY_ARTIST_NODE_TYPE = "artist"
 LLM_NODE_TYPE = "llm"
 IMAGE_NODE_TYPE = "image"
+MEMORY_NODE_TYPE = "memory"
+DEFAULT_MEMORY_BACKEND = os.environ.get("MEMORY_BACKEND", "sqlite_fts").strip().lower()
+DEFAULT_MEMORY_NAMESPACE = os.environ.get("MEMORY_NAMESPACE", "default").strip() or "default"
+DEFAULT_MEMORY_SQLITE_PATH = str(
+    Path(os.environ.get("MEMORY_SQLITE_PATH", project_root / "synapps_memory.db")).expanduser()
+)
+DEFAULT_MEMORY_CHROMA_PATH = str(
+    Path(os.environ.get("MEMORY_CHROMA_PATH", project_root / ".chroma")).expanduser()
+)
+DEFAULT_MEMORY_COLLECTION = os.environ.get("MEMORY_COLLECTION", "synapps_memory").strip() or "synapps_memory"
 LEGACY_WRITER_LLM_PRESET: Dict[str, Any] = {
     "label": "Writer",
     "provider": "openai",
@@ -420,6 +435,949 @@ def _as_text(content: Any) -> str:
                 return value
         return json.dumps(content, ensure_ascii=False)
     return str(content)
+
+
+def _as_serialized_text(content: Any) -> str:
+    """Serialize arbitrary content into a durable text form."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, (dict, list)):
+        return json.dumps(content, ensure_ascii=False)
+    return str(content)
+
+
+def _parse_json_or_default(raw: Optional[str], default: Any) -> Any:
+    """Parse JSON content and return a fallback value if parsing fails."""
+    if not raw:
+        return default
+    try:
+        return json.loads(raw)
+    except (TypeError, json.JSONDecodeError):
+        return default
+
+
+def _normalize_memory_tags(raw_tags: Any) -> List[str]:
+    """Normalize memory tag payloads into a de-duplicated list of strings."""
+    if raw_tags is None:
+        return []
+    if isinstance(raw_tags, str):
+        candidates = [raw_tags]
+    elif isinstance(raw_tags, list):
+        candidates = [item for item in raw_tags if isinstance(item, (str, int, float))]
+    else:
+        return []
+
+    tags: List[str] = []
+    for item in candidates:
+        cleaned = str(item).strip()
+        if cleaned and cleaned not in tags:
+            tags.append(cleaned)
+    return tags
+
+
+def _fts_terms(text: str) -> List[str]:
+    """Build safe FTS terms from arbitrary free text."""
+    cleaned = "".join(char if char.isalnum() else " " for char in text.lower())
+    return [term for term in cleaned.split() if term]
+
+
+class MemoryStoreBackend(ABC):
+    """Abstract persistence backend for memory node operations."""
+
+    backend_name: str
+
+    @abstractmethod
+    def upsert(
+        self,
+        key: str,
+        namespace: str,
+        content: str,
+        payload: Any,
+        metadata: Dict[str, Any],
+    ) -> None:
+        """Persist or replace one memory record."""
+
+    @abstractmethod
+    def get(self, key: str, namespace: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Fetch one memory record by key."""
+
+    @abstractmethod
+    def search(
+        self,
+        namespace: str,
+        query: str,
+        tags: List[str],
+        top_k: int,
+    ) -> List[Dict[str, Any]]:
+        """Search memory records in a namespace."""
+
+    @abstractmethod
+    def delete(self, key: str, namespace: Optional[str] = None) -> bool:
+        """Delete one memory record."""
+
+    @abstractmethod
+    def clear(self, namespace: str) -> int:
+        """Delete all records in a namespace."""
+
+
+class SQLiteFTSMemoryStoreBackend(MemoryStoreBackend):
+    """SQLite-backed persistent store with FTS5 search and LIKE fallback."""
+
+    backend_name = "sqlite_fts"
+
+    def __init__(self, db_path: str):
+        self.db_path = str(Path(db_path).expanduser())
+        Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
+        self._schema_lock = threading.Lock()
+        self._initialized = False
+        self._fts_enabled = True
+        self._ensure_schema()
+
+    def _connect(self) -> sqlite3.Connection:
+        connection = sqlite3.connect(self.db_path)
+        connection.row_factory = sqlite3.Row
+        return connection
+
+    def _ensure_schema(self) -> None:
+        with self._schema_lock:
+            if self._initialized:
+                return
+            with self._connect() as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS memories (
+                        id TEXT PRIMARY KEY,
+                        namespace TEXT NOT NULL,
+                        content TEXT NOT NULL,
+                        payload_json TEXT NOT NULL,
+                        metadata_json TEXT,
+                        created_at REAL NOT NULL,
+                        flow_id TEXT,
+                        node_id TEXT
+                    )
+                    """
+                )
+                conn.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_memories_namespace_created_at
+                    ON memories(namespace, created_at DESC)
+                    """
+                )
+                try:
+                    conn.execute(
+                        """
+                        CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts
+                        USING fts5(
+                            memory_id UNINDEXED,
+                            namespace UNINDEXED,
+                            content,
+                            payload,
+                            tags
+                        )
+                        """
+                    )
+                    self._fts_enabled = True
+                except sqlite3.OperationalError:
+                    logger.warning(
+                        "SQLite FTS5 is unavailable for '%s'; using LIKE fallback.",
+                        self.db_path,
+                    )
+                    self._fts_enabled = False
+                    conn.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS memories_fts (
+                            memory_id TEXT PRIMARY KEY,
+                            namespace TEXT NOT NULL,
+                            content TEXT NOT NULL,
+                            payload TEXT NOT NULL,
+                            tags TEXT NOT NULL
+                        )
+                        """
+                    )
+                    conn.execute(
+                        """
+                        CREATE INDEX IF NOT EXISTS idx_memories_fts_namespace
+                        ON memories_fts(namespace)
+                        """
+                    )
+                conn.commit()
+            self._initialized = True
+
+    def _row_to_result(self, row: sqlite3.Row, score: float) -> Dict[str, Any]:
+        payload = _parse_json_or_default(row["payload_json"], row["content"])
+        metadata = _parse_json_or_default(row["metadata_json"], {})
+        if not isinstance(metadata, dict):
+            metadata = {}
+        metadata.setdefault("created_at", row["created_at"])
+        return MemorySearchResultModel(
+            key=row["id"],
+            data=payload,
+            score=score,
+            metadata=metadata,
+        ).model_dump()
+
+    def upsert(
+        self,
+        key: str,
+        namespace: str,
+        content: str,
+        payload: Any,
+        metadata: Dict[str, Any],
+    ) -> None:
+        self._ensure_schema()
+        now = float(metadata.get("timestamp", time.time()))
+        payload_json = json.dumps(payload, ensure_ascii=False)
+        metadata_json = json.dumps(metadata, ensure_ascii=False)
+        tags_text = " ".join(_normalize_memory_tags(metadata.get("tags", [])))
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO memories (
+                    id, namespace, content, payload_json, metadata_json, created_at, flow_id, node_id
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    namespace = excluded.namespace,
+                    content = excluded.content,
+                    payload_json = excluded.payload_json,
+                    metadata_json = excluded.metadata_json,
+                    created_at = excluded.created_at,
+                    flow_id = excluded.flow_id,
+                    node_id = excluded.node_id
+                """,
+                (
+                    key,
+                    namespace,
+                    content,
+                    payload_json,
+                    metadata_json,
+                    now,
+                    metadata.get("flow_id"),
+                    metadata.get("node_id"),
+                ),
+            )
+            if self._fts_enabled:
+                conn.execute("DELETE FROM memories_fts WHERE memory_id = ?", (key,))
+                conn.execute(
+                    """
+                    INSERT INTO memories_fts(memory_id, namespace, content, payload, tags)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (key, namespace, content, _as_serialized_text(payload), tags_text),
+                )
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO memories_fts(memory_id, namespace, content, payload, tags)
+                    VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(memory_id) DO UPDATE SET
+                        namespace = excluded.namespace,
+                        content = excluded.content,
+                        payload = excluded.payload,
+                        tags = excluded.tags
+                    """,
+                    (key, namespace, content, _as_serialized_text(payload), tags_text),
+                )
+            conn.commit()
+
+    def get(self, key: str, namespace: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        self._ensure_schema()
+        with self._connect() as conn:
+            if namespace:
+                row = conn.execute(
+                    """
+                    SELECT id, content, payload_json, metadata_json, created_at
+                    FROM memories
+                    WHERE id = ? AND namespace = ?
+                    LIMIT 1
+                    """,
+                    (key, namespace),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    """
+                    SELECT id, content, payload_json, metadata_json, created_at
+                    FROM memories
+                    WHERE id = ?
+                    LIMIT 1
+                    """,
+                    (key,),
+                ).fetchone()
+        if not row:
+            return None
+        return self._row_to_result(row, score=1.0)
+
+    def search(
+        self,
+        namespace: str,
+        query: str,
+        tags: List[str],
+        top_k: int,
+    ) -> List[Dict[str, Any]]:
+        self._ensure_schema()
+        normalized_tags = _normalize_memory_tags(tags)
+        query_text = (query or "").strip()
+
+        rows: List[sqlite3.Row] = []
+        if self._fts_enabled:
+            terms = _fts_terms(query_text or " ".join(normalized_tags))
+            if terms:
+                match_query = " OR ".join(f'"{term}"' for term in terms)
+                with self._connect() as conn:
+                    try:
+                        rows = conn.execute(
+                            """
+                            SELECT
+                                m.id,
+                                m.content,
+                                m.payload_json,
+                                m.metadata_json,
+                                m.created_at,
+                                bm25(memories_fts) AS rank
+                            FROM memories_fts
+                            JOIN memories m ON memories_fts.memory_id = m.id
+                            WHERE m.namespace = ? AND memories_fts MATCH ?
+                            ORDER BY rank
+                            LIMIT ?
+                            """,
+                            (namespace, match_query, top_k),
+                        ).fetchall()
+                    except sqlite3.OperationalError as exc:
+                        logger.debug("SQLite FTS query failed, using LIKE fallback: %s", exc)
+                        rows = []
+
+        if not rows:
+            sql = (
+                "SELECT id, content, payload_json, metadata_json, created_at "
+                "FROM memories WHERE namespace = ?"
+            )
+            params: List[Any] = [namespace]
+            search_text = query_text or " ".join(normalized_tags)
+            if search_text:
+                sql += " AND (content LIKE ? OR payload_json LIKE ? OR metadata_json LIKE ?)"
+                like_value = f"%{search_text}%"
+                params.extend([like_value, like_value, like_value])
+            for tag in normalized_tags:
+                sql += " AND metadata_json LIKE ?"
+                params.append(f"%{tag}%")
+            sql += " ORDER BY created_at DESC LIMIT ?"
+            params.append(top_k)
+            with self._connect() as conn:
+                rows = conn.execute(sql, tuple(params)).fetchall()
+
+        results: List[Dict[str, Any]] = []
+        for row in rows:
+            rank = row["rank"] if "rank" in row.keys() else None
+            score = 0.8
+            if rank is not None:
+                try:
+                    score = 1.0 / (1.0 + abs(float(rank)))
+                except (TypeError, ValueError):
+                    score = 0.8
+            results.append(self._row_to_result(row, score=score))
+
+        if normalized_tags:
+            filtered_results: List[Dict[str, Any]] = []
+            for result in results:
+                metadata = result.get("metadata", {})
+                memory_tags = _normalize_memory_tags(metadata.get("tags", []))
+                if any(tag in memory_tags for tag in normalized_tags):
+                    filtered_results.append(result)
+            results = filtered_results
+
+        return results[:top_k]
+
+    def delete(self, key: str, namespace: Optional[str] = None) -> bool:
+        self._ensure_schema()
+        with self._connect() as conn:
+            if namespace:
+                existing = conn.execute(
+                    "SELECT 1 FROM memories WHERE id = ? AND namespace = ?",
+                    (key, namespace),
+                ).fetchone()
+                if not existing:
+                    return False
+                conn.execute("DELETE FROM memories WHERE id = ? AND namespace = ?", (key, namespace))
+            else:
+                existing = conn.execute("SELECT 1 FROM memories WHERE id = ?", (key,)).fetchone()
+                if not existing:
+                    return False
+                conn.execute("DELETE FROM memories WHERE id = ?", (key,))
+            conn.execute("DELETE FROM memories_fts WHERE memory_id = ?", (key,))
+            conn.commit()
+        return True
+
+    def clear(self, namespace: str) -> int:
+        self._ensure_schema()
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id FROM memories WHERE namespace = ?",
+                (namespace,),
+            ).fetchall()
+            memory_ids = [row["id"] for row in rows]
+            conn.execute("DELETE FROM memories WHERE namespace = ?", (namespace,))
+            if self._fts_enabled:
+                for memory_id in memory_ids:
+                    conn.execute("DELETE FROM memories_fts WHERE memory_id = ?", (memory_id,))
+            else:
+                conn.execute("DELETE FROM memories_fts WHERE namespace = ?", (namespace,))
+            conn.commit()
+        return len(memory_ids)
+
+
+class ChromaMemoryStoreBackend(MemoryStoreBackend):
+    """ChromaDB-backed persistent vector store."""
+
+    backend_name = "chroma"
+
+    def __init__(self, persist_path: str, collection_name: str):
+        self.persist_path = str(Path(persist_path).expanduser())
+        Path(self.persist_path).mkdir(parents=True, exist_ok=True)
+        try:
+            import chromadb  # type: ignore
+        except Exception as exc:  # pragma: no cover - optional dependency
+            raise RuntimeError("chromadb package is not installed") from exc
+
+        self._client = chromadb.PersistentClient(path=self.persist_path)
+        self._collection = self._client.get_or_create_collection(name=collection_name)
+
+    def _entry_to_result(
+        self,
+        memory_id: str,
+        document: str,
+        metadata: Optional[Dict[str, Any]],
+        score: float,
+    ) -> Dict[str, Any]:
+        raw_metadata = metadata or {}
+        payload = _parse_json_or_default(raw_metadata.get("payload_json"), document)
+        stored_metadata = _parse_json_or_default(raw_metadata.get("metadata_json"), {})
+        if not isinstance(stored_metadata, dict):
+            stored_metadata = {}
+        if "created_at" in raw_metadata:
+            stored_metadata.setdefault("created_at", raw_metadata["created_at"])
+        return MemorySearchResultModel(
+            key=memory_id,
+            data=payload,
+            score=score,
+            metadata=stored_metadata,
+        ).model_dump()
+
+    def upsert(
+        self,
+        key: str,
+        namespace: str,
+        content: str,
+        payload: Any,
+        metadata: Dict[str, Any],
+    ) -> None:
+        now = float(metadata.get("timestamp", time.time()))
+        safe_metadata: Dict[str, Any] = {
+            "namespace": namespace,
+            "created_at": now,
+            "payload_json": json.dumps(payload, ensure_ascii=False),
+            "metadata_json": json.dumps(metadata, ensure_ascii=False),
+            "tags_text": " ".join(_normalize_memory_tags(metadata.get("tags", []))),
+        }
+        if metadata.get("flow_id") is not None:
+            safe_metadata["flow_id"] = str(metadata["flow_id"])
+        if metadata.get("node_id") is not None:
+            safe_metadata["node_id"] = str(metadata["node_id"])
+        self._collection.upsert(ids=[key], documents=[content], metadatas=[safe_metadata])
+
+    def get(self, key: str, namespace: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        payload = self._collection.get(ids=[key], include=["documents", "metadatas"])
+        ids = payload.get("ids") or []
+        if not ids:
+            return None
+        documents = payload.get("documents") or []
+        metadatas = payload.get("metadatas") or []
+        for index, memory_id in enumerate(ids):
+            metadata = metadatas[index] if index < len(metadatas) else {}
+            if namespace and str((metadata or {}).get("namespace", "")) != namespace:
+                continue
+            document = documents[index] if index < len(documents) else ""
+            return self._entry_to_result(memory_id, document, metadata, score=1.0)
+        return None
+
+    def search(
+        self,
+        namespace: str,
+        query: str,
+        tags: List[str],
+        top_k: int,
+    ) -> List[Dict[str, Any]]:
+        normalized_tags = _normalize_memory_tags(tags)
+        query_text = (query or "").strip() or " ".join(normalized_tags)
+        results: List[Dict[str, Any]] = []
+
+        if query_text:
+            payload = self._collection.query(
+                query_texts=[query_text],
+                n_results=top_k,
+                where={"namespace": namespace},
+                include=["documents", "metadatas", "distances"],
+            )
+            ids = (payload.get("ids") or [[]])[0]
+            documents = (payload.get("documents") or [[]])[0]
+            metadatas = (payload.get("metadatas") or [[]])[0]
+            distances = (payload.get("distances") or [[]])[0]
+            for index, memory_id in enumerate(ids):
+                document = documents[index] if index < len(documents) else ""
+                metadata = metadatas[index] if index < len(metadatas) else {}
+                distance = distances[index] if index < len(distances) else 0.0
+                try:
+                    score = 1.0 / (1.0 + max(float(distance), 0.0))
+                except (TypeError, ValueError):
+                    score = 0.8
+                results.append(self._entry_to_result(memory_id, document, metadata, score=score))
+        else:
+            payload = self._collection.get(
+                where={"namespace": namespace},
+                limit=top_k,
+                include=["documents", "metadatas"],
+            )
+            ids = payload.get("ids") or []
+            documents = payload.get("documents") or []
+            metadatas = payload.get("metadatas") or []
+            for index, memory_id in enumerate(ids):
+                document = documents[index] if index < len(documents) else ""
+                metadata = metadatas[index] if index < len(metadatas) else {}
+                results.append(self._entry_to_result(memory_id, document, metadata, score=0.7))
+
+        if normalized_tags:
+            filtered: List[Dict[str, Any]] = []
+            for result in results:
+                memory_tags = _normalize_memory_tags(result.get("metadata", {}).get("tags", []))
+                if any(tag in memory_tags for tag in normalized_tags):
+                    filtered.append(result)
+            results = filtered
+
+        return results[:top_k]
+
+    def delete(self, key: str, namespace: Optional[str] = None) -> bool:
+        record = self.get(key, namespace=namespace)
+        if not record:
+            return False
+        self._collection.delete(ids=[key])
+        return True
+
+    def clear(self, namespace: str) -> int:
+        payload = self._collection.get(where={"namespace": namespace}, include=["metadatas"])
+        ids = payload.get("ids") or []
+        if ids:
+            self._collection.delete(ids=ids)
+        return len(ids)
+
+
+class MemoryStoreFactory:
+    """Factory and cache for memory backends."""
+
+    _stores: Dict[str, MemoryStoreBackend] = {}
+    _lock = threading.Lock()
+
+    @classmethod
+    def get_store(cls, config: MemoryNodeConfigModel) -> MemoryStoreBackend:
+        backend = config.backend if config.backend in SUPPORTED_MEMORY_BACKENDS else DEFAULT_MEMORY_BACKEND
+
+        if backend == "chroma":
+            chroma_path = config.persist_path or DEFAULT_MEMORY_CHROMA_PATH
+            key = f"chroma::{chroma_path}::{config.collection}"
+            with cls._lock:
+                cached = cls._stores.get(key)
+                if cached:
+                    return cached
+                try:
+                    store = ChromaMemoryStoreBackend(chroma_path, config.collection)
+                    cls._stores[key] = store
+                    return store
+                except Exception as exc:
+                    logger.warning(
+                        "Chroma backend unavailable, falling back to sqlite_fts: %s",
+                        exc,
+                    )
+
+        if config.persist_path:
+            expanded_path = Path(config.persist_path).expanduser()
+            if str(expanded_path).lower().endswith((".db", ".sqlite", ".sqlite3")):
+                sqlite_path = str(expanded_path)
+            else:
+                sqlite_path = str(expanded_path / "memory.sqlite3")
+        else:
+            sqlite_path = DEFAULT_MEMORY_SQLITE_PATH
+        key = f"sqlite_fts::{sqlite_path}"
+        with cls._lock:
+            cached = cls._stores.get(key)
+            if cached:
+                return cached
+            store = SQLiteFTSMemoryStoreBackend(str(sqlite_path))
+            cls._stores[key] = store
+            return store
+
+
+class MemoryNodeApplet(BaseApplet):
+    """Persistent memory node with SQLite FTS and ChromaDB backends."""
+
+    VERSION = "1.0.0"
+    CAPABILITIES = [
+        "persistent-memory",
+        "vector-search",
+        "tag-retrieval",
+        "memory-management",
+    ]
+
+    async def on_message(self, message: AppletMessage) -> AppletMessage:
+        try:
+            config = self._resolve_config(message)
+            operation = self._resolve_operation(message, config)
+            namespace = self._resolve_namespace(message, config)
+            store = MemoryStoreFactory.get_store(config)
+        except Exception as exc:
+            return AppletMessage(
+                content={"error": f"Invalid memory configuration: {exc}"},
+                context=message.context,
+                metadata={"applet": MEMORY_NODE_TYPE, "status": "error"},
+            )
+
+        try:
+            if operation == "store":
+                return await self._handle_store(message, config, namespace, store)
+            if operation == "retrieve":
+                return await self._handle_retrieve(message, config, namespace, store)
+            if operation == "delete":
+                return await self._handle_delete(message, config, namespace, store)
+            if operation == "clear":
+                return await self._handle_clear(message, namespace, store)
+        except Exception as exc:
+            logger.error("Memory node operation failed: %s", exc, exc_info=True)
+            return AppletMessage(
+                content={"error": f"Memory operation failed: {exc}"},
+                context=message.context,
+                metadata={
+                    "applet": MEMORY_NODE_TYPE,
+                    "status": "error",
+                    "operation": operation,
+                    "backend": store.backend_name,
+                    "namespace": namespace,
+                },
+            )
+
+        return AppletMessage(
+            content={"error": f"Unsupported memory operation: {operation}"},
+            context=message.context,
+            metadata={"applet": MEMORY_NODE_TYPE, "status": "error"},
+        )
+
+    def _resolve_config(self, message: AppletMessage) -> MemoryNodeConfigModel:
+        node_data = message.metadata.get("node_data", {})
+        if not isinstance(node_data, dict):
+            node_data = {}
+
+        context_config = message.context.get("memory_config", {})
+        if not isinstance(context_config, dict):
+            context_config = {}
+
+        metadata_config = message.metadata.get("memory_config", {})
+        if not isinstance(metadata_config, dict):
+            metadata_config = {}
+
+        merged = {**context_config, **metadata_config, **node_data}
+        backend = str(merged.get("backend", DEFAULT_MEMORY_BACKEND)).strip().lower()
+        if backend not in SUPPORTED_MEMORY_BACKENDS:
+            backend = "sqlite_fts"
+
+        payload = {
+            "label": merged.get("label", "Memory"),
+            "operation": merged.get("operation", "store"),
+            "backend": backend,
+            "namespace": merged.get("namespace", DEFAULT_MEMORY_NAMESPACE),
+            "key": merged.get("key"),
+            "query": merged.get("query"),
+            "tags": merged.get("tags", []),
+            "top_k": merged.get("top_k", merged.get("topK", 5)),
+            "persist_path": merged.get("persist_path", merged.get("persistPath")),
+            "collection": merged.get("collection", DEFAULT_MEMORY_COLLECTION),
+            "include_metadata": merged.get("include_metadata", merged.get("includeMetadata", False)),
+            "extra": merged.get("extra", {}),
+        }
+        return MemoryNodeConfigModel.model_validate(payload)
+
+    def _resolve_operation(self, message: AppletMessage, config: MemoryNodeConfigModel) -> str:
+        operation = config.operation
+        if isinstance(message.content, dict) and "operation" in message.content:
+            raw_operation = message.content.get("operation")
+            if raw_operation is not None:
+                operation = str(raw_operation).strip().lower()
+        if operation not in {"store", "retrieve", "delete", "clear"}:
+            raise ValueError("operation must be one of: store, retrieve, delete, clear")
+        return operation
+
+    def _resolve_namespace(self, message: AppletMessage, config: MemoryNodeConfigModel) -> str:
+        namespace = config.namespace
+        if isinstance(message.context.get("memory_namespace"), str):
+            raw = message.context["memory_namespace"].strip()
+            if raw:
+                namespace = raw
+        if isinstance(message.content, dict) and isinstance(message.content.get("namespace"), str):
+            raw = message.content["namespace"].strip()
+            if raw:
+                namespace = raw
+        return namespace
+
+    def _resolve_key(
+        self,
+        message: AppletMessage,
+        config: MemoryNodeConfigModel,
+        default_generate: bool = False,
+    ) -> Optional[str]:
+        key: Optional[str] = config.key
+        if isinstance(message.context.get("memory_key"), str):
+            raw_context_key = message.context["memory_key"].strip()
+            if raw_context_key:
+                key = raw_context_key
+        if isinstance(message.content, dict) and isinstance(message.content.get("key"), str):
+            raw_content_key = message.content["key"].strip()
+            if raw_content_key:
+                key = raw_content_key
+        if not key and default_generate:
+            key = str(uuid.uuid4())
+        return key
+
+    def _resolve_query(self, message: AppletMessage, config: MemoryNodeConfigModel) -> str:
+        query = config.query or ""
+        if isinstance(message.content, str):
+            query = message.content
+        elif isinstance(message.content, dict):
+            for key in ("query", "text", "content"):
+                candidate = message.content.get(key)
+                if isinstance(candidate, str) and candidate.strip():
+                    query = candidate
+                    break
+        return query.strip()
+
+    def _resolve_tags(self, message: AppletMessage, config: MemoryNodeConfigModel) -> List[str]:
+        tags = _normalize_memory_tags(config.tags)
+        tags.extend(_normalize_memory_tags(message.context.get("memory_tags")))
+        if isinstance(message.content, dict):
+            tags.extend(_normalize_memory_tags(message.content.get("tags")))
+        deduped: List[str] = []
+        for tag in tags:
+            if tag not in deduped:
+                deduped.append(tag)
+        return deduped
+
+    def _extract_store_payload(self, message: AppletMessage) -> Any:
+        content = message.content
+        if isinstance(content, dict):
+            if "data" in content:
+                return content["data"]
+            ignored_keys = {
+                "operation",
+                "key",
+                "tags",
+                "query",
+                "namespace",
+                "backend",
+                "top_k",
+                "topK",
+                "persist_path",
+                "persistPath",
+                "collection",
+                "include_metadata",
+                "includeMetadata",
+            }
+            payload = {k: v for k, v in content.items() if k not in ignored_keys}
+            return payload if payload else content
+        return {"value": content}
+
+    async def _handle_store(
+        self,
+        message: AppletMessage,
+        config: MemoryNodeConfigModel,
+        namespace: str,
+        store: MemoryStoreBackend,
+    ) -> AppletMessage:
+        payload = self._extract_store_payload(message)
+        key = self._resolve_key(message, config, default_generate=True)
+        if not key:
+            raise ValueError("key could not be resolved for store operation")
+
+        tags = self._resolve_tags(message, config)
+        metadata: Dict[str, Any] = {
+            "timestamp": message.context.get("timestamp", time.time()),
+            "run_id": message.context.get("run_id", message.metadata.get("run_id")),
+            "flow_id": message.context.get("flow_id", message.metadata.get("flow_id")),
+            "node_id": message.metadata.get("node_id"),
+            "tags": tags,
+        }
+        await asyncio.to_thread(
+            store.upsert,
+            key,
+            namespace,
+            _as_serialized_text(payload),
+            payload,
+            metadata,
+        )
+
+        output_context = {
+            **message.context,
+            "memory_key": key,
+            "memory_retrieved": False,
+            "memory_backend": store.backend_name,
+            "memory_namespace": namespace,
+        }
+        return AppletMessage(
+            content={
+                "key": key,
+                "status": "stored",
+                "backend": store.backend_name,
+                "namespace": namespace,
+            },
+            context=output_context,
+            metadata={
+                "applet": MEMORY_NODE_TYPE,
+                "operation": "store",
+                "backend": store.backend_name,
+                "namespace": namespace,
+            },
+        )
+
+    async def _handle_retrieve(
+        self,
+        message: AppletMessage,
+        config: MemoryNodeConfigModel,
+        namespace: str,
+        store: MemoryStoreBackend,
+    ) -> AppletMessage:
+        key = self._resolve_key(message, config, default_generate=False)
+        if key:
+            record = await asyncio.to_thread(store.get, key, namespace)
+            if record:
+                content: Any = record["data"]
+                if config.include_metadata:
+                    content = {
+                        "key": key,
+                        "data": record["data"],
+                        "metadata": record["metadata"],
+                        "score": record["score"],
+                    }
+                return AppletMessage(
+                    content=content,
+                    context={
+                        **message.context,
+                        "memory_key": key,
+                        "memory_retrieved": True,
+                        "memory_backend": store.backend_name,
+                        "memory_namespace": namespace,
+                    },
+                    metadata={
+                        "applet": MEMORY_NODE_TYPE,
+                        "operation": "retrieve",
+                        "key": key,
+                        "backend": store.backend_name,
+                        "namespace": namespace,
+                    },
+                )
+
+        tags = self._resolve_tags(message, config)
+        query = self._resolve_query(message, config)
+        results = await asyncio.to_thread(store.search, namespace, query, tags, config.top_k)
+        if results:
+            response_content: Dict[str, Any] = {
+                "memories": {item["key"]: item["data"] for item in results},
+                "status": "retrieved",
+            }
+            if config.include_metadata:
+                response_content["results"] = results
+                response_content["count"] = len(results)
+                if query:
+                    response_content["query"] = query
+                if tags:
+                    response_content["tags"] = tags
+            return AppletMessage(
+                content=response_content,
+                context={
+                    **message.context,
+                    "memory_retrieved": True,
+                    "memory_backend": store.backend_name,
+                    "memory_namespace": namespace,
+                },
+                metadata={
+                    "applet": MEMORY_NODE_TYPE,
+                    "operation": "retrieve",
+                    "backend": store.backend_name,
+                    "namespace": namespace,
+                },
+            )
+
+        return AppletMessage(
+            content={"status": "not_found"},
+            context={
+                **message.context,
+                "memory_retrieved": False,
+                "memory_backend": store.backend_name,
+                "memory_namespace": namespace,
+            },
+            metadata={
+                "applet": MEMORY_NODE_TYPE,
+                "operation": "retrieve",
+                "backend": store.backend_name,
+                "namespace": namespace,
+                "status": "not_found",
+            },
+        )
+
+    async def _handle_delete(
+        self,
+        message: AppletMessage,
+        config: MemoryNodeConfigModel,
+        namespace: str,
+        store: MemoryStoreBackend,
+    ) -> AppletMessage:
+        key = self._resolve_key(message, config, default_generate=False)
+        if not key:
+            return AppletMessage(
+                content={"status": "not_found", "key": None},
+                context=message.context,
+                metadata={
+                    "applet": MEMORY_NODE_TYPE,
+                    "operation": "delete",
+                    "backend": store.backend_name,
+                    "namespace": namespace,
+                    "status": "not_found",
+                },
+            )
+        deleted = await asyncio.to_thread(store.delete, key, namespace)
+        return AppletMessage(
+            content={"status": "deleted" if deleted else "not_found", "key": key},
+            context=message.context,
+            metadata={
+                "applet": MEMORY_NODE_TYPE,
+                "operation": "delete",
+                "backend": store.backend_name,
+                "namespace": namespace,
+                "status": "success" if deleted else "not_found",
+            },
+        )
+
+    async def _handle_clear(
+        self,
+        message: AppletMessage,
+        namespace: str,
+        store: MemoryStoreBackend,
+    ) -> AppletMessage:
+        deleted_count = await asyncio.to_thread(store.clear, namespace)
+        return AppletMessage(
+            content={"status": "cleared", "count": deleted_count, "namespace": namespace},
+            context=message.context,
+            metadata={
+                "applet": MEMORY_NODE_TYPE,
+                "operation": "clear",
+                "backend": store.backend_name,
+                "namespace": namespace,
+                "status": "success",
+            },
+        )
 
 
 class LLMProviderAdapter(ABC):
@@ -1661,6 +2619,7 @@ class ImageGenNodeApplet(BaseApplet):
 
 applet_registry["llm"] = LLMNodeApplet
 applet_registry[IMAGE_NODE_TYPE] = ImageGenNodeApplet
+applet_registry[MEMORY_NODE_TYPE] = MemoryNodeApplet
 
 
 # ============================================================
@@ -1684,6 +2643,10 @@ class Orchestrator:
         if normalized_type in {IMAGE_NODE_TYPE, "image_gen", "image-gen"}:
             applet_registry[IMAGE_NODE_TYPE] = ImageGenNodeApplet
             return ImageGenNodeApplet()
+
+        if normalized_type in {MEMORY_NODE_TYPE, "memory_node", "memory-node"}:
+            applet_registry[MEMORY_NODE_TYPE] = MemoryNodeApplet
+            return MemoryNodeApplet()
 
         try:
             module_path = f"apps.applets.{normalized_type}.applet"

@@ -401,3 +401,70 @@ class ImageProviderInfoModel(BaseModel):
     configured: bool
     reason: str = ""
     models: List[ImageModelInfoModel] = Field(default_factory=list)
+
+
+SUPPORTED_MEMORY_BACKENDS = ("sqlite_fts", "chroma")
+
+
+class MemoryNodeConfigModel(BaseModel):
+    """Configuration schema for the persistent memory node."""
+
+    model_config = ConfigDict(extra="allow")
+
+    label: str = Field("Memory", max_length=100)
+    operation: str = Field("store")
+    backend: str = Field("sqlite_fts")
+    namespace: str = Field("default", min_length=1, max_length=200)
+    key: Optional[str] = Field(None, max_length=200)
+    query: Optional[str] = None
+    tags: List[str] = Field(default_factory=list)
+    top_k: int = Field(5, ge=1, le=50)
+    persist_path: Optional[str] = None
+    collection: str = Field("synapps_memory", min_length=1, max_length=200)
+    include_metadata: bool = True
+    extra: Dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("operation")
+    @classmethod
+    def validate_operation(cls, value: str) -> str:
+        operation = value.strip().lower()
+        if operation not in {"store", "retrieve", "delete", "clear"}:
+            raise ValueError("operation must be one of: store, retrieve, delete, clear")
+        return operation
+
+    @field_validator("backend")
+    @classmethod
+    def validate_backend(cls, value: str) -> str:
+        backend = value.strip().lower()
+        if backend not in SUPPORTED_MEMORY_BACKENDS:
+            raise ValueError(
+                f"backend must be one of: {', '.join(SUPPORTED_MEMORY_BACKENDS)}"
+            )
+        return backend
+
+    @field_validator("query")
+    @classmethod
+    def normalize_query(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("tags")
+    @classmethod
+    def normalize_tags(cls, value: List[str]) -> List[str]:
+        unique: List[str] = []
+        for item in value:
+            cleaned = item.strip()
+            if cleaned and cleaned not in unique:
+                unique.append(cleaned)
+        return unique
+
+
+class MemorySearchResultModel(BaseModel):
+    """Search result payload for memory retrieval responses."""
+
+    key: str
+    data: Any
+    score: float = 0.0
+    metadata: Dict[str, Any] = Field(default_factory=dict)

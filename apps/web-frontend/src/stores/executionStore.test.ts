@@ -1,4 +1,4 @@
-import { act } from '@testing-library/react';
+import { act } from 'react';
 import { useExecutionStore } from './executionStore';
 import { WorkflowRunStatus } from '@/types';
 
@@ -64,5 +64,36 @@ describe('useExecutionStore', () => {
     const state = useExecutionStore.getState();
     expect(state.workflowResults).toBeNull();
     expect(state.isRunning).toBe(false);
+  });
+
+  it('should reset all state variables to their initial defaults', () => {
+    const { setIsRunning, setWorkflowResults, setRunStatus, setCompletedNodes, resetExecutionState } = useExecutionStore.getState();
+
+    // Modify some state variables
+    act(() => {
+      setIsRunning(true);
+      setWorkflowResults({ 'node-a': { data: 'some result' } });
+      setRunStatus('completed');
+      setCompletedNodes(['node-a', 'node-b']);
+    });
+
+    // Assert that state variables are indeed modified
+    let state = useExecutionStore.getState();
+    expect(state.isRunning).toBe(true);
+    expect(state.workflowResults).toEqual({ 'node-a': { data: 'some result' } });
+    expect(state.runStatus).toBe('completed');
+    expect(state.completedNodes).toEqual(['node-a', 'node-b']);
+
+    // Reset the state
+    act(() => {
+      resetExecutionState();
+    });
+
+    // Assert that all state variables are back to their initial default values
+    state = useExecutionStore.getState();
+    expect(state.isRunning).toBe(false);
+    expect(state.workflowResults).toBeNull();
+    expect(state.runStatus).toBeNull();
+    expect(state.completedNodes).toEqual([]);
   });
 });
