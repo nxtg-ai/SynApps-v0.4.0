@@ -129,7 +129,7 @@ const EditorPage: React.FC = () => {
     try {
       const response = await apiService.saveFlow(flow);
       // Always update the flow ID after save
-      setFlow(prev => prev ? { ...prev, id: response.id } : prev);
+      setFlow({ ...flow, id: response.id });
       // If this is a new flow, navigate to the new URL
       if (!flowId || flowId !== response.id) {
         navigate(`/editor/${response.id}`, { replace: true });
@@ -310,7 +310,10 @@ class ${nodeType.charAt(0).toUpperCase() + nodeType.slice(1)}Applet(BaseApplet):
         type="text"
         className="workflow-name-input"
         value={flow?.name || ''}
-        onChange={(e) => setFlow(prev => prev ? { ...prev, name: e.target.value } : null)}
+        onChange={(e) => {
+          if (!flow) return;
+          setFlow({ ...flow, name: e.target.value });
+        }}
         placeholder="Workflow Name"
       />
       <button 
