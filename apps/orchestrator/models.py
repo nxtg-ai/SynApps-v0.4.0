@@ -468,3 +468,51 @@ class MemorySearchResultModel(BaseModel):
     data: Any
     score: float = 0.0
     metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+SUPPORTED_HTTP_METHODS = ("GET", "POST", "PUT", "DELETE")
+
+
+class HTTPRequestNodeConfigModel(BaseModel):
+    """Configuration schema for the HTTP request node."""
+
+    model_config = ConfigDict(extra="allow")
+
+    label: str = Field("HTTP Request", max_length=100)
+    url: str = Field(..., min_length=1, max_length=5000)
+    method: str = Field("GET")
+    headers: Dict[str, str] = Field(default_factory=dict)
+    query_params: Dict[str, Any] = Field(default_factory=dict)
+    body_template: Optional[Any] = None
+    body_type: str = Field("auto")
+    timeout_seconds: float = Field(30.0, gt=0.0, le=600.0)
+    allow_redirects: bool = True
+    verify_ssl: bool = True
+    include_response_headers: bool = True
+    extra: Dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("url")
+    @classmethod
+    def validate_url(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("url cannot be blank")
+        return normalized
+
+    @field_validator("method")
+    @classmethod
+    def validate_method(cls, value: str) -> str:
+        method = value.strip().upper()
+        if method not in SUPPORTED_HTTP_METHODS:
+            raise ValueError(
+                f"method must be one of: {', '.join(SUPPORTED_HTTP_METHODS)}"
+            )
+        return method
+
+    @field_validator("body_type")
+    @classmethod
+    def validate_body_type(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"auto", "json", "text", "form", "none"}:
+            raise ValueError("body_type must be one of: auto, json, text, form, none")
+        return normalized

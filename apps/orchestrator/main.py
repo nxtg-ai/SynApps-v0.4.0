@@ -12,6 +12,7 @@ import json
 import logging
 import math
 import os
+import re
 import sqlite3
 import sys
 import time
@@ -53,6 +54,7 @@ from apps.orchestrator.models import (
     ImageGenResponseModel,
     ImageModelInfoModel,
     ImageProviderInfoModel,
+    HTTPRequestNodeConfigModel,
     LLMMessageModel,
     LLMModelInfoModel,
     MemoryNodeConfigModel,
@@ -87,6 +89,7 @@ LEGACY_MEMORY_NODE_TYPE = "memory"
 LLM_NODE_TYPE = "llm"
 IMAGE_NODE_TYPE = "image"
 MEMORY_NODE_TYPE = "memory"
+HTTP_REQUEST_NODE_TYPE = "http_request"
 DEFAULT_MEMORY_BACKEND = os.environ.get("MEMORY_BACKEND", "sqlite_fts").strip().lower()
 DEFAULT_MEMORY_NAMESPACE = os.environ.get("MEMORY_NAMESPACE", "default").strip() or "default"
 DEFAULT_MEMORY_SQLITE_PATH = str(
@@ -490,6 +493,63 @@ def _fts_terms(text: str) -> List[str]:
     """Build safe FTS terms from arbitrary free text."""
     cleaned = "".join(char if char.isalnum() else " " for char in text.lower())
     return [term for term in cleaned.split() if term]
+
+
+_TEMPLATE_PATTERN = re.compile(r"\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}")
+
+
+def _resolve_template_path(data: Any, path: str) -> tuple[Any, bool]:
+    """Resolve a dotted path from nested dict/list payloads."""
+    current = data
+    for segment in path.split("."):
+        if isinstance(current, dict):
+            if segment not in current:
+                return None, False
+            current = current[segment]
+            continue
+        if isinstance(current, list):
+            if not segment.isdigit():
+                return None, False
+            index = int(segment)
+            if index < 0 or index >= len(current):
+                return None, False
+            current = current[index]
+            continue
+        return None, False
+    return current, True
+
+
+def _render_template_string(template: str, data: Dict[str, Any]) -> Any:
+    """Render {{path}} tokens in a string template."""
+    matches = list(_TEMPLATE_PATTERN.finditer(template))
+    if not matches:
+        return template
+
+    if len(matches) == 1 and matches[0].span() == (0, len(template)):
+        value, found = _resolve_template_path(data, matches[0].group(1))
+        return value if found else template
+
+    def replace_token(match: re.Match[str]) -> str:
+        path = match.group(1)
+        value, found = _resolve_template_path(data, path)
+        if not found or value is None:
+            return ""
+        if isinstance(value, (dict, list)):
+            return json.dumps(value, ensure_ascii=False)
+        return str(value)
+
+    return _TEMPLATE_PATTERN.sub(replace_token, template)
+
+
+def _render_template_payload(template: Any, data: Dict[str, Any]) -> Any:
+    """Render templates recursively for strings/dicts/lists."""
+    if isinstance(template, str):
+        return _render_template_string(template, data)
+    if isinstance(template, list):
+        return [_render_template_payload(item, data) for item in template]
+    if isinstance(template, dict):
+        return {key: _render_template_payload(value, data) for key, value in template.items()}
+    return template
 
 
 class MemoryStoreBackend(ABC):
@@ -2628,9 +2688,260 @@ class ImageGenNodeApplet(BaseApplet):
         )
 
 
+class HTTPRequestNodeApplet(BaseApplet):
+    """Universal HTTP request node for calling external APIs."""
+
+    VERSION = "1.0.0"
+    CAPABILITIES = [
+        "http-requests",
+        "api-integration",
+        "templated-headers",
+        "templated-body",
+    ]
+
+    async def on_message(self, message: AppletMessage) -> AppletMessage:
+        try:
+            config = self._resolve_config(message)
+        except Exception as exc:
+            return AppletMessage(
+                content={"error": f"Invalid HTTP request configuration: {exc}"},
+                context=message.context,
+                metadata={"applet": HTTP_REQUEST_NODE_TYPE, "status": "error"},
+            )
+
+        template_data = self._template_data(message)
+        rendered_url_value = _render_template_payload(config.url, template_data)
+        rendered_url = str(rendered_url_value).strip()
+        if not rendered_url:
+            return AppletMessage(
+                content={"error": "HTTP request URL resolved to an empty value"},
+                context=message.context,
+                metadata={"applet": HTTP_REQUEST_NODE_TYPE, "status": "error"},
+            )
+
+        rendered_headers = self._normalize_headers(
+            _render_template_payload(config.headers, template_data)
+        )
+        rendered_query_params = self._normalize_query_params(
+            _render_template_payload(config.query_params, template_data)
+        )
+
+        body_template = config.body_template
+        if body_template is None:
+            body_template = self._default_body_template(message, config.method)
+        rendered_body = (
+            _render_template_payload(body_template, template_data)
+            if body_template is not None
+            else None
+        )
+
+        request_kwargs: Dict[str, Any] = {"headers": rendered_headers}
+        if rendered_query_params:
+            request_kwargs["params"] = rendered_query_params
+        if config.body_type != "none" and rendered_body is not None:
+            self._apply_body_payload(config.body_type, rendered_body, request_kwargs)
+        request_kwargs.update(dict(config.extra))
+
+        try:
+            async with httpx.AsyncClient(
+                timeout=config.timeout_seconds,
+                follow_redirects=config.allow_redirects,
+                verify=config.verify_ssl,
+            ) as client:
+                response = await client.request(config.method, rendered_url, **request_kwargs)
+        except httpx.HTTPError as exc:
+            logger.error("HTTP request node error: %s", exc)
+            return AppletMessage(
+                content={
+                    "error": str(exc),
+                    "url": rendered_url,
+                    "method": config.method,
+                },
+                context=message.context,
+                metadata={
+                    "applet": HTTP_REQUEST_NODE_TYPE,
+                    "status": "error",
+                    "method": config.method,
+                    "url": rendered_url,
+                },
+            )
+
+        parsed_data = self._parse_response_data(response)
+        response_headers: Dict[str, str] = (
+            {key: value for key, value in response.headers.items()}
+            if config.include_response_headers
+            else {}
+        )
+
+        output_content: Dict[str, Any] = {
+            "status_code": response.status_code,
+            "ok": response.is_success,
+            "url": str(response.url),
+            "method": config.method,
+            "data": parsed_data,
+            "request": {
+                "url": rendered_url,
+                "method": config.method,
+                "headers": rendered_headers,
+                "query_params": rendered_query_params,
+                "body": rendered_body,
+            },
+        }
+        if response_headers:
+            output_content["headers"] = response_headers
+
+        output_context = {**message.context}
+        output_context["last_http_response"] = output_content
+
+        metadata = {
+            "applet": HTTP_REQUEST_NODE_TYPE,
+            "status": "success" if response.is_success else "error",
+            "method": config.method,
+            "status_code": response.status_code,
+            "url": str(response.url),
+        }
+        return AppletMessage(content=output_content, context=output_context, metadata=metadata)
+
+    def _resolve_config(self, message: AppletMessage) -> HTTPRequestNodeConfigModel:
+        node_data = message.metadata.get("node_data", {})
+        if not isinstance(node_data, dict):
+            node_data = {}
+
+        context_config = message.context.get("http_request_config", {})
+        if not isinstance(context_config, dict):
+            context_config = {}
+        legacy_context_config = message.context.get("http_config", {})
+        if isinstance(legacy_context_config, dict):
+            context_config = {**legacy_context_config, **context_config}
+
+        metadata_config = message.metadata.get("http_request_config", {})
+        if not isinstance(metadata_config, dict):
+            metadata_config = {}
+        legacy_metadata_config = message.metadata.get("http_config", {})
+        if isinstance(legacy_metadata_config, dict):
+            metadata_config = {**legacy_metadata_config, **metadata_config}
+
+        merged = {**context_config, **metadata_config, **node_data}
+        config_payload = {
+            "label": merged.get("label", "HTTP Request"),
+            "url": merged.get("url"),
+            "method": merged.get("method", "GET"),
+            "headers": merged.get("headers", {}),
+            "query_params": merged.get("query_params", merged.get("queryParams", merged.get("params", {}))),
+            "body_template": merged.get("body_template", merged.get("bodyTemplate", merged.get("body"))),
+            "body_type": merged.get("body_type", merged.get("bodyType", "auto")),
+            "timeout_seconds": merged.get("timeout_seconds", merged.get("timeoutSeconds", 30.0)),
+            "allow_redirects": merged.get("allow_redirects", merged.get("allowRedirects", True)),
+            "verify_ssl": merged.get("verify_ssl", merged.get("verifySSL", True)),
+            "include_response_headers": merged.get(
+                "include_response_headers",
+                merged.get("includeResponseHeaders", True),
+            ),
+            "extra": merged.get("extra", {}),
+        }
+        return HTTPRequestNodeConfigModel.model_validate(config_payload)
+
+    def _template_data(self, message: AppletMessage) -> Dict[str, Any]:
+        context = message.context if isinstance(message.context, dict) else {}
+        results = context.get("results", {})
+        if not isinstance(results, dict):
+            results = {}
+        return {
+            "input": message.content,
+            "content": message.content,
+            "context": context,
+            "results": results,
+            "run_id": context.get("run_id", message.metadata.get("run_id")),
+            "node_id": message.metadata.get("node_id"),
+        }
+
+    def _normalize_headers(self, raw_headers: Any) -> Dict[str, str]:
+        if not isinstance(raw_headers, dict):
+            return {}
+        headers: Dict[str, str] = {}
+        for key, value in raw_headers.items():
+            if value is None:
+                continue
+            key_str = str(key).strip()
+            if not key_str:
+                continue
+            if isinstance(value, (dict, list)):
+                headers[key_str] = json.dumps(value, ensure_ascii=False)
+            else:
+                headers[key_str] = str(value)
+        return headers
+
+    def _normalize_query_params(self, raw_query_params: Any) -> Dict[str, Any]:
+        if not isinstance(raw_query_params, dict):
+            return {}
+        query_params: Dict[str, Any] = {}
+        for key, value in raw_query_params.items():
+            key_str = str(key).strip()
+            if not key_str or value is None:
+                continue
+            query_params[key_str] = value
+        return query_params
+
+    def _default_body_template(self, message: AppletMessage, method: str) -> Optional[Any]:
+        if method not in {"POST", "PUT", "DELETE"}:
+            return None
+        if message.content is None:
+            return None
+        return message.content
+
+    def _apply_body_payload(
+        self,
+        body_type: str,
+        body: Any,
+        request_kwargs: Dict[str, Any],
+    ) -> None:
+        if body_type == "json" or (body_type == "auto" and isinstance(body, (dict, list))):
+            request_kwargs["json"] = body
+            return
+
+        if body_type == "form":
+            if isinstance(body, dict):
+                request_kwargs["data"] = {
+                    str(key): (
+                        json.dumps(value, ensure_ascii=False)
+                        if isinstance(value, (dict, list))
+                        else str(value)
+                    )
+                    for key, value in body.items()
+                }
+            else:
+                request_kwargs["data"] = {"value": str(body)}
+            return
+
+        if body_type == "none":
+            return
+
+        if isinstance(body, (dict, list)):
+            request_kwargs["content"] = json.dumps(body, ensure_ascii=False)
+        else:
+            request_kwargs["content"] = str(body)
+
+    def _parse_response_data(self, response: httpx.Response) -> Any:
+        content_type = response.headers.get("content-type", "").lower()
+        if "application/json" in content_type:
+            try:
+                return response.json()
+            except Exception:
+                pass
+
+        text_body = response.text
+        if not text_body:
+            return ""
+        try:
+            return json.loads(text_body)
+        except Exception:
+            return text_body
+
+
 applet_registry["llm"] = LLMNodeApplet
 applet_registry[IMAGE_NODE_TYPE] = ImageGenNodeApplet
 applet_registry[MEMORY_NODE_TYPE] = MemoryNodeApplet
+applet_registry[HTTP_REQUEST_NODE_TYPE] = HTTPRequestNodeApplet
 
 
 # ============================================================
@@ -2658,6 +2969,16 @@ class Orchestrator:
         if normalized_type in {MEMORY_NODE_TYPE, "memory_node", "memory-node"}:
             applet_registry[MEMORY_NODE_TYPE] = MemoryNodeApplet
             return MemoryNodeApplet()
+
+        if normalized_type in {
+            HTTP_REQUEST_NODE_TYPE,
+            "http-request",
+            "httprequest",
+            "http_request_node",
+            "http",
+        }:
+            applet_registry[HTTP_REQUEST_NODE_TYPE] = HTTPRequestNodeApplet
+            return HTTPRequestNodeApplet()
 
         try:
             module_path = f"apps.applets.{normalized_type}.applet"
