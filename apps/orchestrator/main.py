@@ -107,6 +107,7 @@ TRANSFORM_NODE_TYPE = "transform"
 IF_ELSE_NODE_TYPE = "if_else"
 MERGE_NODE_TYPE = "merge"
 FOR_EACH_NODE_TYPE = "for_each"
+ENGINE_MAX_CONCURRENCY = int(os.environ.get("ENGINE_MAX_CONCURRENCY", "10"))
 DEFAULT_MEMORY_BACKEND = os.environ.get("MEMORY_BACKEND", "sqlite_fts").strip().lower()
 DEFAULT_MEMORY_NAMESPACE = os.environ.get("MEMORY_NAMESPACE", "default").strip() or "default"
 DEFAULT_MEMORY_SQLITE_PATH = str(
@@ -3891,6 +3892,112 @@ class IfElseNodeApplet(BaseApplet):
         return flags
 
 
+class MergeNodeApplet(BaseApplet):
+    """Fan-in node that merges multiple upstream branch outputs."""
+
+    VERSION = "1.0.0"
+    CAPABILITIES = [
+        "fan-in",
+        "merge-array",
+        "merge-concatenate",
+        "merge-first-wins",
+    ]
+
+    async def on_message(self, message: AppletMessage) -> AppletMessage:
+        base_context = message.context if isinstance(message.context, dict) else {}
+
+        try:
+            config = self._resolve_config(message)
+        except Exception as exc:
+            error_content = {
+                "ok": False,
+                "strategy": "unknown",
+                "output": None,
+                "count": 0,
+                "error": f"Invalid merge configuration: {exc}",
+            }
+            return AppletMessage(
+                content=error_content,
+                context={**base_context, "last_merge_response": error_content},
+                metadata={"applet": MERGE_NODE_TYPE, "status": "error"},
+            )
+
+        inputs = self._normalize_inputs(message.content)
+        merged_output = self._merge_inputs(
+            strategy=config.strategy,
+            inputs=inputs,
+            delimiter=config.delimiter,
+        )
+
+        output_content = {
+            "ok": True,
+            "strategy": config.strategy,
+            "count": len(inputs),
+            "inputs": inputs,
+            "output": merged_output,
+        }
+        output_context = {**base_context, "last_merge_response": output_content}
+        output_metadata = {
+            "applet": MERGE_NODE_TYPE,
+            "status": "success",
+            "strategy": config.strategy,
+            "input_count": len(inputs),
+        }
+        return AppletMessage(content=output_content, context=output_context, metadata=output_metadata)
+
+    def _resolve_config(self, message: AppletMessage) -> MergeNodeConfigModel:
+        context = message.context if isinstance(message.context, dict) else {}
+        node_data = message.metadata.get("node_data", {})
+        if not isinstance(node_data, dict):
+            node_data = {}
+
+        context_config = context.get("merge_config", {})
+        if not isinstance(context_config, dict):
+            context_config = {}
+
+        metadata_config = message.metadata.get("merge_config", {})
+        if not isinstance(metadata_config, dict):
+            metadata_config = {}
+
+        merged = {**context_config, **metadata_config, **node_data}
+        config_payload = {
+            "label": merged.get("label", "Merge"),
+            "strategy": merged.get("strategy", merged.get("merge_strategy", merged.get("mergeStrategy", "array"))),
+            "delimiter": merged.get("delimiter", merged.get("join_delimiter", merged.get("joinDelimiter", "\n"))),
+            "extra": merged.get("extra", {}),
+        }
+        return MergeNodeConfigModel.model_validate(config_payload)
+
+    def _normalize_inputs(self, content: Any) -> List[Any]:
+        if isinstance(content, dict):
+            raw_inputs = content.get("inputs")
+            if isinstance(raw_inputs, list):
+                return list(raw_inputs)
+            if raw_inputs is not None:
+                return [raw_inputs]
+            if "input" in content:
+                return [content.get("input")]
+            return [content]
+
+        if isinstance(content, list):
+            return list(content)
+        if content is None:
+            return []
+        return [content]
+
+    def _merge_inputs(
+        self,
+        strategy: str,
+        inputs: List[Any],
+        delimiter: str,
+    ) -> Any:
+        if strategy == "first_wins":
+            return inputs[0] if inputs else None
+        if strategy == "concatenate":
+            return delimiter.join(_as_text(item) for item in inputs)
+        return inputs
+
+
 class CodeNodeApplet(BaseApplet):
     """Sandboxed code execution node for Python and JavaScript."""
 
@@ -4383,6 +4490,7 @@ applet_registry[HTTP_REQUEST_NODE_TYPE] = HTTPRequestNodeApplet
 applet_registry[CODE_NODE_TYPE] = CodeNodeApplet
 applet_registry[TRANSFORM_NODE_TYPE] = TransformNodeApplet
 applet_registry[IF_ELSE_NODE_TYPE] = IfElseNodeApplet
+applet_registry[MERGE_NODE_TYPE] = MergeNodeApplet
 applet_registry[FOR_EACH_NODE_TYPE] = ForEachNodeApplet
 
 
@@ -4454,6 +4562,17 @@ class Orchestrator:
         }:
             applet_registry[IF_ELSE_NODE_TYPE] = IfElseNodeApplet
             return IfElseNodeApplet()
+
+        if normalized_type in {
+            MERGE_NODE_TYPE,
+            "fan_in",
+            "fan-in",
+            "merge_node",
+            "merge-node",
+            "fanin",
+        }:
+            applet_registry[MERGE_NODE_TYPE] = MergeNodeApplet
+            return MergeNodeApplet()
 
         if normalized_type in {
             FOR_EACH_NODE_TYPE,
@@ -4914,6 +5033,75 @@ class Orchestrator:
         return await Orchestrator.auto_migrate_legacy_nodes(flow, persist=persist)
 
     @staticmethod
+    def _topological_layers(
+        nodes_by_id: Dict[str, Dict[str, Any]],
+        edges_by_source: Dict[str, List[Dict[str, Any]]],
+        incoming_sources_by_target: Dict[str, List[str]],
+    ) -> List[List[str]]:
+        """Compute topological layers (Kahn's algorithm).
+
+        Returns a list of layers, where each layer contains node IDs that
+        have no unresolved dependencies and can execute in parallel.
+        """
+        in_degree: Dict[str, int] = {nid: 0 for nid in nodes_by_id}
+        for target_id, sources in incoming_sources_by_target.items():
+            if target_id in in_degree:
+                in_degree[target_id] = len(sources)
+
+        queue = [nid for nid, deg in in_degree.items() if deg == 0]
+        layers: List[List[str]] = []
+
+        while queue:
+            layers.append(list(queue))
+            next_queue: List[str] = []
+            for nid in queue:
+                for edge in edges_by_source.get(nid, []):
+                    target = edge.get("target")
+                    if not isinstance(target, str) or target not in in_degree:
+                        continue
+                    in_degree[target] -= 1
+                    if in_degree[target] == 0 and target not in next_queue:
+                        next_queue.append(target)
+            queue = next_queue
+
+        # Any remaining nodes (cycles) get appended as a final layer
+        remaining = [nid for nid, deg in in_degree.items() if deg > 0]
+        if remaining:
+            layers.append(remaining)
+
+        return layers
+
+    @staticmethod
+    def _detect_parallel_groups(
+        layer: List[str],
+        nodes_by_id: Dict[str, Dict[str, Any]],
+    ) -> List[List[str]]:
+        """Split a topological layer into parallel-safe groups.
+
+        Merge nodes and nodes with order dependencies are isolated;
+        all other independent nodes are grouped together for parallel execution.
+        """
+        parallel_group: List[str] = []
+        sequential: List[List[str]] = []
+
+        for nid in layer:
+            node = nodes_by_id.get(nid)
+            if not isinstance(node, dict):
+                continue
+            node_type = str(node.get("type", "")).strip().lower()
+            # Merge nodes must wait for inputs; run them individually
+            if node_type == MERGE_NODE_TYPE:
+                sequential.append([nid])
+            else:
+                parallel_group.append(nid)
+
+        groups: List[List[str]] = []
+        if parallel_group:
+            groups.append(parallel_group)
+        groups.extend(sequential)
+        return groups
+
+    @staticmethod
     async def execute_flow(flow: dict, input_data: Dict[str, Any]) -> str:
         """Execute a flow and return the run ID."""
         run_id = Orchestrator.create_run_id()
@@ -4973,6 +5161,7 @@ class Orchestrator:
             }
 
             edges_by_source: Dict[str, List[Dict[str, Any]]] = {}
+            incoming_sources_by_target: Dict[str, List[str]] = {}
             for edge in flow_edges:
                 if not isinstance(edge, dict):
                     continue
@@ -4983,6 +5172,9 @@ class Orchestrator:
                 if not isinstance(target, str) or not target:
                     continue
                 edges_by_source.setdefault(source, []).append(edge)
+                incoming_sources = incoming_sources_by_target.setdefault(target, [])
+                if source not in incoming_sources:
+                    incoming_sources.append(source)
 
             target_nodes = {
                 edge.get("target")
@@ -4994,6 +5186,7 @@ class Orchestrator:
                 for node in flow_nodes
                 if isinstance(node, dict) and isinstance(node.get("id"), str) and node["id"] not in target_nodes
             ]
+            scheduled_nodes = set(start_nodes)
 
             if not start_nodes:
                 if status and isinstance(status, dict):
@@ -5018,6 +5211,8 @@ class Orchestrator:
                 "results": {},
                 "run_id": run_id
             }
+            merge_inputs_by_node: Dict[str, List[Any]] = {}
+            merge_input_sources_by_node: Dict[str, List[str]] = {}
 
             if status and isinstance(status, dict):
                 status["input_data"] = input_data
@@ -5026,17 +5221,33 @@ class Orchestrator:
             visited = set()
 
             while current_nodes:
-                next_nodes = []
+                next_nodes: List[str] = []
 
                 for node_id in current_nodes:
                     if node_id in visited:
                         continue
 
-                    visited.add(node_id)
                     node = nodes_by_id.get(node_id)
                     if not isinstance(node, dict):
                         continue
+                    node_type = str(node.get("type", "")).strip().lower()
                     outgoing_edges = edges_by_source.get(node_id, [])
+
+                    if node_type == MERGE_NODE_TYPE:
+                        required_sources = incoming_sources_by_target.get(node_id, [])
+                        received_sources = merge_input_sources_by_node.get(node_id, [])
+                        missing_sources = [source for source in required_sources if source not in received_sources]
+                        # Wait while a missing upstream node may still contribute to this merge.
+                        if missing_sources and any(
+                            source in scheduled_nodes and source not in visited
+                            for source in missing_sources
+                        ):
+                            if node_id not in next_nodes:
+                                next_nodes.append(node_id)
+                            scheduled_nodes.add(node_id)
+                            continue
+
+                    visited.add(node_id)
 
                     if status and isinstance(status, dict):
                         status["current_applet"] = node["type"]
@@ -5051,9 +5262,9 @@ class Orchestrator:
                         await workflow_run_repo.save(status)
                         await broadcast_status_fn(broadcast_data)
 
-                    if node["type"].lower() in ["start", "end"]:
+                    if node_type in ["start", "end"]:
                         if (
-                            node["type"].lower() == "start"
+                            node_type == "start"
                             and "data" in node
                             and "parsedInputData" in node["data"]
                         ):
@@ -5063,56 +5274,183 @@ class Orchestrator:
                                 if status and isinstance(status, dict):
                                     status["input_data"] = parsed_input
 
-                        next_nodes.extend(Orchestrator._collect_outgoing_targets(outgoing_edges))
+                        next_targets = Orchestrator._collect_outgoing_targets(outgoing_edges)
+                        start_or_end_output = context.get("input", input_data)
+                        for target_id in next_targets:
+                            if target_id not in next_nodes:
+                                next_nodes.append(target_id)
+                            scheduled_nodes.add(target_id)
+
+                            target_node = nodes_by_id.get(target_id)
+                            if not isinstance(target_node, dict):
+                                continue
+                            target_type = str(target_node.get("type", "")).strip().lower()
+                            if target_type != MERGE_NODE_TYPE:
+                                continue
+
+                            merge_inputs_by_node.setdefault(target_id, []).append(start_or_end_output)
+                            merge_sources = merge_input_sources_by_node.setdefault(target_id, [])
+                            if node_id not in merge_sources:
+                                merge_sources.append(node_id)
                         continue
 
                     try:
-                        applet = await Orchestrator.load_applet(node["type"].lower())
+                        # Extract configuration for retry, timeout, and fallback
+                        node_data = node.get("data", {})
+                        if not isinstance(node_data, dict):
+                            node_data = {}
 
-                        message_content = input_data
-                        # Testing replacement
-                        message_metadata = {"node_id": node_id, "run_id": run_id}
+                        timeout_seconds = float(node_data.get("timeout_seconds", 60.0))
+                        retry_config = node_data.get("retry_config", {})
+                        if not isinstance(retry_config, dict):
+                            retry_config = {}
 
-                        if "data" in node and isinstance(node["data"], dict):
-                            message_metadata["node_data"] = node["data"]
+                        max_retries = int(retry_config.get("max_retries", 0))
+                        retry_delay = float(retry_config.get("delay", 1.0))
+                        retry_backoff = float(retry_config.get("backoff", 2.0))
+                        fallback_node_id = node_data.get("fallback_node_id")
 
-                            if node["type"].lower() == "writer" and "systemPrompt" in node["data"]:
-                                message_metadata["system_prompt"] = node["data"]["systemPrompt"]
+                        attempts = 0
+                        last_error = None
+                        success = False
+                        response = None
 
-                            if node["type"].lower() == "artist":
-                                if "systemPrompt" in node["data"]:
-                                    message_metadata["system_prompt"] = node["data"]["systemPrompt"]
-                                if "generator" in node["data"]:
-                                    message_metadata["generator"] = node["data"]["generator"]
+                        while attempts <= max_retries:
+                            try:
+                                if attempts > 0:
+                                    wait_time = retry_delay * (retry_backoff ** (attempts - 1))
+                                    logger.info(f"Retrying node {node_id} (attempt {attempts}/{max_retries}) after {wait_time}s")
+                                    await asyncio.sleep(wait_time)
 
-                        message = AppletMessage(
-                            content=message_content,
-                            context=context,
-                            metadata=message_metadata
-                        )
+                                applet = await Orchestrator.load_applet(node_type)
 
-                        response = await applet.on_message(message)
+                                message_content = input_data
+                                if node_type == MERGE_NODE_TYPE:
+                                    node_inputs = list(merge_inputs_by_node.get(node_id, []))
+                                    node_sources = list(merge_input_sources_by_node.get(node_id, []))
+                                    message_content = {
+                                        "inputs": node_inputs,
+                                        "sources": node_sources,
+                                        "count": len(node_inputs),
+                                        "input": input_data,
+                                    }
+                                message_metadata = {"node_id": node_id, "run_id": run_id}
+                                message_metadata["node_data"] = node_data
 
-                        context["results"][node_id] = {
-                            "type": node["type"],
-                            "output": response.content
-                        }
-                        context.update(response.context)
+                                if node_type == "writer" and "systemPrompt" in node_data:
+                                    message_metadata["system_prompt"] = node_data["systemPrompt"]
+
+                                if node_type == "artist":
+                                    if "systemPrompt" in node_data:
+                                        message_metadata["system_prompt"] = node_data["system_prompt"]
+                                    if "generator" in node_data:
+                                        message_metadata["generator"] = node_data["generator"]
+
+                                message = AppletMessage(
+                                    content=message_content,
+                                    context=context,
+                                    metadata=message_metadata
+                                )
+
+                                # Execute with timeout
+                                response = await asyncio.wait_for(
+                                    applet.on_message(message),
+                                    timeout=timeout_seconds
+                                )
+
+                                # Success!
+                                context["results"][node_id] = {
+                                    "type": node["type"],
+                                    "output": response.content,
+                                    "status": "success"
+                                }
+                                context.update(response.context)
+                                success = True
+                                break
+
+                            except asyncio.TimeoutError:
+                                last_error = NodeError(
+                                    NodeErrorCode.TIMEOUT,
+                                    f"Node execution timed out after {timeout_seconds}s",
+                                    node_id=node_id
+                                )
+                                logger.warning(f"Timeout in node {node_id} (attempt {attempts+1}/{max_retries+1})")
+                            except Exception as e:
+                                last_error = NodeError(
+                                    NodeErrorCode.EXECUTION_ERROR,
+                                    str(e),
+                                    node_id=node_id
+                                )
+                                logger.error(f"Error in node {node_id} (attempt {attempts+1}/{max_retries+1}): {e}")
+                            attempts += 1
+
+                        if not success:
+                            if fallback_node_id:
+                                logger.info(f"Using fallback path for node {node_id} -> {fallback_node_id}")
+                                context["results"][node_id] = {
+                                    "type": node["type"],
+                                    "error": last_error.to_dict() if last_error else {"message": "Unknown error"},
+                                    "status": "fallback"
+                                }
+                                if fallback_node_id in nodes_by_id:
+                                    if fallback_node_id not in next_nodes:
+                                        next_nodes.append(fallback_node_id)
+                                    scheduled_nodes.add(fallback_node_id)
+                                
+                                if node_id not in memory_completed_applets:
+                                    memory_completed_applets.append(node_id)
+                                
+                                if status and isinstance(status, dict):
+                                    status["results"] = context["results"]
+                                    status["completed_applets"] = memory_completed_applets
+                                    await workflow_run_repo.save(status)
+                                    await broadcast_status_fn(status)
+                                continue # Skip normal children
+                            else:
+                                # Final failure
+                                logger.error(f"Node {node_id} failed after {attempts} attempts")
+                                if status and isinstance(status, dict):
+                                    status["status"] = "error"
+                                    status["error"] = f"Error in applet '{node['type']}': {str(last_error.message if last_error else 'Unknown error')}"
+                                    if last_error:
+                                        status["error_details"] = last_error.to_dict()
+                                    status["end_time"] = time.time()
+                                    status["results"] = context["results"]
+                                    status["completed_applets"] = memory_completed_applets
+                                    await workflow_run_repo.save(status)
+                                    await broadcast_status_fn(status)
+                                return
 
                         if node_id not in memory_completed_applets:
                             memory_completed_applets.append(node_id)
 
                         if status and isinstance(status, dict):
-                            broadcast_data = status.copy()
-                            broadcast_data["completed_applets"] = memory_completed_applets
-                            await broadcast_status_fn(broadcast_data)
+                            status["results"] = context["results"]
+                            status["completed_applets"] = memory_completed_applets
+                            await workflow_run_repo.save(status)
+                            await broadcast_status_fn(status)
 
                         selected_targets = Orchestrator._resolve_next_targets(
                             node=node,
                             outgoing_edges=outgoing_edges,
                             response=response,
                         )
-                        next_nodes.extend(selected_targets)
+                        for target_id in selected_targets:
+                            if target_id not in next_nodes:
+                                next_nodes.append(target_id)
+                            scheduled_nodes.add(target_id)
+
+                            target_node = nodes_by_id.get(target_id)
+                            if not isinstance(target_node, dict):
+                                continue
+                            target_type = str(target_node.get("type", "")).strip().lower()
+                            if target_type != MERGE_NODE_TYPE:
+                                continue
+
+                            merge_inputs_by_node.setdefault(target_id, []).append(response.content)
+                            merge_sources = merge_input_sources_by_node.setdefault(target_id, [])
+                            if node_id not in merge_sources:
+                                merge_sources.append(node_id)
                         Orchestrator._mark_animated_edges(
                             flow_edges=flow_edges,
                             source_node_id=node_id,
@@ -5120,16 +5458,17 @@ class Orchestrator:
                         )
 
                     except Exception as e:
-                        logger.error(f"Error executing applet '{node['type']}': {e}")
+                        logger.error(f"Unexpected error executing node '{node['type']}': {e}")
                         if status and isinstance(status, dict):
                             status["status"] = "error"
-                            status["error"] = f"Error in applet '{node['type']}': {str(e)}"
+                            status["error"] = f"Unexpected error in applet '{node['type']}': {str(e)}"
                             status["end_time"] = time.time()
+                            status["results"] = context["results"]
+                            status["completed_applets"] = memory_completed_applets
                             await workflow_run_repo.save(status)
-                            broadcast_data = status.copy()
-                            broadcast_data["completed_applets"] = memory_completed_applets
-                            await broadcast_status_fn(broadcast_data)
+                            await broadcast_status_fn(status)
                         return
+
 
                 current_nodes = next_nodes
 
