@@ -8,9 +8,8 @@ import logging
 import uuid
 import time
 from apps.orchestrator.models import Flow, FlowNode, FlowEdge, WorkflowRun
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.orm import selectinload
-from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from apps.orchestrator.db import get_db_session
 
