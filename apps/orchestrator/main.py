@@ -1604,6 +1604,10 @@ def _sandbox_preexec_fn(
             resource.setrlimit(resource.RLIMIT_NOFILE, (64, 64))
         except Exception:
             pass
+        try:
+            resource.setrlimit(resource.RLIMIT_NPROC, (1, 1)) # Limit to a single process
+        except Exception:
+            pass
     return _preexec
 
 

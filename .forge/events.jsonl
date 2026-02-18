@@ -186,3 +186,7 @@
 {"timestamp":"2026-02-18T02:45:53.363176462Z","event_type":"task_completed","task_id":"T-067","agent":"claude","message":"T-067 completed by claude (exit 0)","metadata":null}
 {"timestamp":"2026-02-18T02:53:38.122481972Z","event_type":"task_completed","task_id":"T-065","agent":"codex","message":"T-065 completed by codex (exit 0)","metadata":null}
 {"timestamp":"2026-02-18T02:59:01.531606373Z","event_type":"task_completed","task_id":"T-071","agent":"codex","message":"T-071 completed by codex (exit 0)","metadata":null}
+{"timestamp":"2026-02-18T02:59:19.643552833Z","event_type":"task_started","task_id":null,"agent":null,"message":"Reset T-070 to pending (dashboard exiting)","metadata":null}
+{"timestamp":"2026-02-18T02:59:19.645110327Z","event_type":"task_started","task_id":null,"agent":null,"message":"Reset T-075 to pending (dashboard exiting)","metadata":null}
+{"timestamp":"2026-02-18T02:59:19.645441553Z","event_type":"task_started","task_id":null,"agent":null,"message":"Reset T-068 to pending (dashboard exiting)","metadata":null}
+{"timestamp":"2026-02-18T03:00:04.213779076Z","event_type":"task_completed","task_id":"T-070","agent":"claude","message":"T-070 completed by claude (exit 0)","metadata":null}
