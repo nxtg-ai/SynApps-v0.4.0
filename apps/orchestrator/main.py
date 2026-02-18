@@ -77,6 +77,7 @@ logger = logging.getLogger("orchestrator")
 API_VERSION = "1.0.0"
 WS_AUTH_TOKEN = os.environ.get("WS_AUTH_TOKEN")
 LEGACY_WRITER_NODE_TYPE = "writer"
+LEGACY_ARTIST_NODE_TYPE = "artist"
 LLM_NODE_TYPE = "llm"
 IMAGE_NODE_TYPE = "image"
 LEGACY_WRITER_LLM_PRESET: Dict[str, Any] = {
@@ -85,6 +86,16 @@ LEGACY_WRITER_LLM_PRESET: Dict[str, Any] = {
     "model": "gpt-4o",
     "temperature": 0.7,
     "max_tokens": 1000,
+}
+LEGACY_ARTIST_IMAGE_PRESET: Dict[str, Any] = {
+    "label": "Image Gen",
+    "provider": "stability",
+    "model": "stable-diffusion-xl-1024-v1-0",
+    "size": "1024x1024",
+    "style": "photorealistic",
+    "quality": "standard",
+    "n": 1,
+    "response_format": "b64_json",
 }
 
 # ============================================================
@@ -1740,18 +1751,92 @@ class Orchestrator:
         return migrated_flow, True
 
     @staticmethod
+    def _resolve_legacy_artist_defaults(generator: Any) -> Dict[str, str]:
+        """Map legacy artist generator values to image-provider defaults."""
+        if isinstance(generator, str):
+            value = generator.strip().lower()
+            if value in {"openai", "dall-e-3", "dall-e3", "dalle3"}:
+                return {"provider": "openai", "model": "dall-e-3"}
+            if value in {"flux", "flux-1.1-pro", "flux-1-dev"}:
+                return {"provider": "flux", "model": "flux-1.1-pro"}
+        return {"provider": "stability", "model": "stable-diffusion-xl-1024-v1-0"}
+
+    @staticmethod
+    def migrate_legacy_artist_nodes(flow: Dict[str, Any]) -> tuple[Dict[str, Any], bool]:
+        """Convert legacy artist nodes into image nodes with provider presets."""
+        if not isinstance(flow, dict):
+            return flow, False
+
+        nodes = flow.get("nodes")
+        if not isinstance(nodes, list):
+            return flow, False
+
+        migrated = False
+        migrated_nodes: List[Any] = []
+
+        for node in nodes:
+            if not isinstance(node, dict):
+                migrated_nodes.append(node)
+                continue
+
+            node_type = str(node.get("type", "")).strip().lower()
+            if node_type != LEGACY_ARTIST_NODE_TYPE:
+                migrated_nodes.append(node)
+                continue
+
+            node_data = node.get("data", {})
+            migrated_data = dict(node_data) if isinstance(node_data, dict) else {}
+
+            generator = migrated_data.get("provider")
+            if not isinstance(generator, str):
+                generator = migrated_data.get("generator", migrated_data.get("image_generator"))
+
+            provider_defaults = Orchestrator._resolve_legacy_artist_defaults(generator)
+
+            if "responseFormat" in migrated_data and "response_format" not in migrated_data:
+                migrated_data["response_format"] = migrated_data["responseFormat"]
+
+            for key, value in LEGACY_ARTIST_IMAGE_PRESET.items():
+                migrated_data.setdefault(key, value)
+
+            migrated_data.setdefault("provider", provider_defaults["provider"])
+            migrated_data.setdefault("model", provider_defaults["model"])
+            migrated_data.setdefault("legacy_applet", LEGACY_ARTIST_NODE_TYPE)
+            migrated_data.setdefault("migration_source", "T-054")
+
+            migrated_node = dict(node)
+            migrated_node["type"] = IMAGE_NODE_TYPE
+            migrated_node["data"] = migrated_data
+            migrated_nodes.append(migrated_node)
+            migrated = True
+
+        if not migrated:
+            return flow, False
+
+        migrated_flow = dict(flow)
+        migrated_flow["nodes"] = migrated_nodes
+        return migrated_flow, True
+
+    @staticmethod
+    def migrate_legacy_nodes(flow: Dict[str, Any]) -> tuple[Dict[str, Any], bool]:
+        """Apply all known legacy node migrations."""
+        writer_migrated_flow, writer_migrated = Orchestrator.migrate_legacy_writer_nodes(flow)
+        fully_migrated_flow, artist_migrated = Orchestrator.migrate_legacy_artist_nodes(writer_migrated_flow)
+        return fully_migrated_flow, (writer_migrated or artist_migrated)
+
+    @staticmethod
     async def auto_migrate_legacy_writer_nodes(
         flow: Optional[Dict[str, Any]],
         persist: bool = False,
     ) -> Optional[Dict[str, Any]]:
-        """Apply writer-to-llm migration and optionally persist migrated flow."""
+        """Apply known legacy node migrations and optionally persist migrated flow."""
         if not flow:
             return flow
 
-        migrated_flow, migrated = Orchestrator.migrate_legacy_writer_nodes(flow)
+        migrated_flow, migrated = Orchestrator.migrate_legacy_nodes(flow)
         if migrated:
             logger.info(
-                "Auto-migrated legacy writer nodes to llm nodes for flow '%s'",
+                "Auto-migrated legacy nodes for flow '%s'",
                 migrated_flow.get("id"),
             )
             if persist:
@@ -2039,9 +2124,9 @@ async def create_flow(flow: CreateFlowRequest):
 
     flow_dict = flow.model_dump()
     flow_dict["id"] = flow_id
-    flow_dict, migrated = Orchestrator.migrate_legacy_writer_nodes(flow_dict)
+    flow_dict, migrated = Orchestrator.migrate_legacy_nodes(flow_dict)
     if migrated:
-        logger.info("Applied writer->llm migration while creating flow '%s'", flow_id)
+        logger.info("Applied legacy node migration while creating flow '%s'", flow_id)
     await FlowRepository.save(flow_dict)
     return {"message": "Flow created", "id": flow_id}
 

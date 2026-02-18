@@ -1,201 +1,161 @@
 """
-ArtistApplet - Image generation applet for SynApps
+ArtistApplet - legacy compatibility layer for artist nodes.
 
-This applet uses Stable Diffusion or dall-e-3 to generate images from text prompts.
+Image generation is now routed through the universal Image Gen node.
 """
-import os
-import base64
-import json
-import httpx
 import logging
-from typing import Dict, Any, Optional
+import os
+from typing import Any, Dict
 
-# Import base applet from orchestrator
-from apps.orchestrator.main import BaseApplet, AppletMessage
+from apps.orchestrator.main import AppletMessage, BaseApplet, ImageGenNodeApplet
 
-# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("artist-applet")
 
+MOCK_IMAGE = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+
+
 class ArtistApplet(BaseApplet):
     """
-    Artist Applet that generates images from text prompts.
-    
+    Legacy artist applet wrapper backed by the universal image node.
+
     Capabilities:
     - Image generation from text descriptions
     - Style transfer
     - Visual creation
     """
-    
-    VERSION = "0.1.0"
-    CAPABILITIES = ["image-generation", "text-to-image", "visual-creation"]
-    
+
+    VERSION = "1.0.0"
+    CAPABILITIES = ["image-generation", "text-to-image", "visual-creation", "image-node-compatible"]
+
     def __init__(self):
-        """Initialize the Artist Applet."""
         self.stability_api_key = os.environ.get("STABILITY_API_KEY")
         self.openai_api_key = os.environ.get("OPENAI_API_KEY")
-        
         if not (self.stability_api_key or self.openai_api_key):
-            logger.error("Neither STABILITY_API_KEY nor OPENAI_API_KEY environment variables are set. ArtistApplet cannot function without at least one.")
-            raise RuntimeError("At least one of STABILITY_API_KEY or OPENAI_API_KEY environment variables is required for ArtistApplet. Please set before starting the app.")
-    
+            logger.error(
+                "Neither STABILITY_API_KEY nor OPENAI_API_KEY environment variables are set. "
+                "ArtistApplet cannot function without at least one."
+            )
+            raise RuntimeError(
+                "At least one of STABILITY_API_KEY or OPENAI_API_KEY environment variables is required for ArtistApplet. "
+                "Please set before starting the app."
+            )
+        self._image_applet = ImageGenNodeApplet()
+
     async def on_message(self, message: AppletMessage) -> AppletMessage:
-        """Process an incoming message and generate an image."""
         logger.info("Artist Applet received message")
-        
-        # Extract content from message
-        content = message.content
-        context = message.context
-        
-        # Get the input text/prompt
-        prompt = ""
-        if isinstance(content, str):
-            prompt = content
-        elif isinstance(content, dict) and "prompt" in content:
-            prompt = content["prompt"]
-        elif isinstance(content, dict) and "text" in content:
-            prompt = content["text"]
-        else:
-            prompt = "A beautiful landscape with mountains and a lake."
-        
-        # Get generator options
-        generator = context.get("image_generator", "stability")  # Default to Stability AI
-        
-        # Get style options
+
+        prompt = self._extract_prompt(message.content)
+        context = message.context if isinstance(message.context, dict) else {}
+        generator = context.get("image_generator", "stability")
         style = context.get("style", "photorealistic")
-        
-        # Generate the image
+
         image_data, generator_used = await self._generate_image(prompt, generator, style)
-        
-        # Return the generated image
+
         return AppletMessage(
-            content={
-                "image": image_data,
-                "prompt": prompt,
-                "generator": generator_used
-            },
-            context={**context},  # Preserve context
-            metadata={"applet": "artist", "generator": generator_used}
+            content={"image": image_data, "prompt": prompt, "generator": generator_used},
+            context={**context},
+            metadata={"applet": "artist", "generator": generator_used, "migrated_to": "image"},
         )
-    
+
+    def _extract_prompt(self, content: Any) -> str:
+        if isinstance(content, str):
+            return content
+        if isinstance(content, dict):
+            if isinstance(content.get("prompt"), str):
+                return content["prompt"]
+            if isinstance(content.get("text"), str):
+                return content["text"]
+        return "A beautiful landscape with mountains and a lake."
+
     async def _generate_image(self, prompt: str, generator: str, style: str) -> tuple[str, str]:
-        """Generate an image using the specified API."""
-        # For MVP, we'll mock the response
         if not (self.stability_api_key or self.openai_api_key):
-            # Return mock base64 image data (1x1 transparent pixel)
-            return "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=", "mock"
-        
-        # Try Stability AI first if specified
+            return MOCK_IMAGE, "mock"
+
         if generator.lower() == "stability" and self.stability_api_key:
             try:
                 return await self._call_stability_api(prompt, style), "stability"
-            except Exception as e:
-                logger.error(f"Error with Stability API: {e}, falling back to OpenAI")
-                generator = "openai"  # Fall back to OpenAI
-        
-        # Use dall-e-3 if specified or as fallback
+            except Exception as exc:
+                logger.error(f"Error with Stability API: {exc}, falling back to OpenAI")
+                generator = "openai"
+
         if generator.lower() == "openai" and self.openai_api_key:
             try:
                 return await self._call_openai_api(prompt, style), "openai"
-            except Exception as e:
-                logger.error(f"Error with OpenAI API: {e}")
-                # Return error image
-                return "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=", "error"
-        
-        # If no valid generator or API key, return mock
-        return "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=", "mock"
-    
-    async def _call_stability_api(self, prompt: str, style: str) -> str:
-        """Call Stability AI API to generate an image."""
-        try:
-            engine_id = "stable-diffusion-xl-1024-v1-0"
-            
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                response = await client.post(
-                    f"https://api.stability.ai/v1/generation/{engine_id}/text-to-image",
-                    headers={
-                        "Authorization": f"Bearer {self.stability_api_key}",
-                        "Content-Type": "application/json",
-                        "Accept": "application/json"
-                    },
-                    json={
-                        "text_prompts": [
-                            {
-                                "text": f"{prompt}, {style} style",
-                                "weight": 1.0
-                            }
-                        ],
-                        "cfg_scale": 7,
-                        "height": 1024,
-                        "width": 1024,
-                        "samples": 1,
-                        "steps": 30
-                    }
-                )
-                
-                if response.status_code != 200:
-                    logger.error(f"Stability API error: {response.text}")
-                    raise Exception(f"Stability API error: {response.text}")
-                
-                data = response.json()
-                
-                # Extract the base64 image
-                if "artifacts" in data and len(data["artifacts"]) > 0:
-                    return data["artifacts"][0]["base64"]
-                else:
-                    raise Exception("No image generated by Stability API")
-                
-        except Exception as e:
-            logger.error(f"Error calling Stability API: {e}")
-            raise
-    
-    async def _call_openai_api(self, prompt: str, style: str) -> str:
-        """Call OpenAI dall-e-3 API to generate an image."""
-        try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                response = await client.post(
-                    "https://api.openai.com/v1/images/generations",
-                    headers={
-                        "Authorization": f"Bearer {self.openai_api_key}",
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "model": "dall-e-3-3",
-                        "prompt": f"{prompt}, {style} style",
-                        "n": 1,
-                        "size": "1024x1024",
-                        "response_format": "b64_json"
-                    }
-                )
-                
-                if response.status_code != 200:
-                    logger.error(f"OpenAI API error: {response.text}")
-                    raise Exception(f"OpenAI API error: {response.text}")
-                
-                data = response.json()
-                
-                # Extract the base64 image
-                if "data" in data and len(data["data"]) > 0 and "b64_json" in data["data"][0]:
-                    return data["data"][0]["b64_json"]
-                else:
-                    raise Exception("No image generated by OpenAI API")
-                
-        except Exception as e:
-            logger.error(f"Error calling OpenAI API: {e}")
-            raise
+            except Exception as exc:
+                logger.error(f"Error with OpenAI API: {exc}")
+                return MOCK_IMAGE, "error"
 
-# For testing
+        return MOCK_IMAGE, "mock"
+
+    async def _call_stability_api(self, prompt: str, style: str) -> str:
+        config: Dict[str, Any] = {
+            "provider": "stability",
+            "model": "stable-diffusion-xl-1024-v1-0",
+            "style": style,
+            "size": "1024x1024",
+            "n": 1,
+            "response_format": "b64_json",
+            "api_key": self.stability_api_key,
+        }
+        message = AppletMessage(
+            content={"prompt": prompt},
+            context={"image_config": config},
+            metadata={"image_config": config},
+        )
+        response = await self._image_applet.on_message(message)
+        image = self._extract_image(response)
+        if image:
+            return image
+        raise Exception("No image generated by Stability API")
+
+    async def _call_openai_api(self, prompt: str, style: str) -> str:
+        config: Dict[str, Any] = {
+            "provider": "openai",
+            "model": "dall-e-3",
+            "style": style,
+            "size": "1024x1024",
+            "quality": "standard",
+            "n": 1,
+            "response_format": "b64_json",
+            "api_key": self.openai_api_key,
+        }
+        message = AppletMessage(
+            content={"prompt": prompt},
+            context={"image_config": config},
+            metadata={"image_config": config},
+        )
+        response = await self._image_applet.on_message(message)
+        image = self._extract_image(response)
+        if image:
+            return image
+        raise Exception("No image generated by OpenAI API")
+
+    def _extract_image(self, response: AppletMessage) -> str:
+        if response.metadata.get("status") == "error":
+            raise Exception(str(response.content))
+        if not isinstance(response.content, dict):
+            return ""
+        image = response.content.get("image")
+        if isinstance(image, str):
+            return image
+        images = response.content.get("images")
+        if isinstance(images, list) and images and isinstance(images[0], str):
+            return images[0]
+        return ""
+
+
 if __name__ == "__main__":
     import asyncio
-    
+
     async def test_artist():
         applet = ArtistApplet()
         message = AppletMessage(
             content="A futuristic city with flying cars and neon lights",
             context={},
-            metadata={}
+            metadata={},
         )
         response = await applet.on_message(message)
         print(f"Generated image with {response.content['generator']}")
-    
+
     asyncio.run(test_artist())

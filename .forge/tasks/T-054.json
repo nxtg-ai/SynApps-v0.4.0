@@ -2,7 +2,7 @@
   "id": "T-054",
   "title": "Migrate ArtistApplet to Image Gen Node",
   "description": "Migrate existing ArtistApplet to the new Image Gen Node. Implement auto-migration logic to convert legacy Artist nodes to Image Gen Node with Stability AI preset.",
-  "status": "in_progress",
+  "status": "completed",
   "assigned_to": "codex",
   "task_type": "implement",
   "depends_on": [
@@ -18,8 +18,8 @@
     "Image Gen Node replaces ArtistApplet in all workflows"
   ],
   "created_at": "2026-02-16T06:27:01.699020770Z",
-  "updated_at": "2026-02-18T01:38:31.548838863Z",
-  "completed_at": null,
+  "updated_at": "2026-02-18T01:41:45.262226418Z",
+  "completed_at": "2026-02-18T01:41:45.262226315Z",
   "plan_version": 3,
   "retry_count": 0
 }
