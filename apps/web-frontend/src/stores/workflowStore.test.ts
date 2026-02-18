@@ -1,4 +1,4 @@
-import { act } from '@testing-library/react';
+import { act } from 'react';
 import { useWorkflowStore } from './workflowStore';
 import { vi } from 'vitest';
 
@@ -17,6 +17,52 @@ describe('useWorkflowStore', () => {
 
   it('should have a default initial state after reset', () => {
     const state = useWorkflowStore.getState();
+    expect(state.flow).toBeNull();
+    expect(state.isLoading).toBe(true);
+    expect(state.isSaving).toBe(false);
+    expect(state.showTemplates).toBe(false);
+    expect(state.showCodeEditor).toBe(false);
+    expect(state.selectedApplet).toBe("");
+    expect(state.appletCode).toBe("");
+    expect(state.inputData).toBe("");
+    expect(state.imageGenerator).toBe("stability");
+  });
+
+  it('should reset all state variables to their initial defaults', () => {
+    const { setFlow, setIsLoading, setIsSaving, setShowTemplates, setShowCodeEditor, setSelectedApplet, setAppletCode, setInputData, setImageGenerator, resetWorkflowState } = useWorkflowStore.getState();
+
+    // Modify some state variables
+    act(() => {
+      setFlow({ id: 'test', name: 'test', nodes: [], edges: [] });
+      setIsLoading(false);
+      setIsSaving(true);
+      setShowTemplates(true);
+      setShowCodeEditor(true);
+      setSelectedApplet("modified-applet");
+      setAppletCode("modified code");
+      setInputData("modified input");
+      setImageGenerator("dall-e");
+    });
+
+    // Assert that state variables are indeed modified
+    let state = useWorkflowStore.getState();
+    expect(state.flow).not.toBeNull();
+    expect(state.isLoading).toBe(false);
+    expect(state.isSaving).toBe(true);
+    expect(state.showTemplates).toBe(true);
+    expect(state.showCodeEditor).toBe(true);
+    expect(state.selectedApplet).toBe("modified-applet");
+    expect(state.appletCode).toBe("modified code");
+    expect(state.inputData).toBe("modified input");
+    expect(state.imageGenerator).toBe("dall-e");
+
+    // Reset the state
+    act(() => {
+      resetWorkflowState();
+    });
+
+    // Assert that all state variables are back to their initial default values
+    state = useWorkflowStore.getState();
     expect(state.flow).toBeNull();
     expect(state.isLoading).toBe(true);
     expect(state.isSaving).toBe(false);

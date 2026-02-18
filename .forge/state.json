@@ -2,7 +2,7 @@
   "version": "1.1.0",
   "project_name": "synapps",
   "created_at": "2026-02-15T03:04:41.518674601Z",
-  "updated_at": "2026-02-18T01:44:30.051362128Z",
+  "updated_at": "2026-02-18T01:45:43.212256972Z",
   "tools": [
     {
       "name": "claude",
@@ -39,17 +39,6 @@
     "blocked": 0
   },
   "active_locks": {
-    "T-076": {
-      "task_id": "T-076",
-      "agent": "claude",
-      "locked_at": "2026-02-18T01:43:15.795302229Z",
-      "files": [
-        "apps/orchestrator/main.py",
-        "apps/orchestrator/models.py",
-        "apps/orchestrator/db.py",
-        "apps/orchestrator/repositories.py"
-      ]
-    },
     "T-055": {
       "task_id": "T-055",
       "agent": "codex",
