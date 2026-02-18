@@ -2,7 +2,7 @@
   "id": "T-057",
   "title": "Implement HTTP Request Node",
   "description": "Implement HTTP Request Node to make HTTP requests (GET/POST/PUT/DELETE) with configurable URL, method, headers, and body template.",
-  "status": "pending",
+  "status": "in_progress",
   "assigned_to": "codex",
   "task_type": "implement",
   "depends_on": [
@@ -18,7 +18,7 @@
     "Node output contains response data"
   ],
   "created_at": "2026-02-16T06:27:01.699024486Z",
-  "updated_at": "2026-02-16T06:27:01.699024486Z",
+  "updated_at": "2026-02-18T02:01:26.785394591Z",
   "completed_at": null,
   "plan_version": 3,
   "retry_count": 0

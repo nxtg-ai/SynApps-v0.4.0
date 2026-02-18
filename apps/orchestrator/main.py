@@ -83,6 +83,7 @@ API_VERSION = "1.0.0"
 WS_AUTH_TOKEN = os.environ.get("WS_AUTH_TOKEN")
 LEGACY_WRITER_NODE_TYPE = "writer"
 LEGACY_ARTIST_NODE_TYPE = "artist"
+LEGACY_MEMORY_NODE_TYPE = "memory"
 LLM_NODE_TYPE = "llm"
 IMAGE_NODE_TYPE = "image"
 MEMORY_NODE_TYPE = "memory"
@@ -111,6 +112,16 @@ LEGACY_ARTIST_IMAGE_PRESET: Dict[str, Any] = {
     "quality": "standard",
     "n": 1,
     "response_format": "b64_json",
+}
+LEGACY_MEMORY_BACKEND_ALIASES: Dict[str, str] = {
+    "sqlite": "sqlite_fts",
+    "sqlite_fts": "sqlite_fts",
+    "sqlite-fts": "sqlite_fts",
+    "sqlitefts": "sqlite_fts",
+    "fts": "sqlite_fts",
+    "chroma": "chroma",
+    "chromadb": "chroma",
+    "chroma_db": "chroma",
 }
 
 # ============================================================
@@ -2781,14 +2792,116 @@ class Orchestrator:
         return migrated_flow, True
 
     @staticmethod
+    def _normalize_legacy_memory_backend(raw_backend: Any) -> str:
+        """Map legacy memory backend names to supported memory-node backend ids."""
+        if not isinstance(raw_backend, str):
+            return "sqlite_fts"
+        normalized = raw_backend.strip().lower()
+        return LEGACY_MEMORY_BACKEND_ALIASES.get(normalized, "sqlite_fts")
+
+    @staticmethod
+    def migrate_legacy_memory_nodes(flow: Dict[str, Any]) -> tuple[Dict[str, Any], bool]:
+        """Convert legacy memory applet nodes into memory nodes with persistent defaults."""
+        if not isinstance(flow, dict):
+            return flow, False
+
+        nodes = flow.get("nodes")
+        if not isinstance(nodes, list):
+            return flow, False
+
+        migrated = False
+        migrated_nodes: List[Any] = []
+
+        for node in nodes:
+            if not isinstance(node, dict):
+                migrated_nodes.append(node)
+                continue
+
+            raw_node_type = str(node.get("type", "")).strip()
+            node_type = raw_node_type.lower()
+            is_memory_node = node_type == MEMORY_NODE_TYPE
+            is_memory_alias = node_type in {"memoryapplet", "memory_applet", "memory-applet"}
+            if not (is_memory_node or is_memory_alias):
+                migrated_nodes.append(node)
+                continue
+
+            node_data = node.get("data", {})
+            migrated_data = dict(node_data) if isinstance(node_data, dict) else {}
+
+            legacy_key_mappings = {
+                "memoryKey": "key",
+                "memory_key": "key",
+                "memoryNamespace": "namespace",
+                "memory_namespace": "namespace",
+                "persistPath": "persist_path",
+                "collectionName": "collection",
+                "includeMetadata": "include_metadata",
+                "topK": "top_k",
+            }
+            for legacy_key, modern_key in legacy_key_mappings.items():
+                if legacy_key in migrated_data and modern_key not in migrated_data:
+                    migrated_data[modern_key] = migrated_data[legacy_key]
+
+            if "backend" in migrated_data:
+                migrated_data["backend"] = Orchestrator._normalize_legacy_memory_backend(
+                    migrated_data.get("backend")
+                )
+            else:
+                migrated_data["backend"] = "sqlite_fts"
+
+            operation = migrated_data.get("operation", "store")
+            if isinstance(operation, str):
+                normalized_operation = operation.strip().lower()
+            else:
+                normalized_operation = "store"
+            if normalized_operation not in {"store", "retrieve", "delete", "clear"}:
+                normalized_operation = "store"
+            migrated_data["operation"] = normalized_operation
+
+            namespace = migrated_data.get("namespace", DEFAULT_MEMORY_NAMESPACE)
+            if not isinstance(namespace, str) or not namespace.strip():
+                namespace = DEFAULT_MEMORY_NAMESPACE
+            migrated_data["namespace"] = namespace.strip()
+
+            if "tags" in migrated_data and isinstance(migrated_data["tags"], str):
+                migrated_data["tags"] = [migrated_data["tags"]]
+
+            if "top_k" in migrated_data:
+                try:
+                    migrated_data["top_k"] = max(1, min(50, int(migrated_data["top_k"])))
+                except (TypeError, ValueError):
+                    migrated_data["top_k"] = 5
+
+            migrated_data.setdefault("label", "Memory")
+            migrated_data.setdefault("include_metadata", False)
+            migrated_data.setdefault("legacy_applet", LEGACY_MEMORY_NODE_TYPE)
+            migrated_data.setdefault("migration_source", "T-056")
+
+            migrated_node = dict(node)
+            migrated_node["type"] = MEMORY_NODE_TYPE
+            migrated_node["data"] = migrated_data
+            migrated_nodes.append(migrated_node)
+
+            if migrated_node != node:
+                migrated = True
+
+        if not migrated:
+            return flow, False
+
+        migrated_flow = dict(flow)
+        migrated_flow["nodes"] = migrated_nodes
+        return migrated_flow, True
+
+    @staticmethod
     def migrate_legacy_nodes(flow: Dict[str, Any]) -> tuple[Dict[str, Any], bool]:
         """Apply all known legacy node migrations."""
         writer_migrated_flow, writer_migrated = Orchestrator.migrate_legacy_writer_nodes(flow)
-        fully_migrated_flow, artist_migrated = Orchestrator.migrate_legacy_artist_nodes(writer_migrated_flow)
-        return fully_migrated_flow, (writer_migrated or artist_migrated)
+        artist_migrated_flow, artist_migrated = Orchestrator.migrate_legacy_artist_nodes(writer_migrated_flow)
+        fully_migrated_flow, memory_migrated = Orchestrator.migrate_legacy_memory_nodes(artist_migrated_flow)
+        return fully_migrated_flow, (writer_migrated or artist_migrated or memory_migrated)
 
     @staticmethod
-    async def auto_migrate_legacy_writer_nodes(
+    async def auto_migrate_legacy_nodes(
         flow: Optional[Dict[str, Any]],
         persist: bool = False,
     ) -> Optional[Dict[str, Any]]:
@@ -2805,6 +2918,14 @@ class Orchestrator:
             if persist:
                 await FlowRepository.save(migrated_flow)
         return migrated_flow
+
+    @staticmethod
+    async def auto_migrate_legacy_writer_nodes(
+        flow: Optional[Dict[str, Any]],
+        persist: bool = False,
+    ) -> Optional[Dict[str, Any]]:
+        """Backward-compatible alias for legacy migration helper."""
+        return await Orchestrator.auto_migrate_legacy_nodes(flow, persist=persist)
 
     @staticmethod
     async def execute_flow(flow: dict, input_data: Dict[str, Any]) -> str:
@@ -3103,7 +3224,7 @@ async def list_flows(
     flows = await FlowRepository.get_all()
     migrated_flows: List[Dict[str, Any]] = []
     for flow in flows:
-        migrated_flow = await Orchestrator.auto_migrate_legacy_writer_nodes(flow, persist=True)
+        migrated_flow = await Orchestrator.auto_migrate_legacy_nodes(flow, persist=True)
         if isinstance(migrated_flow, dict):
             migrated_flows.append(migrated_flow)
     return paginate(migrated_flows, page, page_size)
@@ -3115,7 +3236,7 @@ async def get_flow(flow_id: str):
     flow = await FlowRepository.get_by_id(flow_id)
     if not flow:
         raise HTTPException(status_code=404, detail="Flow not found")
-    flow = await Orchestrator.auto_migrate_legacy_writer_nodes(flow, persist=True)
+    flow = await Orchestrator.auto_migrate_legacy_nodes(flow, persist=True)
     return flow
 
 
@@ -3135,7 +3256,7 @@ async def run_flow(flow_id: str, body: RunFlowRequest):
     flow = await FlowRepository.get_by_id(flow_id)
     if not flow:
         raise HTTPException(status_code=404, detail="Flow not found")
-    flow = await Orchestrator.auto_migrate_legacy_writer_nodes(flow, persist=True)
+    flow = await Orchestrator.auto_migrate_legacy_nodes(flow, persist=True)
     run_id = await Orchestrator.execute_flow(flow, body.input)
     return {"run_id": run_id}
 
