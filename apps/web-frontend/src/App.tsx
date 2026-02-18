@@ -11,6 +11,7 @@ import SettingsPage from './pages/SettingsPage/SettingsPage';
 import NotFoundPage from './pages/NotFoundPage/NotFoundPage';
 import webSocketService from './services/WebSocketService';
 import { Button } from './components/ui/button';
+import { useSettingsStore } from './stores/settingsStore';
 
 const AppRoutes: React.FC = () => {
   const location = useLocation();
@@ -42,6 +43,9 @@ const AppRoutes: React.FC = () => {
 };
 
 const App: React.FC = () => {
+  const loadSettings = useSettingsStore((state) => state.loadSettings);
+  const darkMode = useSettingsStore((state) => state.darkMode);
+
   useEffect(() => {
     webSocketService.connect();
 
@@ -49,6 +53,14 @@ const App: React.FC = () => {
       webSocketService.disconnect();
     };
   }, []);
+
+  useEffect(() => {
+    loadSettings();
+  }, [loadSettings]);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', darkMode);
+  }, [darkMode]);
 
   return (
     <Router>

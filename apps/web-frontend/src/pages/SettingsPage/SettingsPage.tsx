@@ -2,131 +2,41 @@
  * SettingsPage component
  * Allows user to configure SynApps settings
  */
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import MainLayout from '../../components/Layout/MainLayout';
+import { useSettingsStore } from '../../stores/settingsStore';
 import './SettingsPage.css';
 
 const SettingsPage: React.FC = () => {
-  // API Key settings
-  const [openaiKey, setOpenaiKey] = useState<string>('');
-  const [stabilityKey, setStabilityKey] = useState<string>('');
-  
-  // App appearance settings
-  const [darkMode, setDarkMode] = useState<boolean>(false);
-  const [animationsEnabled, setAnimationsEnabled] = useState<boolean>(true);
-  
-  // Notification settings
-  const [browserNotifications, setBrowserNotifications] = useState<boolean>(true);
-  const [emailNotifications, setEmailNotifications] = useState<boolean>(false);
-  const [emailAddress, setEmailAddress] = useState<string>('');
-  
-  // UI settings
-  const [autoSaveEnabled, setAutoSaveEnabled] = useState<boolean>(true);
-  const [compactMode, setCompactMode] = useState<boolean>(false);
-  
-  // Other settings
-  const [logLevel, setLogLevel] = useState<string>('info');
-  
-  // Load settings from localStorage
+  const openaiKey = useSettingsStore((state) => state.openaiKey);
+  const stabilityKey = useSettingsStore((state) => state.stabilityKey);
+  const darkMode = useSettingsStore((state) => state.darkMode);
+  const animationsEnabled = useSettingsStore((state) => state.animationsEnabled);
+  const browserNotifications = useSettingsStore((state) => state.browserNotifications);
+  const emailNotifications = useSettingsStore((state) => state.emailNotifications);
+  const emailAddress = useSettingsStore((state) => state.emailAddress);
+  const autoSaveEnabled = useSettingsStore((state) => state.autoSaveEnabled);
+  const compactMode = useSettingsStore((state) => state.compactMode);
+  const logLevel = useSettingsStore((state) => state.logLevel);
+  const setSettings = useSettingsStore((state) => state.setSettings);
+  const loadSettings = useSettingsStore((state) => state.loadSettings);
+  const saveSettingsStore = useSettingsStore((state) => state.saveSettings);
+  const resetSettingsStore = useSettingsStore((state) => state.resetSettings);
+
   useEffect(() => {
-    // API Keys
-    const savedOpenaiKey = localStorage.getItem('openai_key');
-    if (savedOpenaiKey) setOpenaiKey(savedOpenaiKey);
-    
-    const savedStabilityKey = localStorage.getItem('stability_key');
-    if (savedStabilityKey) setStabilityKey(savedStabilityKey);
-    
-    // App appearance
-    const savedDarkMode = localStorage.getItem('dark_mode');
-    if (savedDarkMode) setDarkMode(savedDarkMode === 'true');
-    
-    const savedAnimations = localStorage.getItem('animations_enabled');
-    if (savedAnimations) setAnimationsEnabled(savedAnimations === 'true');
-    
-    // Notifications
-    const savedBrowserNotifications = localStorage.getItem('browser_notifications');
-    if (savedBrowserNotifications) setBrowserNotifications(savedBrowserNotifications === 'true');
-    
-    const savedEmailNotifications = localStorage.getItem('email_notifications');
-    if (savedEmailNotifications) setEmailNotifications(savedEmailNotifications === 'true');
-    
-    const savedEmailAddress = localStorage.getItem('email_address');
-    if (savedEmailAddress) setEmailAddress(savedEmailAddress);
-    
-    // UI settings
-    const savedAutoSave = localStorage.getItem('auto_save');
-    if (savedAutoSave) setAutoSaveEnabled(savedAutoSave === 'true');
-    
-    const savedCompactMode = localStorage.getItem('compact_mode');
-    if (savedCompactMode) setCompactMode(savedCompactMode === 'true');
-    
-    // Other settings
-    const savedLogLevel = localStorage.getItem('log_level');
-    if (savedLogLevel) setLogLevel(savedLogLevel);
-  }, []);
+    loadSettings();
+  }, [loadSettings]);
   
   // Save settings to localStorage
   const saveSettings = () => {
-    // API Keys
-    localStorage.setItem('openai_key', openaiKey);
-    localStorage.setItem('stability_key', stabilityKey);
-    
-    // App appearance
-    localStorage.setItem('dark_mode', darkMode.toString());
-    localStorage.setItem('animations_enabled', animationsEnabled.toString());
-    
-    // Notifications
-    localStorage.setItem('browser_notifications', browserNotifications.toString());
-    localStorage.setItem('email_notifications', emailNotifications.toString());
-    localStorage.setItem('email_address', emailAddress);
-    
-    // UI settings
-    localStorage.setItem('auto_save', autoSaveEnabled.toString());
-    localStorage.setItem('compact_mode', compactMode.toString());
-    
-    // Other settings
-    localStorage.setItem('log_level', logLevel);
-    
-    // Show success message
+    saveSettingsStore();
     alert('Settings saved successfully');
   };
   
   // Reset settings to defaults
   const resetSettings = () => {
     if (window.confirm('Are you sure you want to reset all settings to defaults?')) {
-      // API Keys
-      setOpenaiKey('');
-      setStabilityKey('');
-      
-      // App appearance
-      setDarkMode(false);
-      setAnimationsEnabled(true);
-      
-      // Notifications
-      setBrowserNotifications(true);
-      setEmailNotifications(false);
-      setEmailAddress('');
-      
-      // UI settings
-      setAutoSaveEnabled(true);
-      setCompactMode(false);
-      
-      // Other settings
-      setLogLevel('info');
-      
-      // Clear localStorage
-      localStorage.removeItem('openai_key');
-      localStorage.removeItem('stability_key');
-      localStorage.removeItem('dark_mode');
-      localStorage.removeItem('animations_enabled');
-      localStorage.removeItem('browser_notifications');
-      localStorage.removeItem('email_notifications');
-      localStorage.removeItem('email_address');
-      localStorage.removeItem('auto_save');
-      localStorage.removeItem('compact_mode');
-      localStorage.removeItem('log_level');
-      
-      // Show success message
+      resetSettingsStore();
       alert('Settings reset to defaults');
     }
   };
@@ -144,7 +54,7 @@ const SettingsPage: React.FC = () => {
                   type="password"
                   id="openai_key"
                   value={openaiKey}
-                  onChange={(e) => setOpenaiKey(e.target.value)}
+                  onChange={(e) => setSettings({ openaiKey: e.target.value })}
                   placeholder="sk-..."
                 />
                 <div className="input-description">
@@ -158,7 +68,7 @@ const SettingsPage: React.FC = () => {
                   type="password"
                   id="stability_key"
                   value={stabilityKey}
-                  onChange={(e) => setStabilityKey(e.target.value)}
+                  onChange={(e) => setSettings({ stabilityKey: e.target.value })}
                   placeholder="sk_..."
                 />
                 <div className="input-description">
@@ -177,7 +87,7 @@ const SettingsPage: React.FC = () => {
                     type="checkbox"
                     id="dark_mode"
                     checked={darkMode}
-                    onChange={(e) => setDarkMode(e.target.checked)}
+                    onChange={(e) => setSettings({ darkMode: e.target.checked })}
                   />
                   <span>Dark Mode (Coming Soon)</span>
                 </label>
@@ -189,7 +99,7 @@ const SettingsPage: React.FC = () => {
                     type="checkbox"
                     id="animations_enabled"
                     checked={animationsEnabled}
-                    onChange={(e) => setAnimationsEnabled(e.target.checked)}
+                    onChange={(e) => setSettings({ animationsEnabled: e.target.checked })}
                   />
                   <span>Enable Animations</span>
                 </label>
@@ -206,7 +116,7 @@ const SettingsPage: React.FC = () => {
                     type="checkbox"
                     id="browser_notifications"
                     checked={browserNotifications}
-                    onChange={(e) => setBrowserNotifications(e.target.checked)}
+                    onChange={(e) => setSettings({ browserNotifications: e.target.checked })}
                   />
                   <span>Browser Notifications</span>
                 </label>
@@ -218,7 +128,7 @@ const SettingsPage: React.FC = () => {
                     type="checkbox"
                     id="email_notifications"
                     checked={emailNotifications}
-                    onChange={(e) => setEmailNotifications(e.target.checked)}
+                    onChange={(e) => setSettings({ emailNotifications: e.target.checked })}
                   />
                   <span>Email Notifications (Coming Soon)</span>
                 </label>
@@ -231,7 +141,7 @@ const SettingsPage: React.FC = () => {
                     type="email"
                     id="email_address"
                     value={emailAddress}
-                    onChange={(e) => setEmailAddress(e.target.value)}
+                    onChange={(e) => setSettings({ emailAddress: e.target.value })}
                     placeholder="you@example.com"
                   />
                 </div>
@@ -248,7 +158,7 @@ const SettingsPage: React.FC = () => {
                     type="checkbox"
                     id="auto_save"
                     checked={autoSaveEnabled}
-                    onChange={(e) => setAutoSaveEnabled(e.target.checked)}
+                    onChange={(e) => setSettings({ autoSaveEnabled: e.target.checked })}
                   />
                   <span>Auto-save Workflows</span>
                 </label>
@@ -260,7 +170,7 @@ const SettingsPage: React.FC = () => {
                     type="checkbox"
                     id="compact_mode"
                     checked={compactMode}
-                    onChange={(e) => setCompactMode(e.target.checked)}
+                    onChange={(e) => setSettings({ compactMode: e.target.checked })}
                   />
                   <span>Compact Mode (Coming Soon)</span>
                 </label>
@@ -276,7 +186,7 @@ const SettingsPage: React.FC = () => {
                 <select
                   id="log_level"
                   value={logLevel}
-                  onChange={(e) => setLogLevel(e.target.value)}
+                  onChange={(e) => setSettings({ logLevel: e.target.value })}
                 >
                   <option value="debug">Debug</option>
                   <option value="info">Info</option>

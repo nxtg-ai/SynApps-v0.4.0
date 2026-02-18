@@ -26,6 +26,8 @@ import anime from 'animejs';
 import { Flow, WorkflowRunStatus } from '../../types';
 import { generateId } from '../../utils/flowUtils';
 import './WorkflowCanvas.css';
+import { useExecutionStore } from '../../stores/executionStore';
+import { useWorkflowStore } from '../../stores/workflowStore';
 
 // Custom node types
 import AppletNode from './nodes/AppletNode';
@@ -39,8 +41,8 @@ import './NodeContextMenu.css';
 import NodeConfigModal from './NodeConfigModal';
 
 interface WorkflowCanvasProps {
-  flow: Flow;
-  onFlowChange: (flow: Flow) => void;
+  flow?: Flow | null;
+  onFlowChange?: (flow: Flow) => void;
   readonly?: boolean;
 }
 
@@ -53,12 +55,27 @@ const nodeTypes = {
   artist: AppletNode,
 };
 
-const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow, onFlowChange, readonly = false }) => {
+const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow: propFlow, onFlowChange: propOnFlowChange, readonly = false }) => {
+  const storeFlow = useWorkflowStore((state) => state.flow);
+  const setStoreFlow = useWorkflowStore((state) => state.setFlow);
+  const flow =
+    propFlow ??
+    storeFlow ??
+    ({
+      id: "",
+      name: "",
+      nodes: [],
+      edges: [],
+    } as Flow);
+  const applyFlowChange = propOnFlowChange ?? ((updatedFlow: Flow) => setStoreFlow(updatedFlow));
+
   // Convert Flow to ReactFlow nodes and edges
   const [nodes, setNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
-  const [runStatus, setRunStatus] = useState<WorkflowRunStatus | null>(null);
-  const [completedNodes, setCompletedNodes] = useState<string[]>([]);
+  const runStatus = useExecutionStore((state) => state.runStatus);
+  const setRunStatus = useExecutionStore((state) => state.setRunStatus);
+  const completedNodes = useExecutionStore((state) => state.completedNodes);
+  const setCompletedNodes = useExecutionStore((state) => state.setCompletedNodes);
   
   // State for context menu
   const [contextMenu, setContextMenu] = useState<{
@@ -104,7 +121,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow, onFlowChange, rea
   
   // Use ref to track previous flow value to prevent unnecessary updates
   const prevFlowRef = useRef<string>('');
-  
+
   // Process flow updates after render
   useEffect(() => {
     // Skip if no pending updates
@@ -124,7 +141,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow, onFlowChange, rea
           edge.target !== pendingUpdate.nodeId
         )
       };
-      onFlowChange(updatedFlow);
+      applyFlowChange(updatedFlow);
     } 
     else if (pendingUpdate.type === 'nodeChange' && pendingUpdate.nodes) {
       // Handle position and data updates for nodes
@@ -145,7 +162,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow, onFlowChange, rea
           return node;
         })
       };
-      onFlowChange(updatedFlow);
+      applyFlowChange(updatedFlow);
     }
     else if (pendingUpdate.type === 'edgeChange' && pendingUpdate.edges) {
       // Handle edge updates
@@ -162,7 +179,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow, onFlowChange, rea
           return edge;
         })
       };
-      onFlowChange(updatedFlow);
+      applyFlowChange(updatedFlow);
     }
     else if (pendingUpdate.type === 'connect' && pendingUpdate.connection) {
       // Handle new connections
@@ -179,9 +196,9 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow, onFlowChange, rea
         edges: [...flow.edges, newEdge]
       };
       
-      onFlowChange(updatedFlow);
+      applyFlowChange(updatedFlow);
     }
-  }, [flow, onFlowChange, nodes, edges]);
+  }, [applyFlowChange, flow, nodes, edges]);
   
   // Convert our Flow format to ReactFlow format
   useEffect(() => {
@@ -470,10 +487,10 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow, onFlowChange, rea
           }]
         };
         
-        onFlowChange(updatedFlow);
+        applyFlowChange(updatedFlow);
       }
     },
-    [flow, onFlowChange, reactFlowInstance, readonly]
+    [applyFlowChange, flow, reactFlowInstance, readonly]
   );
   
   // Handle drag over event
@@ -512,9 +529,9 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow, onFlowChange, rea
         edges: updatedEdges
       };
       
-      onFlowChange(updatedFlow);
+      applyFlowChange(updatedFlow);
     }
-  }, [flow, nodes, onFlowChange, readonly]);
+  }, [applyFlowChange, flow, nodes, readonly]);
   
   // Delete a specific node by ID
   const deleteNodeById = useCallback((nodeId: string) => {
@@ -544,8 +561,8 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow, onFlowChange, rea
       edges: updatedEdges
     };
     
-    onFlowChange(updatedFlow);
-  }, [flow, onFlowChange, readonly]);
+    applyFlowChange(updatedFlow);
+  }, [applyFlowChange, flow, readonly]);
   
   // Define closeContextMenu to close the context menu
   const closeContextMenu = useCallback(() => {
@@ -611,7 +628,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow, onFlowChange, rea
     console.log('Updated flow:', updatedFlow);
     
     // Update the flow state
-    onFlowChange(updatedFlow);
+    applyFlowChange(updatedFlow);
     
     // Ensure the nodes state is also updated to reflect changes
     setNodes(prevNodes => {
@@ -628,7 +645,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow, onFlowChange, rea
         return node;
       });
     });
-  }, [flow, onFlowChange, readonly]);
+  }, [applyFlowChange, flow, readonly]);
   
   // Handle keyboard events for node deletion
   const onKeyDown = useCallback(
@@ -669,8 +686,8 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow, onFlowChange, rea
       })
     };
     
-    onFlowChange(updatedFlow);
-  }, [flow, onFlowChange, readonly]);
+    applyFlowChange(updatedFlow);
+  }, [applyFlowChange, flow, readonly]);
   
   // Open node configuration modal
   const openNodeConfig = useCallback((nodeId: string) => {

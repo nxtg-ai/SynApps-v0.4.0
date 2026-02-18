@@ -2,7 +2,7 @@
  * EditorPage component
  * Page for creating and editing workflows
  */
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import MainLayout from '../../components/Layout/MainLayout';
 import WorkflowCanvas from '../../components/WorkflowCanvas/WorkflowCanvas';
@@ -11,31 +11,46 @@ import TemplateLoader from '../../components/TemplateLoader/TemplateLoader';
 import { Flow } from '../../types';
 import { generateId } from '../../utils/flowUtils';
 import apiService from '../../services/ApiService';
+import { useExecutionStore } from '../../stores/executionStore';
+import { useWorkflowStore } from '../../stores/workflowStore';
 import './EditorPage.css';
 
 const EditorPage: React.FC = () => {
   const { flowId } = useParams<{ flowId: string }>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  
-  const [flow, setFlow] = useState<Flow | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [isRunning, setIsRunning] = useState<boolean>(false);
-  const [isSaving, setIsSaving] = useState<boolean>(false);
-  const [showTemplates, setShowTemplates] = useState<boolean>(false);
-  const [showCodeEditor, setShowCodeEditor] = useState<boolean>(false);
-  const [selectedApplet, setSelectedApplet] = useState<string>('');
-  const [appletCode, setAppletCode] = useState<string>('');
-  const [inputData, setInputData] = useState<string>('');
-  const [imageGenerator, setImageGenerator] = useState<string>('stability');
-  
-  // State for workflow results
-  const [workflowResults, setWorkflowResults] = useState<any>(null);
+
+  const flow = useWorkflowStore((state) => state.flow);
+  const isLoading = useWorkflowStore((state) => state.isLoading);
+  const isSaving = useWorkflowStore((state) => state.isSaving);
+  const showTemplates = useWorkflowStore((state) => state.showTemplates);
+  const showCodeEditor = useWorkflowStore((state) => state.showCodeEditor);
+  const selectedApplet = useWorkflowStore((state) => state.selectedApplet);
+  const appletCode = useWorkflowStore((state) => state.appletCode);
+  const inputData = useWorkflowStore((state) => state.inputData);
+  const imageGenerator = useWorkflowStore((state) => state.imageGenerator);
+  const setFlow = useWorkflowStore((state) => state.setFlow);
+  const setIsLoading = useWorkflowStore((state) => state.setIsLoading);
+  const setIsSaving = useWorkflowStore((state) => state.setIsSaving);
+  const setShowTemplates = useWorkflowStore((state) => state.setShowTemplates);
+  const setShowCodeEditor = useWorkflowStore((state) => state.setShowCodeEditor);
+  const setSelectedApplet = useWorkflowStore((state) => state.setSelectedApplet);
+  const setAppletCode = useWorkflowStore((state) => state.setAppletCode);
+  const setInputData = useWorkflowStore((state) => state.setInputData);
+  const setImageGenerator = useWorkflowStore((state) => state.setImageGenerator);
+  const createEmptyFlow = useWorkflowStore((state) => state.createEmptyFlow);
+
+  const isRunning = useExecutionStore((state) => state.isRunning);
+  const workflowResults = useExecutionStore((state) => state.workflowResults);
+  const setIsRunning = useExecutionStore((state) => state.setIsRunning);
+  const setWorkflowResults = useExecutionStore((state) => state.setWorkflowResults);
+  const resetExecutionState = useExecutionStore((state) => state.resetExecutionState);
 
   // Load flow data if flowId is provided
   useEffect(() => {
     const loadFlow = async () => {
       setIsLoading(true);
+      resetExecutionState();
       
       if (flowId) {
         try {
@@ -104,33 +119,7 @@ const EditorPage: React.FC = () => {
         unsubscribe();
       };
     });
-  }, [flowId]);
-  
-  
-  // Create an empty flow
-  const createEmptyFlow = () => {
-    const newFlow: Flow = {
-      id: generateId(),
-      name: 'New Workflow',
-      nodes: [
-        {
-          id: generateId(),
-          type: 'start',
-          position: { x: 250, y: 25 },
-          data: { label: 'Start' }
-        },
-        {
-          id: generateId(),
-          type: 'end',
-          position: { x: 250, y: 500 },
-          data: { label: 'End' }
-        }
-      ],
-      edges: []
-    };
-    
-    setFlow(newFlow);
-  };
+  }, [flowId, setIsRunning, setWorkflowResults]);
   
   // Save the flow
   const saveFlow = async () => {
@@ -349,10 +338,7 @@ class ${nodeType.charAt(0).toUpperCase() + nodeType.slice(1)}Applet(BaseApplet):
         ) : flow ? (
           <div className="editor-container">
             <div className="canvas-container">
-              <WorkflowCanvas 
-                flow={flow} 
-                onFlowChange={handleFlowChange} 
-              />
+              <WorkflowCanvas flow={flow} onFlowChange={handleFlowChange} />
             </div>
             <div className="editor-sidebar">
               <div className="input-panel">
