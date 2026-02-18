@@ -2,8 +2,8 @@
   "id": "T-067",
   "title": "Implement Rate Limiting and CORS Security",
   "description": "Add rate limiting to all endpoints (configurable per-user) and ensure CORS is properly configured per environment.",
-  "status": "pending",
-  "assigned_to": "codex",
+  "status": "completed",
+  "assigned_to": "claude",
   "task_type": "implement",
   "depends_on": [
     "T-065"
@@ -18,8 +18,8 @@
     "No CORS or rate limit bypasses"
   ],
   "created_at": "2026-02-16T06:27:01.699031944Z",
-  "updated_at": "2026-02-16T06:27:01.699031944Z",
-  "completed_at": null,
+  "updated_at": "2026-02-18T02:45:53.362965183Z",
+  "completed_at": "2026-02-18T02:45:53.362965124Z",
   "plan_version": 3,
   "retry_count": 0
 }

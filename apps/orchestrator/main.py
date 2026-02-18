@@ -138,6 +138,9 @@ IF_ELSE_NODE_TYPE = "if_else"
 MERGE_NODE_TYPE = "merge"
 FOR_EACH_NODE_TYPE = "for_each"
 ENGINE_MAX_CONCURRENCY = int(os.environ.get("ENGINE_MAX_CONCURRENCY", "10"))
+TRACE_RESULTS_KEY = "__trace__"
+TRACE_SCHEMA_VERSION = 1
+MAX_DIFF_CHANGES = 250
 DEFAULT_MEMORY_BACKEND = os.environ.get("MEMORY_BACKEND", "sqlite_fts").strip().lower()
 DEFAULT_MEMORY_NAMESPACE = os.environ.get("MEMORY_NAMESPACE", "default").strip() or "default"
 DEFAULT_MEMORY_SQLITE_PATH = str(
@@ -219,22 +222,64 @@ app = FastAPI(
     redoc_url="/api/v1/redoc",
 )
 
-# Configure CORS
-backend_cors_origins = os.environ.get("BACKEND_CORS_ORIGINS", "")
-backend_cors_origins = backend_cors_origins.split(",")
-allowed_origins = [origin.strip() for origin in backend_cors_origins if origin.strip()]
+# ============================================================
+# CORS Configuration (environment-aware)
+# ============================================================
+_is_production = os.environ.get("PRODUCTION", "false").strip().lower() in {"1", "true", "yes"}
+_cors_raw = os.environ.get("BACKEND_CORS_ORIGINS", "")
+_cors_origins = [o.strip() for o in _cors_raw.split(",") if o.strip()]
 
-if not allowed_origins:
-    logger.warning("No CORS origins specified, allowing all origins in development mode")
-    allowed_origins = ["*"]
+if _is_production and not _cors_origins:
+    logger.error(
+        "BACKEND_CORS_ORIGINS is required in production. "
+        "Set it to a comma-separated list of allowed origins."
+    )
+    # Fail-closed: no origins allowed if unset in production
+    _cors_origins = []
+elif not _cors_origins:
+    logger.warning("No CORS origins specified, allowing localhost origins in development mode")
+    _cors_origins = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+    ]
+
+# In production, never allow wildcard origins or credentials-with-wildcard
+if _is_production and "*" in _cors_origins:
+    logger.error("Wildcard CORS origin '*' is not allowed in production, removing it")
+    _cors_origins = [o for o in _cors_origins if o != "*"]
+
+_cors_methods = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+_cors_headers = [
+    "Authorization",
+    "Content-Type",
+    "X-API-Key",
+    "X-Requested-With",
+    "Accept",
+]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
+    allow_origins=_cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=_cors_methods,
+    allow_headers=_cors_headers,
+    expose_headers=[
+        "X-RateLimit-Limit",
+        "X-RateLimit-Remaining",
+        "X-RateLimit-Reset",
+        "Retry-After",
+    ],
+    max_age=600 if _is_production else 0,
 )
+
+# ============================================================
+# Rate Limiting
+# ============================================================
+from apps.orchestrator.middleware.rate_limiter import add_rate_limiter  # noqa: E402
+
+add_rate_limiter(app)
 
 # ============================================================
 # Error Handling - Consistent Error Format
