@@ -1,0 +1,60 @@
+{
+  "version": "1.1.0",
+  "project_name": "synapps",
+  "created_at": "2026-02-15T03:04:41.518674601Z",
+  "updated_at": "2026-02-18T17:01:57.765541281Z",
+  "tools": [
+    {
+      "name": "claude",
+      "agent_type": "claude",
+      "version": "2.1.42 (Claude Code)",
+      "path": "/home/axw/.local/bin/claude",
+      "available": true
+    },
+    {
+      "name": "codex",
+      "agent_type": "codex",
+      "version": "codex-cli 0.98.0",
+      "path": "/home/axw/.nvm/versions/node/v22.21.1/bin/codex",
+      "available": true
+    },
+    {
+      "name": "gemini",
+      "agent_type": "gemini",
+      "version": "0.28.1",
+      "path": "/home/axw/.nvm/versions/node/v22.21.1/bin/gemini",
+      "available": true
+    }
+  ],
+  "brain": {
+    "provider": "openai",
+    "model": null
+  },
+  "task_summary": {
+    "total": 38,
+    "pending": 38,
+    "in_progress": 0,
+    "completed": 0,
+    "failed": 0,
+    "blocked": 0
+  },
+  "active_locks": {},
+  "agent_auth": {
+    "codex": "subscription"
+  },
+  "agent_permissions": {
+    "claude": "yolo",
+    "codex": "yolo",
+    "gemini": "yolo"
+  },
+  "git": {
+    "auto_commit": true,
+    "strategy": "single"
+  },
+  "scheduler": {
+    "rotation": false,
+    "pacing_min_secs": 64,
+    "pacing_max_secs": 179
+  },
+  "dashboard_mode": "pty"
+}
