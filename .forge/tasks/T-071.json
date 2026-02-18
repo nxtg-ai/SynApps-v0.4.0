@@ -2,7 +2,7 @@
   "id": "T-071",
   "title": "Add ESLint, Prettier, and Ruff with Pre-commit Hooks",
   "description": "Add ESLint 9 (flat config) and Prettier to the frontend, Ruff to the backend, and configure pre-commit hooks for lint, format, and type check.",
-  "status": "pending",
+  "status": "in_progress",
   "assigned_to": "codex",
   "task_type": "implement",
   "depends_on": [
@@ -16,7 +16,7 @@
     "Pre-commit hooks run lint, format, type check"
   ],
   "created_at": "2026-02-16T06:27:01.699034117Z",
-  "updated_at": "2026-02-16T06:27:01.699034117Z",
+  "updated_at": "2026-02-18T02:53:38.123332641Z",
   "completed_at": null,
   "plan_version": 3,
   "retry_count": 0

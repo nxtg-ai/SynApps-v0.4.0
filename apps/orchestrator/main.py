@@ -423,10 +423,349 @@ class RunFlowRequest(BaseModel):
     input: Dict[str, Any] = Field(default_factory=dict, description="Input data for the workflow")
 
 
+class RerunFlowRequest(BaseModel):
+    """Request body for re-running a previous flow execution with input overrides."""
+    input: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Input overrides for the re-run",
+    )
+    merge_with_original_input: bool = Field(
+        default=True,
+        description="When true, merge overrides on top of the source run input",
+    )
+
+
 class AISuggestRequest(BaseModel):
     """Strictly validated request body for AI suggestions."""
     prompt: str = Field(..., min_length=1, max_length=5000, description="The prompt for AI suggestion")
     context: Optional[str] = Field(None, max_length=10000, description="Optional context for the suggestion")
+
+
+def _trace_value(value: Any, depth: int = 0) -> Any:
+    """Convert arbitrary values into a JSON-serializable structure."""
+    if depth >= 8:
+        return str(value)
+
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+
+    if isinstance(value, dict):
+        return {str(k): _trace_value(v, depth + 1) for k, v in value.items()}
+
+    if isinstance(value, (list, tuple, set)):
+        return [_trace_value(v, depth + 1) for v in list(value)]
+
+    if isinstance(value, BaseModel):
+        return _trace_value(value.model_dump(), depth + 1)
+
+    model_dump = getattr(value, "model_dump", None)
+    if callable(model_dump):
+        try:
+            return _trace_value(model_dump(), depth + 1)
+        except Exception:
+            return str(value)
+
+    return str(value)
+
+
+def _new_execution_trace(
+    run_id: str,
+    flow_id: Optional[str],
+    input_data: Dict[str, Any],
+    start_time: float,
+) -> Dict[str, Any]:
+    """Create a baseline execution trace document for a run."""
+    return {
+        "version": TRACE_SCHEMA_VERSION,
+        "run_id": run_id,
+        "flow_id": flow_id,
+        "status": "running",
+        "input": _trace_value(input_data),
+        "started_at": float(start_time),
+        "ended_at": None,
+        "duration_ms": None,
+        "nodes": [],
+        "errors": [],
+    }
+
+
+def _finalize_execution_trace(trace: Dict[str, Any], status: str, end_time: float) -> None:
+    """Finalize aggregate timing/status fields in a trace object."""
+    trace["status"] = status
+    trace["ended_at"] = float(end_time)
+    started_at = trace.get("started_at")
+    if isinstance(started_at, (int, float)):
+        trace["duration_ms"] = max(0.0, (float(end_time) - float(started_at)) * 1000.0)
+
+
+def _extract_trace_from_run(run: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a normalized execution trace for any run, including legacy runs."""
+    run_id = str(run.get("run_id", ""))
+    flow_id = run.get("flow_id")
+    start_time = run.get("start_time")
+    if not isinstance(start_time, (int, float)):
+        start_time = time.time()
+
+    input_data = run.get("input_data")
+    if not isinstance(input_data, dict):
+        input_data = {}
+
+    results = run.get("results")
+    if not isinstance(results, dict):
+        results = {}
+
+    stored_trace = results.get(TRACE_RESULTS_KEY)
+    if isinstance(stored_trace, dict):
+        trace = _trace_value(stored_trace)
+        if not isinstance(trace, dict):
+            trace = _new_execution_trace(run_id, flow_id, input_data, float(start_time))
+    else:
+        trace = _new_execution_trace(run_id, flow_id, input_data, float(start_time))
+        nodes: List[Dict[str, Any]] = []
+        for node_id, node_result in results.items():
+            if node_id == TRACE_RESULTS_KEY:
+                continue
+            if isinstance(node_result, dict):
+                error_payload = node_result.get("error")
+                node_errors = []
+                if error_payload is not None:
+                    node_errors.append(_trace_value(error_payload))
+                nodes.append(
+                    {
+                        "node_id": str(node_id),
+                        "node_type": node_result.get("type"),
+                        "status": node_result.get("status", "success"),
+                        "input": _trace_value(node_result.get("input")),
+                        "output": _trace_value(node_result.get("output")),
+                        "attempts": node_result.get("attempts", 1),
+                        "errors": node_errors,
+                        "started_at": node_result.get("started_at"),
+                        "ended_at": node_result.get("ended_at"),
+                        "duration_ms": node_result.get("duration_ms"),
+                    }
+                )
+            else:
+                nodes.append(
+                    {
+                        "node_id": str(node_id),
+                        "node_type": None,
+                        "status": "success",
+                        "input": None,
+                        "output": _trace_value(node_result),
+                        "attempts": 1,
+                        "errors": [],
+                    }
+                )
+        trace["nodes"] = nodes
+
+    trace["run_id"] = run_id
+    trace["flow_id"] = flow_id
+    trace["status"] = str(run.get("status", trace.get("status", "unknown")))
+
+    trace_start = trace.get("started_at")
+    if not isinstance(trace_start, (int, float)):
+        trace_start = float(start_time)
+        trace["started_at"] = trace_start
+
+    end_time = run.get("end_time")
+    if isinstance(end_time, (int, float)):
+        trace["ended_at"] = float(end_time)
+        trace["duration_ms"] = max(0.0, (float(end_time) - float(trace_start)) * 1000.0)
+    elif trace.get("ended_at") is None and trace.get("status") in {"success", "error"}:
+        trace["ended_at"] = float(trace_start)
+        trace["duration_ms"] = 0.0
+
+    trace_input = trace.get("input")
+    if not isinstance(trace_input, dict):
+        trace["input"] = _trace_value(input_data)
+
+    if not isinstance(trace.get("nodes"), list):
+        trace["nodes"] = []
+    if not isinstance(trace.get("errors"), list):
+        trace["errors"] = []
+
+    return trace
+
+
+def _flatten_for_diff(value: Any, path: str, out: Dict[str, Any]) -> None:
+    """Flatten nested structures into a path/value map for deterministic diffing."""
+    if isinstance(value, dict):
+        if not value:
+            out[path] = {}
+            return
+        for key in sorted(value.keys(), key=lambda k: str(k)):
+            child_path = f"{path}.{key}"
+            _flatten_for_diff(value[key], child_path, out)
+        return
+
+    if isinstance(value, list):
+        if not value:
+            out[path] = []
+            return
+        for index, item in enumerate(value):
+            _flatten_for_diff(item, f"{path}[{index}]", out)
+        return
+
+    out[path] = value
+
+
+def _build_json_diff(left: Any, right: Any, max_changes: int = MAX_DIFF_CHANGES) -> Dict[str, Any]:
+    """Build a bounded structural diff between two JSON-like values."""
+    left_normalized = _trace_value(left)
+    right_normalized = _trace_value(right)
+
+    left_flat: Dict[str, Any] = {}
+    right_flat: Dict[str, Any] = {}
+    _flatten_for_diff(left_normalized, "$", left_flat)
+    _flatten_for_diff(right_normalized, "$", right_flat)
+
+    all_paths = sorted(set(left_flat.keys()) | set(right_flat.keys()))
+    changes: List[Dict[str, Any]] = []
+    total_changes = 0
+
+    for path in all_paths:
+        in_left = path in left_flat
+        in_right = path in right_flat
+        if in_left and in_right and left_flat[path] == right_flat[path]:
+            continue
+
+        total_changes += 1
+        if len(changes) >= max_changes:
+            continue
+
+        if in_left and not in_right:
+            change_type = "removed"
+        elif in_right and not in_left:
+            change_type = "added"
+        else:
+            change_type = "modified"
+
+        changes.append(
+            {
+                "path": path,
+                "type": change_type,
+                "before": left_flat.get(path),
+                "after": right_flat.get(path),
+            }
+        )
+
+    return {
+        "changed": total_changes > 0,
+        "change_count": total_changes,
+        "truncated": total_changes > max_changes,
+        "changes": changes,
+    }
+
+
+def _node_result_index(run: Dict[str, Any]) -> Dict[str, Any]:
+    """Return run result payload keyed by node ID, excluding trace metadata."""
+    results = run.get("results")
+    if not isinstance(results, dict):
+        return {}
+    return {
+        str(node_id): _trace_value(result)
+        for node_id, result in results.items()
+        if node_id != TRACE_RESULTS_KEY
+    }
+
+
+def _build_run_diff(base_run: Dict[str, Any], compare_run: Dict[str, Any]) -> Dict[str, Any]:
+    """Compute an execution diff between two runs."""
+    base_trace = _extract_trace_from_run(base_run)
+    compare_trace = _extract_trace_from_run(compare_run)
+
+    base_nodes = {
+        str(item.get("node_id")): item
+        for item in base_trace.get("nodes", [])
+        if isinstance(item, dict) and item.get("node_id") is not None
+    }
+    compare_nodes = {
+        str(item.get("node_id")): item
+        for item in compare_trace.get("nodes", [])
+        if isinstance(item, dict) and item.get("node_id") is not None
+    }
+
+    node_diffs: List[Dict[str, Any]] = []
+    for node_id in sorted(set(base_nodes.keys()) | set(compare_nodes.keys())):
+        left = base_nodes.get(node_id)
+        right = compare_nodes.get(node_id)
+        if left is None:
+            node_diffs.append({"node_id": node_id, "type": "added", "after": _trace_value(right)})
+            continue
+        if right is None:
+            node_diffs.append({"node_id": node_id, "type": "removed", "before": _trace_value(left)})
+            continue
+
+        left_duration = left.get("duration_ms")
+        right_duration = right.get("duration_ms")
+        duration_delta = None
+        if isinstance(left_duration, (int, float)) and isinstance(right_duration, (int, float)):
+            duration_delta = float(right_duration) - float(left_duration)
+
+        status_before = left.get("status")
+        status_after = right.get("status")
+        attempts_before = left.get("attempts")
+        attempts_after = right.get("attempts")
+
+        node_changed = left != right
+        if not node_changed:
+            continue
+
+        node_diffs.append(
+            {
+                "node_id": node_id,
+                "type": "modified",
+                "status": {
+                    "before": status_before,
+                    "after": status_after,
+                    "changed": status_before != status_after,
+                },
+                "attempts": {
+                    "before": attempts_before,
+                    "after": attempts_after,
+                    "changed": attempts_before != attempts_after,
+                },
+                "duration_ms": {
+                    "before": left_duration,
+                    "after": right_duration,
+                    "delta_ms": duration_delta,
+                },
+                "input_changed": left.get("input") != right.get("input"),
+                "output_changed": left.get("output") != right.get("output"),
+                "errors_changed": left.get("errors") != right.get("errors"),
+            }
+        )
+
+    base_duration = base_trace.get("duration_ms")
+    compare_duration = compare_trace.get("duration_ms")
+    duration_delta_ms = None
+    if isinstance(base_duration, (int, float)) and isinstance(compare_duration, (int, float)):
+        duration_delta_ms = float(compare_duration) - float(base_duration)
+
+    return {
+        "base_run_id": base_run.get("run_id"),
+        "compare_run_id": compare_run.get("run_id"),
+        "flow_id": base_run.get("flow_id") or compare_run.get("flow_id"),
+        "summary": {
+            "base_status": base_run.get("status"),
+            "compare_status": compare_run.get("status"),
+            "status_changed": base_run.get("status") != compare_run.get("status"),
+            "base_node_count": len(base_nodes),
+            "compare_node_count": len(compare_nodes),
+            "changed_node_count": len(node_diffs),
+        },
+        "timing": {
+            "base_duration_ms": base_duration,
+            "compare_duration_ms": compare_duration,
+            "duration_delta_ms": duration_delta_ms,
+        },
+        "input_diff": _build_json_diff(base_trace.get("input", {}), compare_trace.get("input", {})),
+        "output_diff": _build_json_diff(_node_result_index(base_run), _node_result_index(compare_run)),
+        "trace_diff": _build_json_diff(base_trace, compare_trace),
+        "node_diffs": node_diffs,
+        "base_trace": base_trace,
+        "compare_trace": compare_trace,
+    }
 
 
 # ============================================================
@@ -765,47 +1104,238 @@ class WorkflowRunStatus(BaseModel):
 
 
 # ============================================================
-# WebSocket Protocol
+# WebSocket Protocol – structured messages, auth, reconnection
 # ============================================================
 
-connected_clients: List[WebSocket] = []
-ws_sessions: Dict[str, str] = {}  # session_id -> last known state for reconnection
+WS_AUTH_TIMEOUT_SECONDS = int(os.environ.get("WS_AUTH_TIMEOUT_SECONDS", "10"))
+WS_HEARTBEAT_INTERVAL = int(os.environ.get("WS_HEARTBEAT_INTERVAL", "30"))
+WS_MESSAGE_BUFFER_SIZE = int(os.environ.get("WS_MESSAGE_BUFFER_SIZE", "200"))
+WS_SESSION_TTL_SECONDS = int(os.environ.get("WS_SESSION_TTL_SECONDS", "300"))
+
 applet_registry: Dict[str, Type['BaseApplet']] = {}
 
 
-def _ws_message(msg_type: str, data: Optional[dict] = None) -> dict:
-    """Create a structured WebSocket message with id, type, data, and timestamp."""
-    return {
+def _ws_message(
+    msg_type: str,
+    data: Optional[dict] = None,
+    *,
+    ref_id: Optional[str] = None,
+) -> dict:
+    """Create a structured WebSocket message.
+
+    Fields:
+        id        – unique message identifier (UUIDv4)
+        type      – dot-namespaced message type
+        data      – payload dict
+        timestamp – seconds since epoch (float)
+        ref_id    – optional correlation ID linking a response to a request
+    """
+    msg: dict = {
         "id": str(uuid.uuid4()),
         "type": msg_type,
         "data": data or {},
         "timestamp": time.time(),
     }
+    if ref_id:
+        msg["ref_id"] = ref_id
+    return msg
+
+
+class _WSSession:
+    """State for a single WebSocket session."""
+
+    __slots__ = (
+        "session_id",
+        "user_id",
+        "websocket",
+        "subscriptions",
+        "connected_at",
+        "last_active",
+        "state",
+        "_message_seq",
+    )
+
+    def __init__(
+        self,
+        session_id: str,
+        user_id: str,
+        websocket: Optional[WebSocket] = None,
+    ) -> None:
+        self.session_id = session_id
+        self.user_id = user_id
+        self.websocket = websocket
+        self.subscriptions: set = set()
+        self.connected_at = time.time()
+        self.last_active = time.time()
+        self.state = "connected"
+        self._message_seq = 0
+
+    def next_seq(self) -> int:
+        self._message_seq += 1
+        return self._message_seq
+
+
+class WebSocketSessionManager:
+    """Manages connected WebSocket clients, sessions, and message replay."""
+
+    def __init__(self, buffer_size: int = WS_MESSAGE_BUFFER_SIZE) -> None:
+        self._sessions: Dict[str, _WSSession] = {}
+        self._ws_to_session: Dict[int, str] = {}  # id(websocket) -> session_id
+        self._message_buffer: List[dict] = []
+        self._buffer_size = buffer_size
+        self._lock = threading.Lock()
+        self._global_seq = 0
+
+    # ------ session management ------
+
+    def create_session(
+        self,
+        user_id: str,
+        websocket: WebSocket,
+        session_id: Optional[str] = None,
+    ) -> tuple:
+        """Create or resume a session.  Returns (session, reconnected)."""
+        reconnected = False
+        with self._lock:
+            if session_id and session_id in self._sessions:
+                sess = self._sessions[session_id]
+                if sess.user_id == user_id:
+                    sess.websocket = websocket
+                    sess.state = "connected"
+                    sess.last_active = time.time()
+                    reconnected = True
+                else:
+                    session_id = None
+
+            if not reconnected:
+                session_id = session_id or str(uuid.uuid4())
+                sess = _WSSession(session_id, user_id, websocket)
+                self._sessions[session_id] = sess
+
+            self._ws_to_session[id(websocket)] = sess.session_id
+        return sess, reconnected
+
+    def remove_session(self, websocket: WebSocket) -> Optional[_WSSession]:
+        """Mark session as disconnected and unlink the websocket."""
+        with self._lock:
+            ws_id = id(websocket)
+            sid = self._ws_to_session.pop(ws_id, None)
+            if sid and sid in self._sessions:
+                sess = self._sessions[sid]
+                sess.websocket = None
+                sess.state = "disconnected"
+                sess.last_active = time.time()
+                return sess
+        return None
+
+    def get_session_by_ws(self, websocket: WebSocket) -> Optional[_WSSession]:
+        with self._lock:
+            sid = self._ws_to_session.get(id(websocket))
+            return self._sessions.get(sid) if sid else None
+
+    def connected_sessions(self) -> List[_WSSession]:
+        """Return sessions that currently have a live websocket."""
+        with self._lock:
+            return [
+                s for s in self._sessions.values()
+                if s.websocket and s.state == "connected"
+            ]
+
+    @property
+    def connected_websockets(self) -> List[WebSocket]:
+        """List of live websockets (backward-compatible helper)."""
+        return [s.websocket for s in self.connected_sessions() if s.websocket]
+
+    def cleanup_expired(self) -> int:
+        """Purge sessions disconnected longer than TTL."""
+        cutoff = time.time() - WS_SESSION_TTL_SECONDS
+        removed = 0
+        with self._lock:
+            expired = [
+                sid
+                for sid, s in self._sessions.items()
+                if s.state == "disconnected" and s.last_active < cutoff
+            ]
+            for sid in expired:
+                del self._sessions[sid]
+                removed += 1
+        return removed
+
+    # ------ message buffering for replay ------
+
+    def _buffer_message(self, message: dict) -> None:
+        self._global_seq += 1
+        message["_seq"] = self._global_seq
+        self._message_buffer.append(message)
+        if len(self._message_buffer) > self._buffer_size:
+            self._message_buffer = self._message_buffer[-self._buffer_size:]
+
+    def get_missed_messages(self, last_seq: int) -> List[dict]:
+        """Return messages with _seq > last_seq for reconnection replay."""
+        with self._lock:
+            return [m for m in self._message_buffer if m.get("_seq", 0) > last_seq]
+
+    @property
+    def current_seq(self) -> int:
+        with self._lock:
+            return self._global_seq
+
+    # ------ broadcast helpers ------
+
+    async def broadcast(self, message: dict) -> None:
+        """Send a message to all connected clients and buffer it for replay."""
+        with self._lock:
+            self._buffer_message(message)
+            sessions = [
+                s for s in self._sessions.values()
+                if s.websocket and s.state == "connected"
+            ]
+
+        disconnected: List[WebSocket] = []
+        for sess in sessions:
+            try:
+                if sess.websocket:
+                    await sess.websocket.send_json(message)
+            except Exception as e:
+                logger.error(f"Failed to send to session {sess.session_id}: {e}")
+                if sess.websocket:
+                    disconnected.append(sess.websocket)
+
+        for ws in disconnected:
+            self.remove_session(ws)
+
+
+# Module-level manager instance
+ws_manager = WebSocketSessionManager()
+
+# Backward-compatible accessor (returns a fresh snapshot each call)
+connected_clients: List[WebSocket] = []  # legacy shim – use ws_manager directly
 
 
 async def broadcast_status(status: Dict[str, Any]):
     """Broadcast workflow status to all connected clients using structured messages."""
-    if not connected_clients:
-        logger.warning("No connected clients to broadcast to")
-        return
-
     broadcast_data = status.copy()
     if "completed_applets" not in broadcast_data:
         broadcast_data["completed_applets"] = []
 
     message = _ws_message("workflow.status", broadcast_data)
 
-    disconnected = []
-    for client in connected_clients:
-        try:
-            await client.send_json(message)
-        except Exception as e:
-            logger.error(f"Failed to send to client: {e}")
-            disconnected.append(client)
+    # Primary path: session-managed clients
+    if ws_manager.connected_websockets:
+        await ws_manager.broadcast(message)
 
-    for client in disconnected:
-        if client in connected_clients:
-            connected_clients.remove(client)
+    # Legacy path: bare websockets appended to connected_clients directly (tests)
+    if connected_clients:
+        disconnected = []
+        for client in connected_clients:
+            try:
+                await client.send_json(message)
+            except Exception as e:
+                logger.error(f"Failed to send to legacy client: {e}")
+                disconnected.append(client)
+        for client in disconnected:
+            if client in connected_clients:
+                connected_clients.remove(client)
 
 
 # ============================================================
@@ -2914,7 +3444,7 @@ class LLMNodeApplet(BaseApplet):
         chunk: str,
         done: bool,
     ) -> None:
-        if not connected_clients:
+        if not ws_manager.connected_websockets:
             return
         message = _ws_message(
             "llm.stream",
@@ -2927,15 +3457,7 @@ class LLMNodeApplet(BaseApplet):
                 "done": done,
             },
         )
-        disconnected = []
-        for client in connected_clients:
-            try:
-                await client.send_json(message)
-            except Exception:
-                disconnected.append(client)
-        for client in disconnected:
-            if client in connected_clients:
-                connected_clients.remove(client)
+        await ws_manager.broadcast(message)
 
     def _resolve_config(self, message: AppletMessage) -> LLMNodeConfigModel:
         node_data = message.metadata.get("node_data", {})
@@ -5452,20 +5974,22 @@ class Orchestrator:
     async def execute_flow(flow: dict, input_data: Dict[str, Any]) -> str:
         """Execute a flow and return the run ID."""
         run_id = Orchestrator.create_run_id()
+        start_time = time.time()
+        flow_id = flow.get("id")
+        initial_trace = _new_execution_trace(run_id, flow_id, input_data, start_time)
 
         status = {
             "run_id": run_id,
-            "flow_id": flow["id"],
+            "flow_id": flow_id,
             "status": "running",
             "current_applet": None,
             "progress": 0,
-            "total_steps": len(flow["nodes"]),
-            "start_time": time.time(),
-            "results": {},
-            "input_data": input_data
+            "total_steps": len(flow.get("nodes", [])),
+            "start_time": start_time,
+            "results": {TRACE_RESULTS_KEY: initial_trace},
+            "input_data": input_data,
         }
 
-        memory_completed_applets = []
         status_dict = status.copy()
 
         workflow_run_repo = WorkflowRunRepository()
@@ -5503,15 +6027,36 @@ class Orchestrator:
         status = None
         memory_completed_applets: List[str] = []
         context: Dict[str, Any] = {}
+        execution_trace = _new_execution_trace(run_id, flow.get("id"), input_data, time.time())
+
+        def _ensure_trace_in_context_results() -> None:
+            results = context.get("results")
+            if not isinstance(results, dict):
+                results = {}
+                context["results"] = results
+            results[TRACE_RESULTS_KEY] = execution_trace
+
+        def _append_trace_error(payload: Any) -> None:
+            errors = execution_trace.setdefault("errors", [])
+            if isinstance(errors, list):
+                errors.append(_trace_value(payload))
 
         async def _fail(error_msg: str, error_details: Optional[Dict[str, Any]] = None) -> None:
             nonlocal status
+            end_time = time.time()
+            if error_details:
+                _append_trace_error(error_details)
+            else:
+                _append_trace_error({"message": error_msg})
+            _finalize_execution_trace(execution_trace, "error", end_time)
+            _ensure_trace_in_context_results()
+
             if status and isinstance(status, dict):
                 status["status"] = "error"
                 status["error"] = error_msg
                 if error_details:
                     status["error_details"] = error_details
-                status["end_time"] = time.time()
+                status["end_time"] = end_time
                 status["results"] = context.get("results", {})
                 status["completed_applets"] = list(memory_completed_applets)
                 await workflow_run_repo.save(status)
@@ -5526,6 +6071,23 @@ class Orchestrator:
 
         try:
             status = await workflow_run_repo.get_by_run_id(run_id)
+
+            if status and isinstance(status, dict):
+                status_start_time = status.get("start_time")
+                if isinstance(status_start_time, (int, float)):
+                    execution_trace["started_at"] = float(status_start_time)
+
+                status_input_data = status.get("input_data")
+                if isinstance(status_input_data, dict):
+                    execution_trace["input"] = _trace_value(status_input_data)
+
+                status_results = status.get("results")
+                if isinstance(status_results, dict):
+                    existing_trace = status_results.get(TRACE_RESULTS_KEY)
+                    if isinstance(existing_trace, dict):
+                        normalized_trace = _trace_value(existing_trace)
+                        if isinstance(normalized_trace, dict):
+                            execution_trace = normalized_trace
 
             flow_nodes = flow.get("nodes", [])
             flow_edges = flow.get("edges", [])
@@ -5570,11 +6132,12 @@ class Orchestrator:
 
             context = {
                 "input": input_data,
-                "results": {},
+                "results": {TRACE_RESULTS_KEY: execution_trace},
                 "run_id": run_id,
             }
             merge_inputs_by_node: Dict[str, List[Any]] = {}
             merge_input_sources_by_node: Dict[str, List[str]] = {}
+            _ensure_trace_in_context_results()
 
             if status and isinstance(status, dict):
                 status["input_data"] = input_data
@@ -5612,6 +6175,19 @@ class Orchestrator:
                     return []
                 node_type = str(node.get("type", "")).strip().lower()
                 outgoing_edges = edges_by_source.get(node_id, [])
+                node_started_at = time.time()
+                node_trace: Dict[str, Any] = {
+                    "node_id": node_id,
+                    "node_type": node.get("type"),
+                    "status": "running",
+                    "input": None,
+                    "output": None,
+                    "attempts": 0,
+                    "errors": [],
+                    "started_at": node_started_at,
+                    "ended_at": None,
+                    "duration_ms": None,
+                }
 
                 # -- merge gate: defer if not all inputs arrived --
                 if node_type == MERGE_NODE_TYPE:
@@ -5626,6 +6202,7 @@ class Orchestrator:
                 if status and isinstance(status, dict):
                     status["current_applet"] = node.get("type")
                     status["progress"] = status.get("progress", 0) + 1
+                    status["results"] = context.get("results", {})
 
                 if node_id not in memory_completed_applets:
                     memory_completed_applets.append(node_id)
@@ -5651,6 +6228,32 @@ class Orchestrator:
 
                     next_targets = Orchestrator._collect_outgoing_targets(outgoing_edges)
                     passthrough_output = context.get("input", input_data)
+                    node_ended_at = time.time()
+                    node_trace["status"] = "success"
+                    node_trace["input"] = _trace_value(context.get("input", input_data))
+                    node_trace["output"] = _trace_value(passthrough_output)
+                    node_trace["attempts"] = 1
+                    node_trace["ended_at"] = node_ended_at
+                    node_trace["duration_ms"] = max(
+                        0.0,
+                        (node_ended_at - node_started_at) * 1000.0,
+                    )
+                    context["results"][node_id] = {
+                        "type": node["type"],
+                        "input": _trace_value(context.get("input", input_data)),
+                        "output": passthrough_output,
+                        "status": "success",
+                        "attempts": 1,
+                        "errors": [],
+                        "started_at": node_started_at,
+                        "ended_at": node_ended_at,
+                        "duration_ms": node_trace["duration_ms"],
+                    }
+                    trace_nodes = execution_trace.setdefault("nodes", [])
+                    if isinstance(trace_nodes, list):
+                        trace_nodes.append(node_trace)
+                    _ensure_trace_in_context_results()
+
                     for tid in next_targets:
                         scheduled_nodes.add(tid)
                         tn = nodes_by_id.get(tid)
@@ -5679,6 +6282,7 @@ class Orchestrator:
                 last_error: Optional[NodeError] = None
                 success = False
                 response: Optional[AppletMessage] = None
+                message_content_for_trace: Any = None
 
                 while attempts <= max_retries:
                     try:
@@ -5688,6 +6292,7 @@ class Orchestrator:
                                 f"Retrying node {node_id} (attempt {attempts}/{max_retries}) after {wait_time}s"
                             )
                             await asyncio.sleep(wait_time)
+                        attempt_number = attempts + 1
 
                         applet = await Orchestrator.load_applet(node_type)
 
@@ -5701,6 +6306,9 @@ class Orchestrator:
                                 "count": len(node_inputs),
                                 "input": input_data,
                             }
+                        if message_content_for_trace is None:
+                            message_content_for_trace = _trace_value(message_content)
+
                         message_metadata: Dict[str, Any] = {
                             "node_id": node_id,
                             "run_id": run_id,
@@ -5710,8 +6318,10 @@ class Orchestrator:
                         if node_type == "writer" and "systemPrompt" in node_data:
                             message_metadata["system_prompt"] = node_data["systemPrompt"]
                         if node_type == "artist":
-                            if "systemPrompt" in node_data:
+                            if "system_prompt" in node_data:
                                 message_metadata["system_prompt"] = node_data["system_prompt"]
+                            elif "systemPrompt" in node_data:
+                                message_metadata["system_prompt"] = node_data["systemPrompt"]
                             if "generator" in node_data:
                                 message_metadata["generator"] = node_data["generator"]
 
@@ -5720,6 +6330,7 @@ class Orchestrator:
                             context=context,
                             metadata=message_metadata,
                         )
+                        node_trace["attempts"] = attempt_number
 
                         async with engine_semaphore:
                             response = await asyncio.wait_for(
@@ -5727,12 +6338,41 @@ class Orchestrator:
                                 timeout=timeout_seconds,
                             )
 
+                        node_ended_at = time.time()
                         context["results"][node_id] = {
                             "type": node["type"],
+                            "input": _trace_value(message_content),
                             "output": response.content,
                             "status": "success",
+                            "attempts": attempt_number,
+                            "errors": _trace_value(node_trace["errors"]),
+                            "started_at": node_started_at,
+                            "ended_at": node_ended_at,
+                            "duration_ms": max(0.0, (node_ended_at - node_started_at) * 1000.0),
                         }
                         context.update(response.context)
+                        if not isinstance(context.get("results"), dict):
+                            context["results"] = {}
+                        context["results"][node_id] = context["results"].get(node_id) or {
+                            "type": node["type"],
+                            "input": _trace_value(message_content),
+                            "output": response.content,
+                            "status": "success",
+                            "attempts": attempt_number,
+                            "errors": _trace_value(node_trace["errors"]),
+                            "started_at": node_started_at,
+                            "ended_at": node_ended_at,
+                            "duration_ms": max(0.0, (node_ended_at - node_started_at) * 1000.0),
+                        }
+                        node_trace["status"] = "success"
+                        node_trace["input"] = _trace_value(message_content)
+                        node_trace["output"] = _trace_value(response.content)
+                        node_trace["ended_at"] = node_ended_at
+                        node_trace["duration_ms"] = max(0.0, (node_ended_at - node_started_at) * 1000.0)
+                        trace_nodes = execution_trace.setdefault("nodes", [])
+                        if isinstance(trace_nodes, list):
+                            trace_nodes.append(node_trace)
+                        _ensure_trace_in_context_results()
                         success = True
                         break
 
@@ -5743,8 +6383,17 @@ class Orchestrator:
                             node_id=node_id,
                         )
                         logger.warning(
-                            f"Timeout in node {node_id} (attempt {attempts + 1}/{max_retries + 1})"
+                            f"Timeout in node {node_id} (attempt {attempt_number}/{max_retries + 1})"
                         )
+                        errors_list = node_trace.setdefault("errors", [])
+                        if isinstance(errors_list, list):
+                            errors_list.append(
+                                {
+                                    "attempt": attempt_number,
+                                    "time": time.time(),
+                                    "error": last_error.to_dict(),
+                                }
+                            )
                     except Exception as e:
                         last_error = NodeError(
                             NodeErrorCode.EXECUTION_ERROR,
@@ -5752,18 +6401,50 @@ class Orchestrator:
                             node_id=node_id,
                         )
                         logger.error(
-                            f"Error in node {node_id} (attempt {attempts + 1}/{max_retries + 1}): {e}"
+                            f"Error in node {node_id} (attempt {attempt_number}/{max_retries + 1}): {e}"
                         )
+                        errors_list = node_trace.setdefault("errors", [])
+                        if isinstance(errors_list, list):
+                            errors_list.append(
+                                {
+                                    "attempt": attempt_number,
+                                    "time": time.time(),
+                                    "error": last_error.to_dict(),
+                                }
+                            )
                     attempts += 1
 
                 if not success:
+                    node_ended_at = time.time()
+                    error_payload = last_error.to_dict() if last_error else {"message": "Unknown error"}
+                    node_trace["input"] = _trace_value(message_content_for_trace)
+                    node_trace["attempts"] = attempts
+                    node_trace["ended_at"] = node_ended_at
+                    node_trace["duration_ms"] = max(0.0, (node_ended_at - node_started_at) * 1000.0)
+
                     if fallback_node_id_cfg:
                         logger.info(f"Using fallback path for node {node_id} -> {fallback_node_id_cfg}")
+                        node_trace["status"] = "fallback"
+                        node_trace["output"] = {
+                            "fallback_node_id": fallback_node_id_cfg,
+                        }
                         context["results"][node_id] = {
                             "type": node["type"],
-                            "error": last_error.to_dict() if last_error else {"message": "Unknown error"},
+                            "input": _trace_value(message_content_for_trace),
+                            "output": None,
+                            "error": error_payload,
                             "status": "fallback",
+                            "attempts": attempts,
+                            "errors": _trace_value(node_trace["errors"]),
+                            "started_at": node_started_at,
+                            "ended_at": node_ended_at,
+                            "duration_ms": node_trace["duration_ms"],
                         }
+                        trace_nodes = execution_trace.setdefault("nodes", [])
+                        if isinstance(trace_nodes, list):
+                            trace_nodes.append(node_trace)
+                        _append_trace_error({"node_id": node_id, "error": error_payload})
+                        _ensure_trace_in_context_results()
                         if node_id not in memory_completed_applets:
                             memory_completed_applets.append(node_id)
                         if status and isinstance(status, dict):
@@ -5778,11 +6459,29 @@ class Orchestrator:
 
                     # Fatal failure — no fallback
                     failed_node_id = node_id
+                    node_trace["status"] = "error"
+                    node_trace["output"] = None
+                    context["results"][node_id] = {
+                        "type": node["type"],
+                        "input": _trace_value(message_content_for_trace),
+                        "output": None,
+                        "error": error_payload,
+                        "status": "error",
+                        "attempts": attempts,
+                        "errors": _trace_value(node_trace["errors"]),
+                        "started_at": node_started_at,
+                        "ended_at": node_ended_at,
+                        "duration_ms": node_trace["duration_ms"],
+                    }
+                    trace_nodes = execution_trace.setdefault("nodes", [])
+                    if isinstance(trace_nodes, list):
+                        trace_nodes.append(node_trace)
+                    _ensure_trace_in_context_results()
                     err_msg = (
                         f"Error in applet '{node['type']}': "
                         f"{last_error.message if last_error else 'Unknown error'}"
                     )
-                    await _fail(err_msg, last_error.to_dict() if last_error else None)
+                    await _fail(err_msg, error_payload if isinstance(error_payload, dict) else None)
                     return None
 
                 if node_id not in memory_completed_applets:
@@ -5896,8 +6595,11 @@ class Orchestrator:
                 current_nodes = next_nodes
 
             if status and isinstance(status, dict):
+                end_time = time.time()
+                _finalize_execution_trace(execution_trace, "success", end_time)
+                _ensure_trace_in_context_results()
                 status["status"] = "success"
-                status["end_time"] = time.time()
+                status["end_time"] = end_time
                 status["results"] = context["results"]
                 if "input_data" not in status or not status["input_data"]:
                     status["input_data"] = input_data
@@ -5908,10 +6610,21 @@ class Orchestrator:
 
         except Exception as e:
             logger.error(f"Error executing workflow: {e}")
+            end_time = time.time()
+            _append_trace_error(
+                {
+                    "code": NodeErrorCode.UNKNOWN_ERROR,
+                    "message": str(e),
+                    "type": type(e).__name__,
+                }
+            )
+            _finalize_execution_trace(execution_trace, "error", end_time)
+            _ensure_trace_in_context_results()
             if status and isinstance(status, dict):
                 status["status"] = "error"
                 status["error"] = f"Workflow execution error: {str(e)}"
-                status["end_time"] = time.time()
+                status["end_time"] = end_time
+                status["results"] = context.get("results", {})
                 await workflow_run_repo.save(status)
                 broadcast_data = status.copy()
                 broadcast_data["completed_applets"] = memory_completed_applets
@@ -6304,6 +7017,90 @@ async def get_run(
     return run
 
 
+@v1.get("/runs/{run_id}/trace")
+async def get_run_trace(
+    run_id: str,
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
+    """Return normalized full execution trace for a workflow run."""
+    run = await WorkflowRunRepository.get_by_run_id(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return _extract_trace_from_run(run)
+
+
+@v1.get("/runs/{run_id}/diff")
+async def get_run_diff(
+    run_id: str,
+    other_run_id: str = Query(..., min_length=1, description="Run ID to compare against"),
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
+    """Return structural execution diff between two workflow runs."""
+    if run_id == other_run_id:
+        raise HTTPException(status_code=400, detail="Cannot diff a run against itself")
+
+    base_run = await WorkflowRunRepository.get_by_run_id(run_id)
+    if not base_run:
+        raise HTTPException(status_code=404, detail="Base run not found")
+
+    compare_run = await WorkflowRunRepository.get_by_run_id(other_run_id)
+    if not compare_run:
+        raise HTTPException(status_code=404, detail="Comparison run not found")
+
+    diff_payload = _build_run_diff(base_run, compare_run)
+    diff_payload["same_flow"] = base_run.get("flow_id") == compare_run.get("flow_id")
+    return diff_payload
+
+
+@v1.post("/runs/{run_id}/rerun", status_code=202)
+async def rerun_workflow(
+    run_id: str,
+    body: RerunFlowRequest,
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
+    """Re-run a previous workflow execution using original or overridden input."""
+    source_run = await WorkflowRunRepository.get_by_run_id(run_id)
+    if not source_run:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    flow_id = source_run.get("flow_id")
+    if not isinstance(flow_id, str) or not flow_id:
+        raise HTTPException(status_code=400, detail="Source run is missing a valid flow_id")
+
+    flow = await FlowRepository.get_by_id(flow_id)
+    if not flow:
+        raise HTTPException(status_code=404, detail="Flow not found for source run")
+
+    flow = await Orchestrator.auto_migrate_legacy_nodes(flow, persist=True)
+    if not flow:
+        raise HTTPException(status_code=404, detail="Flow not found for source run")
+
+    source_input = source_run.get("input_data")
+    if not isinstance(source_input, dict):
+        source_trace = _extract_trace_from_run(source_run)
+        trace_input = source_trace.get("input")
+        source_input = trace_input if isinstance(trace_input, dict) else {}
+
+    override_input = body.input if isinstance(body.input, dict) else {}
+    if body.merge_with_original_input:
+        rerun_input: Dict[str, Any] = dict(source_input)
+        rerun_input.update(override_input)
+    else:
+        rerun_input = dict(override_input)
+
+    rerun_input = _trace_value(rerun_input)
+    if not isinstance(rerun_input, dict):
+        rerun_input = {}
+
+    new_run_id = await Orchestrator.execute_flow(flow, rerun_input)
+    return {
+        "run_id": new_run_id,
+        "source_run_id": run_id,
+        "flow_id": flow_id,
+        "input": rerun_input,
+    }
+
+
 @v1.post("/ai/suggest")
 async def ai_suggest(
     body: AISuggestRequest,
@@ -6345,96 +7142,265 @@ async def health():
 
 
 # ============================================================
-# WebSocket (versioned, structured protocol with auth)
+# WebSocket (versioned, structured protocol with auth & recovery)
 # ============================================================
+
+
+async def _ws_authenticate(websocket: WebSocket) -> Optional[Dict[str, Any]]:
+    """Authenticate a WebSocket connection via JWT, API key, or legacy WS token.
+
+    The client must send an ``auth`` message within ``WS_AUTH_TIMEOUT_SECONDS``.
+    Supported ``auth`` message shapes::
+
+        {"type": "auth", "token": "<jwt_access_token>"}
+        {"type": "auth", "api_key": "<api_key>"}
+        {"type": "auth", "token": "<legacy_ws_auth_token>"}
+
+    Returns the authenticated user dict or *None* on failure (connection closed).
+    """
+    if await _can_use_anonymous_bootstrap():
+        try:
+            raw = await asyncio.wait_for(websocket.receive_text(), timeout=1.0)
+            msg = json.loads(raw)
+            if msg.get("type") == "auth":
+                user = await _ws_try_credentials(msg)
+                if user:
+                    return user
+        except (asyncio.TimeoutError, json.JSONDecodeError, Exception):
+            pass
+        return {
+            "id": "anonymous",
+            "email": "anonymous@local",
+            "is_active": True,
+            "created_at": _utc_now(),
+        }
+
+    try:
+        raw = await asyncio.wait_for(
+            websocket.receive_text(), timeout=float(WS_AUTH_TIMEOUT_SECONDS)
+        )
+    except asyncio.TimeoutError:
+        await websocket.send_json(_ws_message("error", {
+            "code": "AUTH_TIMEOUT",
+            "message": f"Send auth message within {WS_AUTH_TIMEOUT_SECONDS}s",
+        }))
+        await websocket.close(code=4002, reason="Authentication timeout")
+        return None
+    except Exception:
+        await websocket.send_json(_ws_message("error", {
+            "code": "AUTH_ERROR",
+            "message": "Failed to read authentication message",
+        }))
+        await websocket.close(code=4003, reason="Auth read error")
+        return None
+
+    try:
+        msg = json.loads(raw)
+    except json.JSONDecodeError:
+        await websocket.send_json(_ws_message("error", {
+            "code": "AUTH_ERROR",
+            "message": "Invalid authentication message format - expected JSON",
+        }))
+        await websocket.close(code=4003, reason="Invalid auth message")
+        return None
+
+    if msg.get("type") != "auth":
+        await websocket.send_json(_ws_message("error", {
+            "code": "AUTH_FAILED",
+            "message": "First message must be of type 'auth'",
+        }))
+        await websocket.close(code=4001, reason="Authentication failed")
+        return None
+
+    user = await _ws_try_credentials(msg)
+    if not user:
+        await websocket.send_json(_ws_message("error", {
+            "code": "AUTH_FAILED",
+            "message": "Invalid credentials",
+        }))
+        await websocket.close(code=4001, reason="Authentication failed")
+        return None
+
+    return user
+
+
+async def _ws_try_credentials(msg: dict) -> Optional[Dict[str, Any]]:
+    """Try to authenticate from an auth message payload."""
+    token = msg.get("token", "")
+    if token:
+        if WS_AUTH_TOKEN and token == WS_AUTH_TOKEN:
+            return {
+                "id": "ws_token_user",
+                "email": "ws@local",
+                "is_active": True,
+                "created_at": _utc_now(),
+            }
+        try:
+            return await _authenticate_user_by_jwt(token)
+        except HTTPException:
+            pass
+
+    api_key = msg.get("api_key", "")
+    if api_key:
+        try:
+            return await _authenticate_user_by_api_key(api_key)
+        except HTTPException:
+            pass
+
+    return None
+
 
 @app.websocket("/api/v1/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
 
-    # Authentication phase
-    authenticated = WS_AUTH_TOKEN is None  # Auto-auth if no token configured
-    session_id: Optional[str] = None
+    # --- Authentication phase ---
+    user = await _ws_authenticate(websocket)
+    if user is None:
+        return
 
-    if not authenticated:
-        try:
-            raw = await asyncio.wait_for(websocket.receive_text(), timeout=10.0)
-            msg = json.loads(raw)
-            if msg.get("type") == "auth" and msg.get("token") == WS_AUTH_TOKEN:
-                authenticated = True
-                session_id = msg.get("session_id")
-            else:
-                await websocket.send_json(_ws_message("error", {
-                    "code": "AUTH_FAILED",
-                    "message": "Invalid or missing authentication token",
-                }))
-                await websocket.close(code=4001, reason="Authentication failed")
-                return
-        except asyncio.TimeoutError:
-            await websocket.send_json(_ws_message("error", {
-                "code": "AUTH_TIMEOUT",
-                "message": "Authentication timeout - send auth message within 10 seconds",
-            }))
-            await websocket.close(code=4002, reason="Authentication timeout")
-            return
-        except (json.JSONDecodeError, Exception):
-            await websocket.send_json(_ws_message("error", {
-                "code": "AUTH_ERROR",
-                "message": "Invalid authentication message format",
-            }))
-            await websocket.close(code=4003, reason="Invalid auth message")
-            return
+    user_id: str = user.get("id", "anonymous")
 
-    # Assign or resume a session
-    reconnected = False
-    if session_id and session_id in ws_sessions:
-        reconnected = True
-    else:
-        session_id = str(uuid.uuid4())
-    ws_sessions[session_id] = "connected"
+    # Accept session_id and last_seq from query params for reconnection
+    requested_session_id = websocket.query_params.get("session_id")
+    last_seq_raw = websocket.query_params.get("last_seq", "0")
+    try:
+        last_seq = int(last_seq_raw)
+    except (ValueError, TypeError):
+        last_seq = 0
 
-    # Register client
-    connected_clients.append(websocket)
-    logger.info(f"WebSocket client connected (session={session_id}, reconnected={reconnected}). Total clients: {len(connected_clients)}")
+    # --- Session creation / resumption ---
+    session, reconnected = ws_manager.create_session(
+        user_id=user_id,
+        websocket=websocket,
+        session_id=requested_session_id,
+    )
+    session_id = session.session_id
+    if websocket not in connected_clients:
+        connected_clients.append(websocket)
+
+    logger.info(
+        f"WebSocket client connected (session={session_id}, "
+        f"user={user_id}, reconnected={reconnected}). "
+        f"Total clients: {len(ws_manager.connected_websockets)}"
+    )
 
     await websocket.send_json(_ws_message("auth.result", {
         "authenticated": True,
         "session_id": session_id,
+        "user_id": user_id,
         "reconnected": reconnected,
+        "server_seq": ws_manager.current_seq,
     }))
 
+    # --- Replay missed messages on reconnect ---
+    if reconnected and last_seq > 0:
+        missed = ws_manager.get_missed_messages(last_seq)
+        if missed:
+            await websocket.send_json(_ws_message("replay.start", {
+                "count": len(missed),
+                "from_seq": last_seq + 1,
+                "to_seq": missed[-1].get("_seq", 0),
+            }))
+            for m in missed:
+                try:
+                    await websocket.send_json(m)
+                except Exception:
+                    break
+            await websocket.send_json(_ws_message("replay.end", {
+                "count": len(missed),
+            }))
+
+    # --- Server heartbeat task ---
+    async def _heartbeat():
+        try:
+            while True:
+                await asyncio.sleep(WS_HEARTBEAT_INTERVAL)
+                try:
+                    await websocket.send_json(_ws_message("heartbeat", {
+                        "server_seq": ws_manager.current_seq,
+                    }))
+                    session.last_active = time.time()
+                except Exception:
+                    break
+        except asyncio.CancelledError:
+            pass
+
+    heartbeat_task = asyncio.create_task(_heartbeat())
+
+    # --- Message loop ---
     try:
         while True:
             raw = await websocket.receive_text()
+            session.last_active = time.time()
             try:
                 msg = json.loads(raw)
-                msg_type = msg.get("type", "")
-
-                if msg_type == "ping":
-                    await websocket.send_json(_ws_message("pong"))
-                elif msg_type == "subscribe":
-                    channel = msg.get("data", {}).get("channel", "")
-                    await websocket.send_json(_ws_message("subscribe.ack", {"channel": channel}))
-                else:
-                    await websocket.send_json(_ws_message("error", {
-                        "code": "UNKNOWN_MESSAGE_TYPE",
-                        "message": f"Unknown message type: {msg_type}",
-                    }))
             except json.JSONDecodeError:
                 await websocket.send_json(_ws_message("error", {
                     "code": "INVALID_MESSAGE",
                     "message": "Message must be valid JSON",
                 }))
+                continue
+
+            msg_type = msg.get("type", "")
+            msg_id = msg.get("id")
+
+            if msg_type == "ping":
+                await websocket.send_json(
+                    _ws_message("pong", ref_id=msg_id)
+                )
+
+            elif msg_type == "subscribe":
+                channel = msg.get("data", {}).get("channel", "")
+                if channel:
+                    session.subscriptions.add(channel)
+                await websocket.send_json(_ws_message(
+                    "subscribe.ack",
+                    {"channel": channel},
+                    ref_id=msg_id,
+                ))
+
+            elif msg_type == "unsubscribe":
+                channel = msg.get("data", {}).get("channel", "")
+                session.subscriptions.discard(channel)
+                await websocket.send_json(_ws_message(
+                    "unsubscribe.ack",
+                    {"channel": channel},
+                    ref_id=msg_id,
+                ))
+
+            elif msg_type == "get_state":
+                await websocket.send_json(_ws_message(
+                    "state",
+                    {
+                        "session_id": session_id,
+                        "user_id": user_id,
+                        "subscriptions": sorted(session.subscriptions),
+                        "server_seq": ws_manager.current_seq,
+                        "connected_at": session.connected_at,
+                    },
+                    ref_id=msg_id,
+                ))
+
+            else:
+                await websocket.send_json(_ws_message("error", {
+                    "code": "UNKNOWN_MESSAGE_TYPE",
+                    "message": f"Unknown message type: {msg_type}",
+                }, ref_id=msg_id))
+
     except WebSocketDisconnect:
         logger.info(f"Client disconnected (session={session_id})")
     except Exception as e:
-        logger.error(f"WebSocket error: {e}")
+        logger.error(f"WebSocket error (session={session_id}): {e}")
     finally:
+        heartbeat_task.cancel()
+        ws_manager.remove_session(websocket)
         if websocket in connected_clients:
             connected_clients.remove(websocket)
-        if session_id:
-            ws_sessions[session_id] = "disconnected"
-        logger.info(f"WebSocket client disconnected. Remaining clients: {len(connected_clients)}")
+        logger.info(
+            f"WebSocket session {session_id} cleaned up. "
+            f"Remaining clients: {len(ws_manager.connected_websockets)}"
+        )
 
 
 # For direct execution

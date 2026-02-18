@@ -2,8 +2,8 @@
   "id": "T-070",
   "title": "Implement WebSocket Protocol with Auth and Recovery",
   "description": "Implement structured WebSocket message format, reconnection with state recovery, and authentication on WebSocket connections.",
-  "status": "pending",
-  "assigned_to": "codex",
+  "status": "in_progress",
+  "assigned_to": "claude",
   "task_type": "implement",
   "depends_on": [
     "T-065",
@@ -18,7 +18,7 @@
     "WebSocket connections require authentication"
   ],
   "created_at": "2026-02-16T06:27:01.699033580Z",
-  "updated_at": "2026-02-16T06:27:01.699033580Z",
+  "updated_at": "2026-02-18T02:46:10.086153887Z",
   "completed_at": null,
   "plan_version": 3,
   "retry_count": 0

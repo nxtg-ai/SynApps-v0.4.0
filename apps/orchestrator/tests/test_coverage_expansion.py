@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock, AsyncMock
 import json
 
-from apps.orchestrator.main import app, broadcast_status, connected_clients, Orchestrator, FlowRepository, init_db
+from apps.orchestrator.main import app, broadcast_status, connected_clients, ws_manager, Orchestrator, FlowRepository, init_db
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -27,7 +27,7 @@ async def test_websocket_and_broadcast():
         assert "id" in auth_msg
         assert "timestamp" in auth_msg
 
-        assert len(connected_clients) > 0
+        assert len(ws_manager.connected_websockets) > 0
 
         # Test broadcast_status sends structured message
         status_data = {"run_id": "test-run", "status": "running", "completed_applets": []}
