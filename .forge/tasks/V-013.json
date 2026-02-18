@@ -1,0 +1,25 @@
+{
+  "id": "V-013",
+  "title": "Verify: Migrate Frontend Styling to Tailwind and shadcn/ui",
+  "description": "Run automated tests for task T-014.\nReview changes and verify acceptance criteria.\nOriginal: Replace CSS modules with Tailwind CSS 4 and integrate shadcn/ui components. Refactor existing components to use new styling system.\nCriteria:\n- Tailwind CSS 4 and shadcn/ui installed and configured\n- All components use Tailwind classes and shadcn/ui\n- No remaining CSS modules",
+  "status": "pending",
+  "assigned_to": "codex",
+  "task_type": "review",
+  "depends_on": [
+    "T-014"
+  ],
+  "locked_files": [
+    "apps/web-frontend/src/"
+  ],
+  "acceptance_criteria": [
+    "Tailwind CSS 4 and shadcn/ui installed and configured",
+    "All components use Tailwind classes and shadcn/ui",
+    "No remaining CSS modules"
+  ],
+  "created_at": "2026-02-18T03:57:57.744984445Z",
+  "updated_at": "2026-02-18T03:57:57.744984445Z",
+  "completed_at": null,
+  "parent_task": "T-014",
+  "phase": "verify",
+  "retry_count": 0
+}

@@ -1,0 +1,26 @@
+{
+  "id": "V-011",
+  "title": "Verify: Upgrade Alembic and Enable Auto-Migration",
+  "description": "Run automated tests for task T-012.\nReview changes and verify acceptance criteria.\nOriginal: Upgrade Alembic to latest version and configure auto-migration generation. Update migration scripts as needed.\nCriteria:\n- Alembic upgraded and configured\n- Auto-migration generation works\n- Migration scripts updated for new ORM",
+  "status": "pending",
+  "assigned_to": "codex",
+  "task_type": "review",
+  "depends_on": [
+    "T-012"
+  ],
+  "locked_files": [
+    "migrations/env.py",
+    "apps/orchestrator/migrations/env.py"
+  ],
+  "acceptance_criteria": [
+    "Alembic upgraded and configured",
+    "Auto-migration generation works",
+    "Migration scripts updated for new ORM"
+  ],
+  "created_at": "2026-02-18T03:57:57.744934931Z",
+  "updated_at": "2026-02-18T03:57:57.744934931Z",
+  "completed_at": null,
+  "parent_task": "T-012",
+  "phase": "verify",
+  "retry_count": 0
+}

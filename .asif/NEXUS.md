@@ -183,6 +183,26 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 
 ---
 
+## Portfolio Intelligence
+
+_Cross-project insights injected by ASIF CoS. Read these for awareness — they inform your priorities._
+
+### PI-001: 2Brain Is Your First Dogfood Consumer (2026-02-17)
+**From**: NXTG-AI CoS + Asif (founder decision, 2026-02-17)
+
+2Brain (P-13) has been stale for 38 days, blocked waiting for SynApps. Asif has confirmed: **SynApps' first dogfood use case is 2Brain's capture→classify→store pipeline.** This means:
+
+1. Your visual workflow builder will be validated with a real portfolio use case
+2. 2Brain's pipeline (capture text → Ollama classification → storage) is the test scenario
+3. CLX9 CoS directive to build a standalone Python replacement (DIRECTIVE-CLX9-20260216-03) has been **DEFERRED** — SynApps IS the path forward
+
+Ship the dogfood milestone. 2Brain is waiting.
+
+### PI-002: Portfolio Standard Is Pydantic v2 + FastAPI Modern (2026-02-17)
+You are the only project still on Pydantic v1. The portfolio standard is Pydantic v2 + FastAPI 0.115+ + Python 3.11+. Your modernization (N-07) isn't just tech debt — it's alignment with the entire ecosystem. oneDB, threedb, and Podcast-Pipeline all use Pydantic v2.
+
+---
+
 ## Team Questions
 
 _(Project team: add questions for ASIF CoS here. They will be answered during the next enrichment cycle.)_

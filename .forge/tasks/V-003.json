@@ -1,0 +1,19 @@
+{
+  "id": "V-003",
+  "title": "Verify: Target State (v1.0)",
+  "description": "Run automated tests for task T-003.\nReview changes and verify acceptance criteria.\nOriginal: Implement: Target State (v1.0)\nCriteria:\n",
+  "status": "pending",
+  "assigned_to": "codex",
+  "task_type": "review",
+  "depends_on": [
+    "T-003"
+  ],
+  "locked_files": [],
+  "acceptance_criteria": [],
+  "created_at": "2026-02-18T03:57:57.744730843Z",
+  "updated_at": "2026-02-18T03:57:57.744730843Z",
+  "completed_at": null,
+  "parent_task": "T-003",
+  "phase": "verify",
+  "retry_count": 0
+}

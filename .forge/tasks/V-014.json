@@ -1,0 +1,25 @@
+{
+  "id": "V-014",
+  "title": "Verify: Enable TypeScript Strict Mode",
+  "description": "Run automated tests for task T-015.\nReview changes and verify acceptance criteria.\nOriginal: Enable strict mode in TypeScript config and fix resulting type errors across the frontend codebase.\nCriteria:\n- TypeScript strict mode enabled\n- No type errors in build",
+  "status": "pending",
+  "assigned_to": "codex",
+  "task_type": "review",
+  "depends_on": [
+    "T-015"
+  ],
+  "locked_files": [
+    "apps/web-frontend/tsconfig.json",
+    "apps/web-frontend/src/"
+  ],
+  "acceptance_criteria": [
+    "TypeScript strict mode enabled",
+    "No type errors in build"
+  ],
+  "created_at": "2026-02-18T03:57:57.745008470Z",
+  "updated_at": "2026-02-18T03:57:57.745008470Z",
+  "completed_at": null,
+  "parent_task": "T-015",
+  "phase": "verify",
+  "retry_count": 0
+}
