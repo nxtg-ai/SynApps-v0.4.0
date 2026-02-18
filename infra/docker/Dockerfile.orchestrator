@@ -1,25 +1,26 @@
 # Base image for the orchestrator (Python FastAPI)
-FROM python:3.11-slim as orchestrator
+FROM python:3.11-slim AS orchestrator
 
-WORKDIR /app
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
 
-# Copy requirements and install dependencies
-COPY apps/orchestrator/requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
+WORKDIR /workspace
 
-# Copy orchestrator code
-COPY apps/orchestrator/ .
+# Install runtime dependencies first for better build caching.
+COPY apps/orchestrator/requirements.txt /tmp/requirements.txt
+RUN pip install --upgrade pip \
+    && pip install -r /tmp/requirements.txt
 
-# Copy applets
-COPY apps/applets/ ./applets/
+# Copy source with package layout expected by imports (apps.*).
+COPY apps /workspace/apps
 
-# Expose port
 EXPOSE 8000
 
-# Set environment variables
 ENV PORT=8000
 ENV HOST=0.0.0.0
 
-# Run the application
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+HEALTHCHECK --interval=30s --timeout=5s --retries=5 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)"
+
+CMD ["uvicorn", "apps.orchestrator.main:app", "--host", "0.0.0.0", "--port", "8000"]

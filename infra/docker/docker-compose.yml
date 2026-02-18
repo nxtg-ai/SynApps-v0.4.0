@@ -1,59 +1,92 @@
-version: '3.8'
+version: "3.9"
 
 services:
-  # Orchestrator service
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-synapps}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-synapps}
+      POSTGRES_DB: ${POSTGRES_DB:-synapps}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+    networks:
+      - synapps-network
+    restart: unless-stopped
+
   orchestrator:
     build:
       context: ../../
       dockerfile: infra/docker/Dockerfile.orchestrator
-    ports:
-      - "8000:8000"
+    working_dir: /workspace
+    command: uvicorn apps.orchestrator.main:app --host 0.0.0.0 --port 8000 --reload
     environment:
-      - PORT=8000
-      - HOST=0.0.0.0
-      - FRONTEND_URL=http://localhost:3000
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - STABILITY_API_KEY=${STABILITY_API_KEY}
-      - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://synapps:synapps@db:5432/synapps}
-    networks:
-      - synapps-network
+      PORT: 8000
+      HOST: 0.0.0.0
+      PRODUCTION: ${PRODUCTION:-false}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-http://localhost:3000}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://synapps:synapps@db:5432/synapps}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      STABILITY_API_KEY: ${STABILITY_API_KEY:-}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-synapps-dev-jwt-secret-change-me}
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
     volumes:
-      - ../../apps/orchestrator:/app
-      - ../../apps/applets:/app/applets
+      - ../../:/workspace
     depends_on:
-      - db
-    restart: unless-stopped
-
-  # Database service
-  db:
-    image: postgres:15-alpine
-    environment:
-      - POSTGRES_USER=synapps
-      - POSTGRES_PASSWORD=synapps
-      - POSTGRES_DB=synapps
-    ports:
-      - "5432:5432"
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
     networks:
       - synapps-network
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
 
-  # Frontend service
   frontend:
-    build:
-      context: ../../
-      dockerfile: infra/docker/Dockerfile.frontend
+    image: node:20-alpine
+    working_dir: /workspace/apps/web-frontend
+    command: sh -c "if [ ! -d node_modules/.bin ]; then npm ci; fi && npm run dev -- --host 0.0.0.0 --port 3000"
+    environment:
+      REACT_APP_API_URL: ${REACT_APP_API_URL:-http://localhost:8000}
+      REACT_APP_WEBSOCKET_URL: ${REACT_APP_WEBSOCKET_URL:-ws://localhost:8000/ws}
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+      VITE_WEBSOCKET_URL: ${VITE_WEBSOCKET_URL:-ws://localhost:8000/ws}
+      CHOKIDAR_USEPOLLING: ${CHOKIDAR_USEPOLLING:-true}
     ports:
-      - "3000:80"
+      - "${FRONTEND_PORT:-3000}:3000"
+    volumes:
+      - ../../:/workspace
+      - frontend_node_modules:/workspace/apps/web-frontend/node_modules
     depends_on:
-      - orchestrator
+      orchestrator:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000 >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
     networks:
       - synapps-network
     restart: unless-stopped
-    environment:
-      - REACT_APP_API_URL=http://localhost:8000
-      - REACT_APP_WEBSOCKET_URL=ws://localhost:8000/ws
 
 networks:
   synapps-network:
@@ -61,3 +94,4 @@ networks:
 
 volumes:
   postgres_data:
+  frontend_node_modules:

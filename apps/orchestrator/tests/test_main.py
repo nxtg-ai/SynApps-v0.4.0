@@ -22,6 +22,16 @@ def test_health_check(client):
     assert data["service"] == "SynApps Orchestrator API"
     assert "version" in data
 
+
+def test_versioned_health_check(client):
+    """Test the versioned health check endpoint."""
+    response = client.get("/api/v1/health")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "healthy"
+    assert data["service"] == "SynApps Orchestrator API"
+    assert "version" in data
+
 def test_list_applets(client):
     """Test listing applets returns paginated response."""
     response = client.get("/api/v1/applets")
