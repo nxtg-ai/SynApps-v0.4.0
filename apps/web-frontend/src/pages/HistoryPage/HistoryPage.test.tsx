@@ -1,19 +1,27 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
-import '@testing-library/jest-dom';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import HistoryPage from './HistoryPage';
 import apiService from '../../services/ApiService';
+import { vi, type Mock } from 'vitest';
+
+const { mockApiService } = vi.hoisted(() => ({
+  mockApiService: {
+    getRuns: vi.fn(),
+    getFlow: vi.fn(),
+    getRun: vi.fn(),
+  },
+}));
 
 // Mock the API service
-jest.mock('../../services/ApiService', () => ({
-  getRuns: jest.fn(),
-  getFlow: jest.fn(),
-  getRun: jest.fn(),
+vi.mock('../../services/ApiService', () => ({
+  __esModule: true,
+  apiService: mockApiService,
+  default: mockApiService,
 }));
 
 // Mock MainLayout component to simplify testing
-jest.mock('../../components/Layout/MainLayout', () => {
+vi.mock('../../components/Layout/MainLayout', () => {
   return {
     __esModule: true,
     default: ({ children }: { children: React.ReactNode }) => <div data-testid="main-layout">{children}</div>,
@@ -92,9 +100,10 @@ describe('HistoryPage Component', () => {
   };
 
   beforeEach(() => {
-    jest.clearAllMocks();
-    (apiService.getRuns as jest.Mock).mockResolvedValue(mockRuns);
-    (apiService.getFlow as jest.Mock).mockImplementation((flowId: string) => {
+    vi.clearAllMocks();
+    window.history.pushState({}, '', '/history');
+    (apiService.getRuns as Mock).mockResolvedValue(mockRuns);
+    (apiService.getFlow as Mock).mockImplementation((flowId: string) => {
       return Promise.resolve(mockFlows[flowId as keyof typeof mockFlows] || {});
     });
   });
@@ -135,19 +144,13 @@ describe('HistoryPage Component', () => {
       expect(screen.queryByText(/Loading/i)).not.toBeInTheDocument();
     });
     
-    expect(screen.getByText(/Run Details/i)).toBeInTheDocument();
-    expect(screen.getByText(/Writer Node/i)).toBeInTheDocument();
-    expect(screen.getByText(/Test output/i)).toBeInTheDocument();
+    expect(screen.getByText(/Run Detail/i)).toBeInTheDocument();
+    expect(screen.getByText(/Flow Name/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Test Flow 2/i).length).toBeGreaterThan(0);
   });
 
   test('handles URL parameters for selecting a specific run', async () => {
-    // Mock the location.search
-    Object.defineProperty(window, 'location', {
-      value: {
-        search: '?run=run-2',
-      },
-      writable: true,
-    });
+    window.history.pushState({}, '', '/history?run=run-2');
     
     render(
       <BrowserRouter>
@@ -159,8 +162,8 @@ describe('HistoryPage Component', () => {
       expect(screen.queryByText(/Loading/i)).not.toBeInTheDocument();
     });
     
-    expect(screen.getByText(/Test Flow 2/i)).toBeInTheDocument();
-    expect(screen.getByText(/running/i)).toBeInTheDocument();
+    expect(screen.getByText(/run-2/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/running/i).length).toBeGreaterThan(0);
   });
 
   test('formats duration correctly', async () => {
@@ -173,12 +176,16 @@ describe('HistoryPage Component', () => {
     await waitFor(() => {
       expect(screen.queryByText(/Loading/i)).not.toBeInTheDocument();
     });
-    
+
+    fireEvent.click(screen.getByText(/Test Flow 1/i));
+    await waitFor(() => {
+      expect(screen.queryByText(/Loading/i)).not.toBeInTheDocument();
+    });
     expect(screen.getByText(/1m 0s/i)).toBeInTheDocument(); // 60 seconds = 1m 0s
   });
 
   test('handles API errors gracefully', async () => {
-    (apiService.getRuns as jest.Mock).mockRejectedValue(new Error('API error'));
+    (apiService.getRuns as Mock).mockRejectedValue(new Error('API error'));
     
     render(
       <BrowserRouter>

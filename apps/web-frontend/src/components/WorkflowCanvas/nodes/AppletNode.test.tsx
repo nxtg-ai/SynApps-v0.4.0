@@ -1,12 +1,12 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-import '@testing-library/jest-dom';
 import AppletNode from './AppletNode';
 import { NodeProps } from 'reactflow';
+import { vi } from 'vitest';
 
 // Mock ReactFlow as it's not easy to test with its full functionality
-jest.mock('reactflow', () => ({
-  ...jest.requireActual('reactflow'),
+vi.mock('reactflow', async () => ({
+  ...(await vi.importActual('reactflow')),
   Handle: ({ type, position }: { type: string; position: string }) => (
     <div data-testid={`handle-${type}`} data-position={position}></div>
   ),
