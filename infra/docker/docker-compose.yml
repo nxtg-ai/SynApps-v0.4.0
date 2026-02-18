@@ -14,11 +14,29 @@ services:
       - FRONTEND_URL=http://localhost:3000
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - STABILITY_API_KEY=${STABILITY_API_KEY}
+      - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://synapps:synapps@db:5432/synapps}
     networks:
       - synapps-network
     volumes:
       - ../../apps/orchestrator:/app
       - ../../apps/applets:/app/applets
+    depends_on:
+      - db
+    restart: unless-stopped
+
+  # Database service
+  db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=synapps
+      - POSTGRES_PASSWORD=synapps
+      - POSTGRES_DB=synapps
+    ports:
+      - "5432:5432"
+    networks:
+      - synapps-network
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
 
   # Frontend service
@@ -40,3 +58,6 @@ services:
 networks:
   synapps-network:
     driver: bridge
+
+volumes:
+  postgres_data:

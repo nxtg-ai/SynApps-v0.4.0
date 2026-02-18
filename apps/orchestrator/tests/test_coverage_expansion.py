@@ -5,7 +5,13 @@ from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock, AsyncMock
 import json
 
-from apps.orchestrator.main import app, broadcast_status, connected_clients, Orchestrator, FlowRepository
+from apps.orchestrator.main import app, broadcast_status, connected_clients, Orchestrator, FlowRepository, init_db
+
+
+@pytest.fixture(autouse=True)
+async def setup_db():
+    await init_db()
+    yield
 
 
 @pytest.mark.asyncio

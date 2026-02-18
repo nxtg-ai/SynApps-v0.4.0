@@ -101,6 +101,7 @@ class WorkflowRun(Base):
     results = Column(JSON, nullable=True)
     error = Column(String, nullable=True)
     input_data = Column(JSON, nullable=True)  # Added input_data column to store workflow input
+    completed_applets = Column(JSON, nullable=True)  # Added completed_applets column
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert ORM model to dictionary."""
@@ -115,7 +116,8 @@ class WorkflowRun(Base):
             "end_time": self.end_time,
             "results": self.results or {},
             "error": self.error,
-            "input_data": self.input_data  # Include input_data in the dictionary output
+            "input_data": self.input_data,
+            "completed_applets": self.completed_applets or []
         }
 
 
@@ -156,6 +158,8 @@ class WorkflowRunStatusModel(BaseModel):
     end_time: Optional[float] = None
     results: Dict[str, Any] = Field(default_factory=dict)
     error: Optional[str] = None
+    input_data: Optional[Dict[str, Any]] = None
+    completed_applets: List[str] = Field(default_factory=list)
     
     def dict(self, *args, **kwargs) -> Dict[str, Any]:
         """Override dict method to provide a consistent output."""
