@@ -2,7 +2,7 @@
   "id": "T-053",
   "title": "Implement Image Gen Node",
   "description": "Implement a universal Image Gen Node supporting DALL-E 3, Stability AI, and Flux. Use provider adapter pattern similar to LLM Node.",
-  "status": "in_progress",
+  "status": "completed",
   "assigned_to": "codex",
   "task_type": "implement",
   "depends_on": [
@@ -18,8 +18,8 @@
     "Streaming/thumbnails supported in node preview"
   ],
   "created_at": "2026-02-16T06:27:01.699016182Z",
-  "updated_at": "2026-02-18T01:35:21.753758280Z",
-  "completed_at": null,
+  "updated_at": "2026-02-18T01:38:31.547822855Z",
+  "completed_at": "2026-02-18T01:38:31.547822737Z",
   "plan_version": 3,
   "retry_count": 0
 }

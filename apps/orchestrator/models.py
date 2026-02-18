@@ -308,3 +308,96 @@ class LLMProviderInfoModel(BaseModel):
     configured: bool
     reason: str = ""
     models: List[LLMModelInfoModel] = Field(default_factory=list)
+
+
+SUPPORTED_IMAGE_PROVIDERS = ("openai", "stability", "flux")
+
+
+class ImageGenNodeConfigModel(BaseModel):
+    """Configuration schema for the universal image generation node."""
+
+    model_config = ConfigDict(extra="allow")
+
+    label: str = Field("Image Gen", max_length=100)
+    provider: str = Field("openai")
+    model: Optional[str] = None
+    size: str = Field("1024x1024")
+    style: str = Field("photorealistic")
+    quality: str = Field("standard")
+    n: int = Field(1, ge=1, le=4)
+    response_format: str = Field("b64_json")
+    api_key: Optional[str] = None
+    base_url: Optional[str] = None
+    timeout_seconds: float = Field(120.0, gt=0.0, le=600.0)
+    headers: Dict[str, str] = Field(default_factory=dict)
+    extra: Dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("provider")
+    @classmethod
+    def validate_provider(cls, value: str) -> str:
+        provider = value.strip().lower()
+        if provider not in SUPPORTED_IMAGE_PROVIDERS:
+            raise ValueError(
+                f"provider must be one of: {', '.join(SUPPORTED_IMAGE_PROVIDERS)}"
+            )
+        return provider
+
+    @field_validator("response_format")
+    @classmethod
+    def validate_response_format(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"b64_json", "url"}:
+            raise ValueError("response_format must be one of: b64_json, url")
+        return normalized
+
+
+class ImageGenRequestModel(BaseModel):
+    """Provider-agnostic image generation request."""
+
+    prompt: str = Field(..., min_length=1, max_length=10000)
+    negative_prompt: str = ""
+    model: str = Field(..., min_length=1)
+    size: str = "1024x1024"
+    style: str = "photorealistic"
+    quality: str = "standard"
+    n: int = Field(1, ge=1, le=4)
+    response_format: str = Field("b64_json")
+    extra: Dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("response_format")
+    @classmethod
+    def validate_response_format(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"b64_json", "url"}:
+            raise ValueError("response_format must be one of: b64_json, url")
+        return normalized
+
+
+class ImageGenResponseModel(BaseModel):
+    """Provider-agnostic image generation response."""
+
+    images: List[str] = Field(default_factory=list)
+    model: str
+    provider: str
+    revised_prompt: Optional[str] = None
+    raw: Dict[str, Any] = Field(default_factory=dict)
+
+
+class ImageModelInfoModel(BaseModel):
+    """Metadata for an image model exposed by a provider."""
+
+    id: str
+    name: str
+    provider: str
+    supports_base64: bool = True
+    supports_url: bool = True
+    max_images: int = 1
+
+
+class ImageProviderInfoModel(BaseModel):
+    """Provider availability and model catalog for image generation."""
+
+    name: str
+    configured: bool
+    reason: str = ""
+    models: List[ImageModelInfoModel] = Field(default_factory=list)

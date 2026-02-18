@@ -46,6 +46,11 @@ from apps.orchestrator.models import (
     FlowNodeModel,
     FlowEdgeModel,
     WorkflowRunStatusModel,
+    ImageGenNodeConfigModel,
+    ImageGenRequestModel,
+    ImageGenResponseModel,
+    ImageModelInfoModel,
+    ImageProviderInfoModel,
     LLMMessageModel,
     LLMModelInfoModel,
     LLMNodeConfigModel,
@@ -54,6 +59,7 @@ from apps.orchestrator.models import (
     LLMResponseModel,
     LLMStreamChunkModel,
     LLMUsageModel,
+    SUPPORTED_IMAGE_PROVIDERS,
     SUPPORTED_LLM_PROVIDERS,
 )
 
@@ -72,6 +78,7 @@ API_VERSION = "1.0.0"
 WS_AUTH_TOKEN = os.environ.get("WS_AUTH_TOKEN")
 LEGACY_WRITER_NODE_TYPE = "writer"
 LLM_NODE_TYPE = "llm"
+IMAGE_NODE_TYPE = "image"
 LEGACY_WRITER_LLM_PRESET: Dict[str, Any] = {
     "label": "Writer",
     "provider": "openai",
@@ -1162,7 +1169,487 @@ class LLMNodeApplet(BaseApplet):
         )
 
 
+def _parse_image_size(size: str) -> tuple[int, int]:
+    """Parse an image size string like '1024x1024' into integer width/height."""
+    if not isinstance(size, str):
+        return 1024, 1024
+    raw = size.strip().lower()
+    if "x" not in raw:
+        return 1024, 1024
+    width_raw, height_raw = raw.split("x", 1)
+    try:
+        width = int(width_raw)
+        height = int(height_raw)
+    except ValueError:
+        return 1024, 1024
+    if width <= 0 or height <= 0:
+        return 1024, 1024
+    return width, height
+
+
+def _extract_openai_style_images(payload: Dict[str, Any]) -> List[str]:
+    """Extract image payload values from OpenAI-compatible image responses."""
+    images: List[str] = []
+    for item in payload.get("data") or []:
+        if not isinstance(item, dict):
+            continue
+        b64_value = item.get("b64_json")
+        if isinstance(b64_value, str) and b64_value:
+            images.append(b64_value)
+            continue
+        url_value = item.get("url")
+        if isinstance(url_value, str) and url_value:
+            images.append(url_value)
+    return images
+
+
+class ImageProviderAdapter(ABC):
+    """Common interface for all image provider adapters."""
+
+    name: str
+
+    def __init__(self, config: ImageGenNodeConfigModel):
+        self.config = config
+
+    @abstractmethod
+    async def generate(self, request: ImageGenRequestModel) -> ImageGenResponseModel:
+        """Generate one or more images from the request prompt."""
+
+    @abstractmethod
+    def get_models(self) -> List[ImageModelInfoModel]:
+        """List known models for this provider."""
+
+    @abstractmethod
+    def validate_config(self) -> tuple[bool, str]:
+        """Validate provider configuration."""
+
+    def default_model(self) -> str:
+        models = self.get_models()
+        return models[0].id if models else ""
+
+
+class OpenAIImageProviderAdapter(ImageProviderAdapter):
+    """OpenAI image generation adapter (DALL-E 3)."""
+
+    name = "openai"
+
+    def __init__(self, config: ImageGenNodeConfigModel):
+        super().__init__(config)
+        self.api_key = config.api_key or os.environ.get("OPENAI_API_KEY")
+        self.base_url = (config.base_url or os.environ.get("OPENAI_BASE_URL") or "https://api.openai.com/v1").rstrip("/")
+
+    def validate_config(self) -> tuple[bool, str]:
+        if not self.api_key:
+            return False, "OPENAI_API_KEY not set"
+        return True, ""
+
+    def get_models(self) -> List[ImageModelInfoModel]:
+        return [
+            ImageModelInfoModel(
+                id="dall-e-3",
+                name="DALL-E 3",
+                provider=self.name,
+                supports_base64=True,
+                supports_url=True,
+                max_images=1,
+            ),
+        ]
+
+    def _headers(self) -> Dict[str, str]:
+        return {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            **self.config.headers,
+        }
+
+    def _build_payload(self, request: ImageGenRequestModel) -> Dict[str, Any]:
+        prompt_text = request.prompt
+        if request.style:
+            prompt_text = f"{prompt_text}, {request.style} style"
+
+        payload: Dict[str, Any] = {
+            "model": request.model,
+            "prompt": prompt_text,
+            "n": 1 if request.model == "dall-e-3" else request.n,
+            "size": request.size,
+            "quality": request.quality,
+            "response_format": request.response_format,
+        }
+        payload.update(request.extra)
+        return payload
+
+    async def generate(self, request: ImageGenRequestModel) -> ImageGenResponseModel:
+        payload = self._build_payload(request)
+        async with httpx.AsyncClient(timeout=self.config.timeout_seconds) as client:
+            response = await client.post(
+                f"{self.base_url}/images/generations",
+                headers=self._headers(),
+                json=payload,
+            )
+            if response.status_code >= 400:
+                detail = response.text or f"HTTP {response.status_code}"
+                raise RuntimeError(f"OpenAI image request failed: {detail}")
+            response.raise_for_status()
+            data = response.json()
+
+        images = _extract_openai_style_images(data)
+        revised_prompt = None
+        entries = data.get("data") or []
+        if entries and isinstance(entries[0], dict):
+            raw_revised = entries[0].get("revised_prompt")
+            if isinstance(raw_revised, str):
+                revised_prompt = raw_revised
+
+        return ImageGenResponseModel(
+            images=images,
+            model=data.get("model", request.model),
+            provider=self.name,
+            revised_prompt=revised_prompt,
+            raw=data if isinstance(data, dict) else {},
+        )
+
+
+class StabilityImageProviderAdapter(ImageProviderAdapter):
+    """Stability AI image generation adapter."""
+
+    name = "stability"
+
+    def __init__(self, config: ImageGenNodeConfigModel):
+        super().__init__(config)
+        self.api_key = config.api_key or os.environ.get("STABILITY_API_KEY")
+        self.base_url = (config.base_url or os.environ.get("STABILITY_BASE_URL") or "https://api.stability.ai").rstrip("/")
+
+    def validate_config(self) -> tuple[bool, str]:
+        if not self.api_key:
+            return False, "STABILITY_API_KEY not set"
+        return True, ""
+
+    def get_models(self) -> List[ImageModelInfoModel]:
+        return [
+            ImageModelInfoModel(
+                id="stable-diffusion-xl-1024-v1-0",
+                name="Stable Diffusion XL",
+                provider=self.name,
+                supports_base64=True,
+                supports_url=False,
+                max_images=4,
+            ),
+            ImageModelInfoModel(
+                id="stable-diffusion-3",
+                name="Stable Diffusion 3",
+                provider=self.name,
+                supports_base64=True,
+                supports_url=False,
+                max_images=4,
+            ),
+        ]
+
+    def _headers(self) -> Dict[str, str]:
+        return {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            **self.config.headers,
+        }
+
+    def _build_payload(self, request: ImageGenRequestModel) -> Dict[str, Any]:
+        width, height = _parse_image_size(request.size)
+        prompt_text = request.prompt
+        if request.style:
+            prompt_text = f"{prompt_text}, {request.style} style"
+
+        text_prompts: List[Dict[str, Any]] = [{"text": prompt_text, "weight": 1.0}]
+        if request.negative_prompt:
+            text_prompts.append({"text": request.negative_prompt, "weight": -1.0})
+
+        payload: Dict[str, Any] = {
+            "text_prompts": text_prompts,
+            "cfg_scale": float(request.extra.get("cfg_scale", 7)),
+            "height": height,
+            "width": width,
+            "samples": request.n,
+            "steps": int(request.extra.get("steps", 30)),
+        }
+        payload.update({k: v for k, v in request.extra.items() if k not in {"cfg_scale", "steps"}})
+        return payload
+
+    async def generate(self, request: ImageGenRequestModel) -> ImageGenResponseModel:
+        payload = self._build_payload(request)
+        model_id = request.model
+        async with httpx.AsyncClient(timeout=self.config.timeout_seconds) as client:
+            response = await client.post(
+                f"{self.base_url}/v1/generation/{model_id}/text-to-image",
+                headers=self._headers(),
+                json=payload,
+            )
+            if response.status_code >= 400:
+                detail = response.text or f"HTTP {response.status_code}"
+                raise RuntimeError(f"Stability image request failed: {detail}")
+            response.raise_for_status()
+            data = response.json()
+
+        images = []
+        for artifact in data.get("artifacts") or []:
+            if isinstance(artifact, dict):
+                raw_b64 = artifact.get("base64")
+                if isinstance(raw_b64, str) and raw_b64:
+                    images.append(raw_b64)
+
+        return ImageGenResponseModel(
+            images=images,
+            model=model_id,
+            provider=self.name,
+            raw=data if isinstance(data, dict) else {},
+        )
+
+
+class FluxImageProviderAdapter(ImageProviderAdapter):
+    """Flux image generation adapter using an OpenAI-compatible response shape."""
+
+    name = "flux"
+
+    def __init__(self, config: ImageGenNodeConfigModel):
+        super().__init__(config)
+        self.api_key = config.api_key or os.environ.get("FLUX_API_KEY")
+        self.base_url = (config.base_url or os.environ.get("FLUX_BASE_URL") or "https://api.bfl.ai/v1").rstrip("/")
+
+    def validate_config(self) -> tuple[bool, str]:
+        if not self.api_key:
+            return False, "FLUX_API_KEY not set"
+        return True, ""
+
+    def get_models(self) -> List[ImageModelInfoModel]:
+        return [
+            ImageModelInfoModel(
+                id="flux-1.1-pro",
+                name="FLUX 1.1 Pro",
+                provider=self.name,
+                supports_base64=True,
+                supports_url=True,
+                max_images=4,
+            ),
+            ImageModelInfoModel(
+                id="flux-1-dev",
+                name="FLUX 1 Dev",
+                provider=self.name,
+                supports_base64=True,
+                supports_url=True,
+                max_images=4,
+            ),
+        ]
+
+    def _headers(self) -> Dict[str, str]:
+        headers = {"Content-Type": "application/json", **self.config.headers}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        return headers
+
+    def _endpoint(self) -> str:
+        endpoint = self.config.extra.get("endpoint", "/images/generations")
+        if not isinstance(endpoint, str) or not endpoint.strip():
+            endpoint = "/images/generations"
+        if not endpoint.startswith("/"):
+            endpoint = f"/{endpoint}"
+        return endpoint
+
+    def _build_payload(self, request: ImageGenRequestModel) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
+            "model": request.model,
+            "prompt": request.prompt,
+            "size": request.size,
+            "style": request.style,
+            "quality": request.quality,
+            "n": request.n,
+            "response_format": request.response_format,
+        }
+        if request.negative_prompt:
+            payload["negative_prompt"] = request.negative_prompt
+        payload.update(request.extra)
+        return payload
+
+    async def generate(self, request: ImageGenRequestModel) -> ImageGenResponseModel:
+        payload = self._build_payload(request)
+        async with httpx.AsyncClient(timeout=self.config.timeout_seconds) as client:
+            response = await client.post(
+                f"{self.base_url}{self._endpoint()}",
+                headers=self._headers(),
+                json=payload,
+            )
+            if response.status_code >= 400:
+                detail = response.text or f"HTTP {response.status_code}"
+                raise RuntimeError(f"Flux image request failed: {detail}")
+            response.raise_for_status()
+            data = response.json()
+
+        images = _extract_openai_style_images(data if isinstance(data, dict) else {})
+        if not images and isinstance(data, dict):
+            for item in data.get("images") or []:
+                if isinstance(item, str) and item:
+                    images.append(item)
+        revised_prompt = None
+        if isinstance(data, dict):
+            raw_revised = data.get("revised_prompt")
+            if isinstance(raw_revised, str):
+                revised_prompt = raw_revised
+        return ImageGenResponseModel(
+            images=images,
+            model=request.model,
+            provider=self.name,
+            revised_prompt=revised_prompt,
+            raw=data if isinstance(data, dict) else {},
+        )
+
+
+class ImageProviderRegistry:
+    """Runtime registry for image provider adapters."""
+
+    _providers: Dict[str, Type[ImageProviderAdapter]] = {
+        "openai": OpenAIImageProviderAdapter,
+        "stability": StabilityImageProviderAdapter,
+        "flux": FluxImageProviderAdapter,
+    }
+
+    @classmethod
+    def get(cls, name: str, config: ImageGenNodeConfigModel) -> ImageProviderAdapter:
+        provider_name = name.lower().strip()
+        provider_cls = cls._providers.get(provider_name)
+        if not provider_cls:
+            raise ValueError(f"Unknown provider '{name}'. Available: {list(cls._providers.keys())}")
+        return provider_cls(config)
+
+    @classmethod
+    def list_providers(cls) -> List[ImageProviderInfoModel]:
+        providers: List[ImageProviderInfoModel] = []
+        for name in SUPPORTED_IMAGE_PROVIDERS:
+            provider_cls = cls._providers.get(name)
+            if provider_cls is None:
+                continue
+            default_cfg = ImageGenNodeConfigModel(provider=name)
+            provider = provider_cls(default_cfg)
+            is_valid, reason = provider.validate_config()
+            providers.append(
+                ImageProviderInfoModel(
+                    name=name,
+                    configured=is_valid,
+                    reason="" if is_valid else reason,
+                    models=provider.get_models(),
+                )
+            )
+        return providers
+
+
+class ImageGenNodeApplet(BaseApplet):
+    """Universal image generation node with provider adapter routing."""
+
+    VERSION = "1.0.0"
+    CAPABILITIES = [
+        "image-generation",
+        "multi-provider",
+        "text-to-image",
+    ]
+
+    async def on_message(self, message: AppletMessage) -> AppletMessage:
+        config = self._resolve_config(message)
+        provider = ImageProviderRegistry.get(config.provider, config)
+        is_valid, reason = provider.validate_config()
+        if not is_valid:
+            return AppletMessage(
+                content={"error": f"Provider '{config.provider}' is not configured: {reason}"},
+                context=message.context,
+                metadata={"applet": IMAGE_NODE_TYPE, "status": "error"},
+            )
+
+        request = self._build_request(message, config, provider)
+        response = await provider.generate(request)
+        first_image = response.images[0] if response.images else ""
+
+        output_context = {**message.context}
+        output_context["last_image_response"] = response.model_dump()
+        output_context["image_provider"] = response.provider
+        output_context["image_model"] = response.model
+
+        content: Dict[str, Any] = {
+            "image": first_image,
+            "images": response.images,
+            "prompt": request.prompt,
+            "provider": response.provider,
+            "model": response.model,
+        }
+        if response.revised_prompt:
+            content["revised_prompt"] = response.revised_prompt
+
+        metadata = {
+            "applet": IMAGE_NODE_TYPE,
+            "provider": response.provider,
+            "model": response.model,
+            "image_count": len(response.images),
+            "status": "success",
+        }
+        return AppletMessage(content=content, context=output_context, metadata=metadata)
+
+    def _resolve_config(self, message: AppletMessage) -> ImageGenNodeConfigModel:
+        node_data = message.metadata.get("node_data", {})
+        if not isinstance(node_data, dict):
+            node_data = {}
+
+        context_config = message.context.get("image_config", {})
+        if not isinstance(context_config, dict):
+            context_config = {}
+
+        metadata_config = message.metadata.get("image_config", {})
+        if not isinstance(metadata_config, dict):
+            metadata_config = {}
+
+        merged = {**context_config, **metadata_config, **node_data}
+        config_payload = {
+            "label": merged.get("label", "Image Gen"),
+            "provider": merged.get("provider", "openai"),
+            "model": merged.get("model"),
+            "size": merged.get("size", "1024x1024"),
+            "style": merged.get("style", "photorealistic"),
+            "quality": merged.get("quality", "standard"),
+            "n": merged.get("n", 1),
+            "response_format": merged.get("response_format", merged.get("responseFormat", "b64_json")),
+            "api_key": merged.get("api_key", merged.get("apiKey")),
+            "base_url": merged.get("base_url", merged.get("baseUrl")),
+            "timeout_seconds": merged.get("timeout_seconds", merged.get("timeoutSeconds", 120.0)),
+            "headers": merged.get("headers", {}),
+            "extra": merged.get("extra", {}),
+        }
+        return ImageGenNodeConfigModel.model_validate(config_payload)
+
+    def _build_request(
+        self,
+        message: AppletMessage,
+        config: ImageGenNodeConfigModel,
+        provider: ImageProviderAdapter,
+    ) -> ImageGenRequestModel:
+        prompt_text = _as_text(message.content).strip()
+        if not prompt_text:
+            prompt_text = "A beautiful landscape with mountains and a lake."
+
+        negative_prompt = ""
+        if isinstance(message.context, dict):
+            raw_negative = message.context.get("negative_prompt", message.context.get("negativePrompt", ""))
+            if isinstance(raw_negative, str):
+                negative_prompt = raw_negative
+
+        model_id = config.model or provider.default_model()
+        return ImageGenRequestModel(
+            prompt=prompt_text,
+            negative_prompt=negative_prompt,
+            model=model_id,
+            size=config.size,
+            style=config.style,
+            quality=config.quality,
+            n=config.n,
+            response_format=config.response_format,
+            extra=dict(config.extra),
+        )
+
+
 applet_registry["llm"] = LLMNodeApplet
+applet_registry[IMAGE_NODE_TYPE] = ImageGenNodeApplet
 
 
 # ============================================================
@@ -1175,22 +1662,27 @@ class Orchestrator:
     @staticmethod
     async def load_applet(applet_type: str) -> BaseApplet:
         """Dynamically load an applet by type."""
-        if applet_type in applet_registry:
-            return applet_registry[applet_type]()
+        normalized_type = applet_type.strip().lower()
+        if normalized_type in applet_registry:
+            return applet_registry[normalized_type]()
 
-        if applet_type == "llm":
-            applet_registry["llm"] = LLMNodeApplet
+        if normalized_type == LLM_NODE_TYPE:
+            applet_registry[LLM_NODE_TYPE] = LLMNodeApplet
             return LLMNodeApplet()
 
+        if normalized_type in {IMAGE_NODE_TYPE, "image_gen", "image-gen"}:
+            applet_registry[IMAGE_NODE_TYPE] = ImageGenNodeApplet
+            return ImageGenNodeApplet()
+
         try:
-            module_path = f"apps.applets.{applet_type}.applet"
+            module_path = f"apps.applets.{normalized_type}.applet"
             module = importlib.import_module(module_path)
-            applet_class = getattr(module, f"{applet_type.capitalize()}Applet")
-            applet_registry[applet_type] = applet_class
+            applet_class = getattr(module, f"{normalized_type.capitalize()}Applet")
+            applet_registry[normalized_type] = applet_class
             return applet_class()
         except (ImportError, AttributeError) as e:
-            logger.error(f"Failed to load applet '{applet_type}': {e}")
-            raise ValueError(f"Applet type '{applet_type}' not found")
+            logger.error(f"Failed to load applet '{normalized_type}': {e}")
+            raise ValueError(f"Applet type '{normalized_type}' not found")
 
     @staticmethod
     def create_run_id() -> str:
@@ -1530,6 +2022,13 @@ async def list_applets(
 async def list_llm_providers():
     """List supported LLM providers and model catalogs."""
     providers = [provider.model_dump() for provider in LLMProviderRegistry.list_providers()]
+    return {"providers": providers}
+
+
+@v1.get("/image/providers")
+async def list_image_providers():
+    """List supported image generation providers and model catalogs."""
+    providers = [provider.model_dump() for provider in ImageProviderRegistry.list_providers()]
     return {"providers": providers}
 
 
