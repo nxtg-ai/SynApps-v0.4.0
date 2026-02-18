@@ -70,6 +70,15 @@ logger = logging.getLogger("orchestrator")
 
 API_VERSION = "1.0.0"
 WS_AUTH_TOKEN = os.environ.get("WS_AUTH_TOKEN")
+LEGACY_WRITER_NODE_TYPE = "writer"
+LLM_NODE_TYPE = "llm"
+LEGACY_WRITER_LLM_PRESET: Dict[str, Any] = {
+    "label": "Writer",
+    "provider": "openai",
+    "model": "gpt-4o",
+    "temperature": 0.7,
+    "max_tokens": 1000,
+}
 
 # ============================================================
 # Application Setup
@@ -489,6 +498,9 @@ class OpenAIProviderAdapter(LLMProviderAdapter):
                 headers=self._headers(),
                 json=payload,
             )
+            if response.status_code >= 400:
+                detail = response.text or f"HTTP {response.status_code}"
+                raise RuntimeError(f"OpenAI request failed: {detail}")
             response.raise_for_status()
             data = response.json()
 
@@ -1186,6 +1198,75 @@ class Orchestrator:
         return str(uuid.uuid4())
 
     @staticmethod
+    def migrate_legacy_writer_nodes(flow: Dict[str, Any]) -> tuple[Dict[str, Any], bool]:
+        """Convert legacy writer nodes into LLM nodes with OpenAI GPT-4o defaults."""
+        if not isinstance(flow, dict):
+            return flow, False
+
+        nodes = flow.get("nodes")
+        if not isinstance(nodes, list):
+            return flow, False
+
+        migrated = False
+        migrated_nodes: List[Any] = []
+
+        for node in nodes:
+            if not isinstance(node, dict):
+                migrated_nodes.append(node)
+                continue
+
+            node_type = str(node.get("type", "")).strip().lower()
+            if node_type != LEGACY_WRITER_NODE_TYPE:
+                migrated_nodes.append(node)
+                continue
+
+            node_data = node.get("data", {})
+            migrated_data = dict(node_data) if isinstance(node_data, dict) else {}
+
+            if "systemPrompt" in migrated_data and "system_prompt" not in migrated_data:
+                migrated_data["system_prompt"] = migrated_data["systemPrompt"]
+            if "maxTokens" in migrated_data and "max_tokens" not in migrated_data:
+                migrated_data["max_tokens"] = migrated_data["maxTokens"]
+
+            for key, value in LEGACY_WRITER_LLM_PRESET.items():
+                migrated_data.setdefault(key, value)
+
+            migrated_data.setdefault("legacy_applet", LEGACY_WRITER_NODE_TYPE)
+            migrated_data.setdefault("migration_source", "T-052")
+
+            migrated_node = dict(node)
+            migrated_node["type"] = LLM_NODE_TYPE
+            migrated_node["data"] = migrated_data
+            migrated_nodes.append(migrated_node)
+            migrated = True
+
+        if not migrated:
+            return flow, False
+
+        migrated_flow = dict(flow)
+        migrated_flow["nodes"] = migrated_nodes
+        return migrated_flow, True
+
+    @staticmethod
+    async def auto_migrate_legacy_writer_nodes(
+        flow: Optional[Dict[str, Any]],
+        persist: bool = False,
+    ) -> Optional[Dict[str, Any]]:
+        """Apply writer-to-llm migration and optionally persist migrated flow."""
+        if not flow:
+            return flow
+
+        migrated_flow, migrated = Orchestrator.migrate_legacy_writer_nodes(flow)
+        if migrated:
+            logger.info(
+                "Auto-migrated legacy writer nodes to llm nodes for flow '%s'",
+                migrated_flow.get("id"),
+            )
+            if persist:
+                await FlowRepository.save(migrated_flow)
+        return migrated_flow
+
+    @staticmethod
     async def execute_flow(flow: dict, input_data: Dict[str, Any]) -> str:
         """Execute a flow and return the run ID."""
         run_id = Orchestrator.create_run_id()
@@ -1459,6 +1540,9 @@ async def create_flow(flow: CreateFlowRequest):
 
     flow_dict = flow.model_dump()
     flow_dict["id"] = flow_id
+    flow_dict, migrated = Orchestrator.migrate_legacy_writer_nodes(flow_dict)
+    if migrated:
+        logger.info("Applied writer->llm migration while creating flow '%s'", flow_id)
     await FlowRepository.save(flow_dict)
     return {"message": "Flow created", "id": flow_id}
 
@@ -1470,7 +1554,12 @@ async def list_flows(
 ):
     """List all flows with pagination."""
     flows = await FlowRepository.get_all()
-    return paginate(flows, page, page_size)
+    migrated_flows: List[Dict[str, Any]] = []
+    for flow in flows:
+        migrated_flow = await Orchestrator.auto_migrate_legacy_writer_nodes(flow, persist=True)
+        if isinstance(migrated_flow, dict):
+            migrated_flows.append(migrated_flow)
+    return paginate(migrated_flows, page, page_size)
 
 
 @v1.get("/flows/{flow_id}")
@@ -1479,6 +1568,7 @@ async def get_flow(flow_id: str):
     flow = await FlowRepository.get_by_id(flow_id)
     if not flow:
         raise HTTPException(status_code=404, detail="Flow not found")
+    flow = await Orchestrator.auto_migrate_legacy_writer_nodes(flow, persist=True)
     return flow
 
 
@@ -1498,6 +1588,7 @@ async def run_flow(flow_id: str, body: RunFlowRequest):
     flow = await FlowRepository.get_by_id(flow_id)
     if not flow:
         raise HTTPException(status_code=404, detail="Flow not found")
+    flow = await Orchestrator.auto_migrate_legacy_writer_nodes(flow, persist=True)
     run_id = await Orchestrator.execute_flow(flow, body.input)
     return {"run_id": run_id}
 
