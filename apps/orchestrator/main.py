@@ -52,6 +52,7 @@ from apps.orchestrator.models import (
     FlowNodeModel,
     FlowEdgeModel,
     IfElseNodeConfigModel,
+    MergeNodeConfigModel,
     ForEachNodeConfigModel,
     WorkflowRunStatusModel,
     ImageGenNodeConfigModel,
@@ -104,6 +105,7 @@ HTTP_REQUEST_NODE_TYPE = "http_request"
 CODE_NODE_TYPE = "code"
 TRANSFORM_NODE_TYPE = "transform"
 IF_ELSE_NODE_TYPE = "if_else"
+MERGE_NODE_TYPE = "merge"
 FOR_EACH_NODE_TYPE = "for_each"
 DEFAULT_MEMORY_BACKEND = os.environ.get("MEMORY_BACKEND", "sqlite_fts").strip().lower()
 DEFAULT_MEMORY_NAMESPACE = os.environ.get("MEMORY_NAMESPACE", "default").strip() or "default"
@@ -5068,6 +5070,7 @@ class Orchestrator:
                         applet = await Orchestrator.load_applet(node["type"].lower())
 
                         message_content = input_data
+                        # Testing replacement
                         message_metadata = {"node_id": node_id, "run_id": run_id}
 
                         if "data" in node and isinstance(node["data"], dict):

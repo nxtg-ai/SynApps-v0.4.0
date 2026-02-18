@@ -719,6 +719,42 @@ class IfElseNodeConfigModel(BaseModel):
         return normalized or None
 
 
+SUPPORTED_MERGE_STRATEGIES = (
+    "concatenate",
+    "array",
+    "first_wins",
+)
+
+
+class MergeNodeConfigModel(BaseModel):
+    """Configuration schema for fan-in merge behavior."""
+
+    model_config = ConfigDict(extra="allow")
+
+    label: str = Field("Merge", max_length=100)
+    strategy: str = Field("array")
+    delimiter: str = Field("\n", max_length=1000)
+    extra: Dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("strategy")
+    @classmethod
+    def validate_strategy(cls, value: str) -> str:
+        normalized = value.strip().lower().replace("-", "_")
+        alias_map = {
+            "concat": "concatenate",
+            "join": "concatenate",
+            "list": "array",
+            "first": "first_wins",
+            "firstwins": "first_wins",
+        }
+        normalized = alias_map.get(normalized, normalized)
+        if normalized not in SUPPORTED_MERGE_STRATEGIES:
+            raise ValueError(
+                f"strategy must be one of: {', '.join(SUPPORTED_MERGE_STRATEGIES)}"
+            )
+        return normalized
+
+
 class ForEachNodeConfigModel(BaseModel):
     """Configuration schema for the for-each loop node."""
 
