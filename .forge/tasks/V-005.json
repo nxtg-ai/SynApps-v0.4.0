@@ -2,7 +2,7 @@
   "id": "V-005",
   "title": "Verify: Out of Scope (v1.x / v2.0)",
   "description": "Run automated tests for task T-005.\nReview changes and verify acceptance criteria.\nOriginal: Implement: Out of Scope (v1.x / v2.0)\nCriteria:\n",
-  "status": "pending",
+  "status": "completed",
   "assigned_to": "codex",
   "task_type": "review",
   "depends_on": [
@@ -11,8 +11,8 @@
   "locked_files": [],
   "acceptance_criteria": [],
   "created_at": "2026-02-18T03:57:57.744776490Z",
-  "updated_at": "2026-02-18T03:57:57.744776490Z",
-  "completed_at": null,
+  "updated_at": "2026-02-18T15:45:36.928068557Z",
+  "completed_at": "2026-02-18T15:45:36.928068509Z",
   "parent_task": "T-005",
   "phase": "verify",
   "retry_count": 0
