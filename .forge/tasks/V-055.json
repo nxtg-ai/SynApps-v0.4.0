@@ -1,0 +1,26 @@
+{
+  "id": "V-055",
+  "title": "Verify: Implement For-Each Node for Loop Support",
+  "description": "Run automated tests for task T-062.\nReview changes and verify acceptance criteria.\nOriginal: Implement For-Each Node to iterate over array input, executing a sub-workflow per item with max iteration limit and parallel option.\nCriteria:\n- For-Each Node iterates over array input\n- Max iteration limit enforced\n- Parallel iteration supported",
+  "status": "pending",
+  "assigned_to": "codex",
+  "task_type": "review",
+  "depends_on": [
+    "T-062"
+  ],
+  "locked_files": [
+    "apps/orchestrator/main.py",
+    "apps/orchestrator/models.py"
+  ],
+  "acceptance_criteria": [
+    "For-Each Node iterates over array input",
+    "Max iteration limit enforced",
+    "Parallel iteration supported"
+  ],
+  "created_at": "2026-02-18T03:57:57.746289832Z",
+  "updated_at": "2026-02-18T03:57:57.746289832Z",
+  "completed_at": null,
+  "parent_task": "T-062",
+  "phase": "verify",
+  "retry_count": 0
+}

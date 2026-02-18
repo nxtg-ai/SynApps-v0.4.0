@@ -1,0 +1,26 @@
+{
+  "id": "V-053",
+  "title": "Verify: Implement If/Else Node for Conditional Routing",
+  "description": "Run automated tests for task T-060.\nReview changes and verify acceptance criteria.\nOriginal: Implement If/Else Node to evaluate a condition (contains, equals, regex, JSON path) and route to one of two output branches.\nCriteria:\n- If/Else Node supports all listed conditions\n- Correct branch is taken based on input\n- Visual indication of branch taken",
+  "status": "pending",
+  "assigned_to": "codex",
+  "task_type": "review",
+  "depends_on": [
+    "T-060"
+  ],
+  "locked_files": [
+    "apps/orchestrator/main.py",
+    "apps/orchestrator/models.py"
+  ],
+  "acceptance_criteria": [
+    "If/Else Node supports all listed conditions",
+    "Correct branch is taken based on input",
+    "Visual indication of branch taken"
+  ],
+  "created_at": "2026-02-18T03:57:57.746240588Z",
+  "updated_at": "2026-02-18T03:57:57.746240588Z",
+  "completed_at": null,
+  "parent_task": "T-060",
+  "phase": "verify",
+  "retry_count": 0
+}

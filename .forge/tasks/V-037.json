@@ -1,0 +1,26 @@
+{
+  "id": "V-037",
+  "title": "Verify: Refactor Backend Models for Pydantic v2",
+  "description": "Run automated tests for task T-042.\nReview changes and verify acceptance criteria.\nOriginal: Refactor all Pydantic models and usages to be compatible with Pydantic v2. Remove model_to_dict and related v1 compatibility code.\nCriteria:\n- All Pydantic models use v2 syntax\n- No model_to_dict or v1 compat code remains\n- All serialization/deserialization works as expected",
+  "status": "pending",
+  "assigned_to": "codex",
+  "task_type": "review",
+  "depends_on": [
+    "T-042"
+  ],
+  "locked_files": [
+    "apps/orchestrator/main.py",
+    "apps/orchestrator/models.py"
+  ],
+  "acceptance_criteria": [
+    "All Pydantic models use v2 syntax",
+    "No model_to_dict or v1 compat code remains",
+    "All serialization/deserialization works as expected"
+  ],
+  "created_at": "2026-02-18T03:57:57.745836024Z",
+  "updated_at": "2026-02-18T03:57:57.745836024Z",
+  "completed_at": null,
+  "parent_task": "T-042",
+  "phase": "verify",
+  "retry_count": 0
+}

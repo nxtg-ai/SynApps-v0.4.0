@@ -1,0 +1,25 @@
+{
+  "id": "V-019",
+  "title": "Verify: Implement Node Card Redesign and Validation",
+  "description": "Run automated tests for task T-020.\nReview changes and verify acceptance criteria.\nOriginal: Update node cards to have category-colored borders, status indicators, mini-previews, port type hints, and connection validation logic.\nCriteria:\n- Node cards styled as specified\n- Status indicators and mini-previews work\n- Invalid connections prevented",
+  "status": "pending",
+  "assigned_to": "codex",
+  "task_type": "review",
+  "depends_on": [
+    "T-020"
+  ],
+  "locked_files": [
+    "apps/web-frontend/src/"
+  ],
+  "acceptance_criteria": [
+    "Node cards styled as specified",
+    "Status indicators and mini-previews work",
+    "Invalid connections prevented"
+  ],
+  "created_at": "2026-02-18T03:57:57.745253142Z",
+  "updated_at": "2026-02-18T03:57:57.745253142Z",
+  "completed_at": null,
+  "parent_task": "T-020",
+  "phase": "verify",
+  "retry_count": 0
+}

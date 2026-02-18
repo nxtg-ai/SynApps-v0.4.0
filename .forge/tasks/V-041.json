@@ -1,0 +1,25 @@
+{
+  "id": "V-041",
+  "title": "Verify: Integrate Zustand for State Management",
+  "description": "Run automated tests for task T-047.\nReview changes and verify acceptance criteria.\nOriginal: Add Zustand for global state management in the frontend. Refactor workflow, execution, and settings state to use Zustand stores.\nCriteria:\n- Zustand is installed and configured\n- Workflow, execution, and settings state managed via Zustand\n- No redundant state in React context or props",
+  "status": "pending",
+  "assigned_to": "codex",
+  "task_type": "review",
+  "depends_on": [
+    "T-047"
+  ],
+  "locked_files": [
+    "apps/web-frontend/src/App.tsx"
+  ],
+  "acceptance_criteria": [
+    "Zustand is installed and configured",
+    "Workflow, execution, and settings state managed via Zustand",
+    "No redundant state in React context or props"
+  ],
+  "created_at": "2026-02-18T03:57:57.745939580Z",
+  "updated_at": "2026-02-18T03:57:57.745939580Z",
+  "completed_at": null,
+  "parent_task": "T-047",
+  "phase": "verify",
+  "retry_count": 0
+}

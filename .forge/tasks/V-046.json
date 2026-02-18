@@ -1,0 +1,26 @@
+{
+  "id": "V-046",
+  "title": "Verify: Implement Image Gen Node",
+  "description": "Run automated tests for task T-053.\nReview changes and verify acceptance criteria.\nOriginal: Implement a universal Image Gen Node supporting DALL-E 3, Stability AI, and Flux. Use provider adapter pattern similar to LLM Node.\nCriteria:\n- Image Gen Node supports all listed providers\n- Adapters implement a common interface\n- Streaming/thumbnails supported in node preview",
+  "status": "pending",
+  "assigned_to": "codex",
+  "task_type": "review",
+  "depends_on": [
+    "T-053"
+  ],
+  "locked_files": [
+    "apps/orchestrator/main.py",
+    "apps/orchestrator/models.py"
+  ],
+  "acceptance_criteria": [
+    "Image Gen Node supports all listed providers",
+    "Adapters implement a common interface",
+    "Streaming/thumbnails supported in node preview"
+  ],
+  "created_at": "2026-02-18T03:57:57.746063169Z",
+  "updated_at": "2026-02-18T03:57:57.746063169Z",
+  "completed_at": null,
+  "parent_task": "T-053",
+  "phase": "verify",
+  "retry_count": 0
+}

@@ -1,0 +1,26 @@
+{
+  "id": "V-026",
+  "title": "Verify: Implement JWT Auth and API Key Security",
+  "description": "Run automated tests for task T-028.\nReview changes and verify acceptance criteria.\nOriginal: Add JWT-based authentication with refresh tokens, email/password registration and login, API key authentication, and encrypted storage of API keys.\nCriteria:\n- JWT auth flow implemented\n- API keys encrypted at rest\n- API key endpoints secured",
+  "status": "pending",
+  "assigned_to": "codex",
+  "task_type": "review",
+  "depends_on": [
+    "T-028"
+  ],
+  "locked_files": [
+    "apps/orchestrator/main.py",
+    "apps/orchestrator/models.py"
+  ],
+  "acceptance_criteria": [
+    "JWT auth flow implemented",
+    "API keys encrypted at rest",
+    "API key endpoints secured"
+  ],
+  "created_at": "2026-02-18T03:57:57.745453016Z",
+  "updated_at": "2026-02-18T03:57:57.745453016Z",
+  "completed_at": null,
+  "parent_task": "T-028",
+  "phase": "verify",
+  "retry_count": 0
+}

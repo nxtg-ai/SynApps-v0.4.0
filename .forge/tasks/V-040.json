@@ -1,0 +1,27 @@
+{
+  "id": "V-040",
+  "title": "Verify: Migrate Frontend to Vite and Tailwind",
+  "description": "Run automated tests for task T-046.\nReview changes and verify acceptance criteria.\nOriginal: Migrate frontend build tool from CRA to Vite 6. Replace CSS modules with Tailwind CSS 4 and integrate shadcn/ui. Ensure build and dev workflows work.\nCriteria:\n- Frontend builds and runs with Vite\n- Tailwind and shadcn/ui are integrated\n- No CSS modules remain\n- UI renders correctly",
+  "status": "pending",
+  "assigned_to": "codex",
+  "task_type": "review",
+  "depends_on": [
+    "T-046"
+  ],
+  "locked_files": [
+    "apps/web-frontend/src/App.tsx",
+    "apps/web-frontend/src/index.tsx"
+  ],
+  "acceptance_criteria": [
+    "Frontend builds and runs with Vite",
+    "Tailwind and shadcn/ui are integrated",
+    "No CSS modules remain",
+    "UI renders correctly"
+  ],
+  "created_at": "2026-02-18T03:57:57.745914866Z",
+  "updated_at": "2026-02-18T03:57:57.745914866Z",
+  "completed_at": null,
+  "parent_task": "T-046",
+  "phase": "verify",
+  "retry_count": 0
+}

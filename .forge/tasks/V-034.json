@@ -1,0 +1,25 @@
+{
+  "id": "V-034",
+  "title": "Verify: Optimize Database Indexes and Queries",
+  "description": "Run automated tests for task T-036.\nReview changes and verify acceptance criteria.\nOriginal: Add indexes on frequently queried columns and optimize queries for flow history and run status.\nCriteria:\n- Indexes created on flow_id, status, created_at\n- History queries optimized\n- No slow query warnings",
+  "status": "pending",
+  "assigned_to": "codex",
+  "task_type": "review",
+  "depends_on": [
+    "T-036"
+  ],
+  "locked_files": [
+    "apps/orchestrator/models.py"
+  ],
+  "acceptance_criteria": [
+    "Indexes created on flow_id, status, created_at",
+    "History queries optimized",
+    "No slow query warnings"
+  ],
+  "created_at": "2026-02-18T03:57:57.745658531Z",
+  "updated_at": "2026-02-18T03:57:57.745658531Z",
+  "completed_at": null,
+  "parent_task": "T-036",
+  "phase": "verify",
+  "retry_count": 0
+}

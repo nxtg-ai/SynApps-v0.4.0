@@ -1,0 +1,26 @@
+{
+  "id": "V-050",
+  "title": "Verify: Implement HTTP Request Node",
+  "description": "Run automated tests for task T-057.\nReview changes and verify acceptance criteria.\nOriginal: Implement HTTP Request Node to make HTTP requests (GET/POST/PUT/DELETE) with configurable URL, method, headers, and body template.\nCriteria:\n- HTTP Request Node supports all listed methods\n- Headers and body are configurable\n- Node output contains response data",
+  "status": "pending",
+  "assigned_to": "codex",
+  "task_type": "review",
+  "depends_on": [
+    "T-057"
+  ],
+  "locked_files": [
+    "apps/orchestrator/main.py",
+    "apps/orchestrator/models.py"
+  ],
+  "acceptance_criteria": [
+    "HTTP Request Node supports all listed methods",
+    "Headers and body are configurable",
+    "Node output contains response data"
+  ],
+  "created_at": "2026-02-18T03:57:57.746170073Z",
+  "updated_at": "2026-02-18T03:57:57.746170073Z",
+  "completed_at": null,
+  "parent_task": "T-057",
+  "phase": "verify",
+  "retry_count": 0
+}

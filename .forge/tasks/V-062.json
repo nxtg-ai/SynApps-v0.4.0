@@ -1,0 +1,26 @@
+{
+  "id": "V-062",
+  "title": "Verify: Implement RESTful API Hardening and Versioning",
+  "description": "Run automated tests for task T-069.\nReview changes and verify acceptance criteria.\nOriginal: Ensure all API endpoints follow RESTful conventions, use consistent error response format, support pagination, and are versioned under /api/v1. Enable OpenAPI auto-generation.\nCriteria:\n- All endpoints use /api/v1 prefix\n- Consistent error format returned\n- Pagination on list endpoints\n- OpenAPI spec available",
+  "status": "pending",
+  "assigned_to": "codex",
+  "task_type": "review",
+  "depends_on": [
+    "T-069"
+  ],
+  "locked_files": [
+    "apps/orchestrator/main.py"
+  ],
+  "acceptance_criteria": [
+    "All endpoints use /api/v1 prefix",
+    "Consistent error format returned",
+    "Pagination on list endpoints",
+    "OpenAPI spec available"
+  ],
+  "created_at": "2026-02-18T03:57:57.746475579Z",
+  "updated_at": "2026-02-18T03:57:57.746475579Z",
+  "completed_at": null,
+  "parent_task": "T-069",
+  "phase": "verify",
+  "retry_count": 0
+}

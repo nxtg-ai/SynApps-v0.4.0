@@ -1,0 +1,27 @@
+{
+  "id": "V-032",
+  "title": "Verify: Harden REST API and WebSocket Protocol",
+  "description": "Run automated tests for task T-034.\nReview changes and verify acceptance criteria.\nOriginal: Ensure REST API uses consistent error format, pagination, strict request validation, and versioning. Update WebSocket protocol for structured messages, reconnection, and authentication.\nCriteria:\n- REST API returns consistent error objects\n- All list endpoints paginated\n- Strict validation via Pydantic v2\n- API versioning in place\n- WebSocket messages structured and authenticated",
+  "status": "pending",
+  "assigned_to": "codex",
+  "task_type": "review",
+  "depends_on": [
+    "T-034"
+  ],
+  "locked_files": [
+    "apps/orchestrator/main.py"
+  ],
+  "acceptance_criteria": [
+    "REST API returns consistent error objects",
+    "All list endpoints paginated",
+    "Strict validation via Pydantic v2",
+    "API versioning in place",
+    "WebSocket messages structured and authenticated"
+  ],
+  "created_at": "2026-02-18T03:57:57.745604827Z",
+  "updated_at": "2026-02-18T03:57:57.745604827Z",
+  "completed_at": null,
+  "parent_task": "T-034",
+  "phase": "verify",
+  "retry_count": 0
+}

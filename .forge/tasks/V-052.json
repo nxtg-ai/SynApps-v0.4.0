@@ -1,0 +1,26 @@
+{
+  "id": "V-052",
+  "title": "Verify: Implement Transform Node",
+  "description": "Run automated tests for task T-059.\nReview changes and verify acceptance criteria.\nOriginal: Implement Transform Node for data transformation: JSON path extract, template string, regex replace, split/join. Config-driven, no code required from user.\nCriteria:\n- Transform Node supports all listed transformations\n- Configuration is user-friendly\n- Node output matches expected transformation",
+  "status": "pending",
+  "assigned_to": "codex",
+  "task_type": "review",
+  "depends_on": [
+    "T-059"
+  ],
+  "locked_files": [
+    "apps/orchestrator/main.py",
+    "apps/orchestrator/models.py"
+  ],
+  "acceptance_criteria": [
+    "Transform Node supports all listed transformations",
+    "Configuration is user-friendly",
+    "Node output matches expected transformation"
+  ],
+  "created_at": "2026-02-18T03:57:57.746216907Z",
+  "updated_at": "2026-02-18T03:57:57.746216907Z",
+  "completed_at": null,
+  "parent_task": "T-059",
+  "phase": "verify",
+  "retry_count": 0
+}
