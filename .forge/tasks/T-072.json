@@ -2,7 +2,7 @@
   "id": "T-072",
   "title": "Add Backend Unit and Integration Tests",
   "description": "Write pytest (with pytest-asyncio) unit tests for all new applets, orchestrator engine, API endpoints, and auth flow. Add integration tests for full workflow execution. Target 80%+ coverage.",
-  "status": "pending",
+  "status": "in_progress",
   "assigned_to": "gemini",
   "task_type": "test",
   "depends_on": [
@@ -24,7 +24,7 @@
     "All tests pass"
   ],
   "created_at": "2026-02-16T06:27:01.699035774Z",
-  "updated_at": "2026-02-16T06:27:01.699035774Z",
+  "updated_at": "2026-02-18T03:07:58.441453712Z",
   "completed_at": null,
   "plan_version": 3,
   "retry_count": 0

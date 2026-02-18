@@ -1661,12 +1661,18 @@ def _extract_sandbox_result(stdout_text: str) -> tuple[str, Optional[Dict[str, A
 
 
 PYTHON_CODE_WRAPPER = r"""
-import builtins
-import json
-import os
-import pathlib
-import traceback
-import sys
+_clean_env = {
+    "PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
+    "HOME": "/tmp",
+    "TMPDIR": "/tmp",
+    "TMP": "/tmp",
+    "TEMP": "/tmp",
+    "PYTHONIOENCODING": "utf-8",
+    "PYTHONUNBUFFERED": "1",
+}
+os.environ.clear()
+os.environ.update(_clean_env)
+
 
 ALLOWED_ROOT = pathlib.Path("/tmp").resolve()
 
@@ -1716,7 +1722,7 @@ for blocked_name in ("system", "popen", "fork", "forkpty"):
     if hasattr(os, blocked_name):
         setattr(os, blocked_name, lambda *args, **kwargs: (_ for _ in ()).throw(PermissionError("Process spawning is blocked")))
 
-blocked_modules = {"subprocess", "socket", "ctypes", "multiprocessing"}
+blocked_modules = {"subprocess", "socket", "ctypes", "multiprocessing", "pathlib"}
 _original_import = builtins.__import__
 def _safe_import(name, globals=None, locals=None, fromlist=(), level=0):
     module_root = name.split(".", 1)[0]
@@ -1765,6 +1771,22 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const Module = require('module');
+
+// --- ENVIRONMENT VARIABLE SANITIZATION START ---
+const cleanEnv = {
+  PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin',
+  HOME: '/tmp',
+  TMPDIR: '/tmp',
+  TMP: '/tmp',
+  TEMP: '/tmp',
+};
+// Clear existing process.env and set only allowed variables
+for (const key in process.env) {
+  delete process.env[key];
+}
+Object.assign(process.env, cleanEnv);
+// --- ENVIRONMENT VARIABLE SANITIZATION END ---
+
 
 const ALLOWED_ROOT = path.resolve('/tmp');
 
