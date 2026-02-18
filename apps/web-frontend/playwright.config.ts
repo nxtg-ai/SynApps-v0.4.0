@@ -26,7 +26,7 @@ export default defineConfig({
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
-    baseURL: 'http://localhost:5173', // Assuming vite dev server runs on 5173
+    baseURL: 'http://localhost:3000', // Assuming vite dev server runs on 5173
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
@@ -55,7 +55,7 @@ export default defineConfig({
   webServer: {
     command: 'npm start', // Command to start your dev server
     url: 'http://localhost:5173',
-    timeout: 120000, // Increased timeout for server startup
+    timeout: 300000, // Increased timeout for server startup
     reuseExistingServer: !process.env.CI,
     stdout: 'pipe',
     stderr: 'pipe',

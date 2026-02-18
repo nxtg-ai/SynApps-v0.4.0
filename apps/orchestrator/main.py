@@ -13,9 +13,11 @@ import logging
 import math
 import os
 import re
+import shutil
 import sqlite3
 import sys
 import time
+import tempfile
 import uuid
 from enum import Enum
 import threading
@@ -45,6 +47,7 @@ from contextlib import asynccontextmanager
 from apps.orchestrator.db import init_db, close_db_connections
 from apps.orchestrator.repositories import FlowRepository, WorkflowRunRepository
 from apps.orchestrator.models import (
+    CodeNodeConfigModel,
     FlowModel,
     FlowNodeModel,
     FlowEdgeModel,
@@ -70,6 +73,11 @@ from apps.orchestrator.models import (
     SUPPORTED_LLM_PROVIDERS,
 )
 
+try:
+    import resource
+except Exception:  # pragma: no cover - non-Unix fallback
+    resource = None  # type: ignore[assignment]
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -90,6 +98,7 @@ LLM_NODE_TYPE = "llm"
 IMAGE_NODE_TYPE = "image"
 MEMORY_NODE_TYPE = "memory"
 HTTP_REQUEST_NODE_TYPE = "http_request"
+CODE_NODE_TYPE = "code"
 DEFAULT_MEMORY_BACKEND = os.environ.get("MEMORY_BACKEND", "sqlite_fts").strip().lower()
 DEFAULT_MEMORY_NAMESPACE = os.environ.get("MEMORY_NAMESPACE", "default").strip() or "default"
 DEFAULT_MEMORY_SQLITE_PATH = str(
@@ -550,6 +559,342 @@ def _render_template_payload(template: Any, data: Dict[str, Any]) -> Any:
     if isinstance(template, dict):
         return {key: _render_template_payload(value, data) for key, value in template.items()}
     return template
+
+
+def _safe_tmp_dir(path_value: str) -> str:
+    """Normalize and enforce that a working directory stays under /tmp."""
+    tmp_root = Path("/tmp").resolve()
+    candidate = Path(path_value or "/tmp").expanduser()
+    try:
+        resolved = candidate.resolve(strict=False)
+    except Exception:
+        resolved = tmp_root
+    if resolved == tmp_root or tmp_root in resolved.parents:
+        return str(resolved)
+    return str(tmp_root)
+
+
+def _sandbox_preexec_fn(
+    cpu_time_seconds: int,
+    memory_limit_mb: int,
+    max_output_bytes: int,
+):
+    """Build a pre-exec hook that applies OS-level resource limits."""
+    if resource is None:
+        return None
+
+    memory_bytes = int(memory_limit_mb * 1024 * 1024)
+    max_file_size = max(1024, int(max_output_bytes * 2))
+
+    def _preexec() -> None:
+        try:
+            os.setsid()
+        except Exception:
+            pass
+
+        try:
+            resource.setrlimit(resource.RLIMIT_CPU, (cpu_time_seconds, cpu_time_seconds))
+        except Exception:
+            pass
+        try:
+            resource.setrlimit(resource.RLIMIT_AS, (memory_bytes, memory_bytes))
+        except Exception:
+            pass
+        try:
+            resource.setrlimit(resource.RLIMIT_FSIZE, (max_file_size, max_file_size))
+        except Exception:
+            pass
+        try:
+            resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+        except Exception:
+            pass
+        try:
+            resource.setrlimit(resource.RLIMIT_NOFILE, (64, 64))
+        except Exception:
+            pass
+    return _preexec
+
+
+async def _read_stream_limited(
+    stream: Optional[asyncio.StreamReader],
+    max_bytes: int,
+) -> tuple[bytes, bool]:
+    """Read an async stream and cap captured bytes."""
+    if stream is None:
+        return b"", False
+
+    chunks: List[bytes] = []
+    total = 0
+    truncated = False
+
+    while True:
+        chunk = await stream.read(8192)
+        if not chunk:
+            break
+        if total < max_bytes:
+            remaining = max_bytes - total
+            chunks.append(chunk[:remaining])
+            if len(chunk) > remaining:
+                truncated = True
+        else:
+            truncated = True
+        total += len(chunk)
+
+    return b"".join(chunks), truncated
+
+
+def _extract_sandbox_result(stdout_text: str) -> tuple[str, Optional[Dict[str, Any]]]:
+    """Extract structured wrapper result markers from stdout."""
+    start_marker = "__SYNAPPS_RESULT_START__"
+    end_marker = "__SYNAPPS_RESULT_END__"
+
+    start_index = stdout_text.rfind(start_marker)
+    if start_index < 0:
+        return stdout_text, None
+
+    end_index = stdout_text.find(end_marker, start_index)
+    if end_index < 0:
+        return stdout_text, None
+
+    payload_start = start_index + len(start_marker)
+    payload_text = stdout_text[payload_start:end_index].strip()
+
+    cleaned_stdout = (stdout_text[:start_index] + stdout_text[end_index + len(end_marker):]).strip()
+    parsed = _safe_json_loads(payload_text)
+    return cleaned_stdout, parsed
+
+
+PYTHON_CODE_WRAPPER = r"""
+import builtins
+import json
+import os
+import pathlib
+import traceback
+import sys
+
+ALLOWED_ROOT = pathlib.Path("/tmp").resolve()
+
+def _resolve_path(raw_path):
+    path_obj = pathlib.Path(raw_path)
+    if not path_obj.is_absolute():
+        path_obj = pathlib.Path(os.getcwd()) / path_obj
+    return path_obj.resolve(strict=False)
+
+def _assert_tmp_path(raw_path):
+    resolved = _resolve_path(raw_path)
+    if resolved == ALLOWED_ROOT or ALLOWED_ROOT in resolved.parents:
+        return str(resolved)
+    raise PermissionError(f"Filesystem access is restricted to /tmp: {raw_path}")
+
+def _wrap_path_func(module_obj, func_name, indices):
+    original = getattr(module_obj, func_name, None)
+    if not callable(original):
+        return
+
+    def wrapped(*args, **kwargs):
+        mutable = list(args)
+        for index in indices:
+            if index < len(mutable):
+                mutable[index] = _assert_tmp_path(mutable[index])
+        return original(*mutable, **kwargs)
+
+    setattr(module_obj, func_name, wrapped)
+
+_original_open = builtins.open
+def _safe_open(path, *args, **kwargs):
+    return _original_open(_assert_tmp_path(path), *args, **kwargs)
+builtins.open = _safe_open
+
+_wrap_path_func(os, "open", [0])
+_wrap_path_func(os, "listdir", [0])
+_wrap_path_func(os, "scandir", [0])
+_wrap_path_func(os, "mkdir", [0])
+_wrap_path_func(os, "makedirs", [0])
+_wrap_path_func(os, "remove", [0])
+_wrap_path_func(os, "unlink", [0])
+_wrap_path_func(os, "rmdir", [0])
+_wrap_path_func(os, "rename", [0, 1])
+_wrap_path_func(os, "replace", [0, 1])
+
+for blocked_name in ("system", "popen", "fork", "forkpty"):
+    if hasattr(os, blocked_name):
+        setattr(os, blocked_name, lambda *args, **kwargs: (_ for _ in ()).throw(PermissionError("Process spawning is blocked")))
+
+blocked_modules = {"subprocess", "socket", "ctypes", "multiprocessing"}
+_original_import = builtins.__import__
+def _safe_import(name, globals=None, locals=None, fromlist=(), level=0):
+    module_root = name.split(".", 1)[0]
+    if module_root in blocked_modules:
+        raise ImportError(f"Import '{module_root}' is blocked in code sandbox")
+    return _original_import(name, globals, locals, fromlist, level)
+builtins.__import__ = _safe_import
+
+payload_raw = sys.stdin.read()
+try:
+    payload = json.loads(payload_raw) if payload_raw.strip() else {}
+except Exception:
+    payload = {}
+
+user_code = str(payload.get("code", ""))
+globals_scope = {
+    "__name__": "__main__",
+    "data": payload.get("data"),
+    "context": payload.get("context", {}),
+    "metadata": payload.get("metadata", {}),
+    "result": None,
+}
+
+wrapper_result = {"ok": True, "result": None}
+try:
+    exec(compile(user_code, "<user_code.py>", "exec"), globals_scope, globals_scope)
+    wrapper_result["result"] = globals_scope.get("result")
+except Exception as exc:
+    wrapper_result = {
+        "ok": False,
+        "error": {
+            "type": exc.__class__.__name__,
+            "message": str(exc),
+            "traceback": traceback.format_exc(limit=20),
+        },
+    }
+
+print("__SYNAPPS_RESULT_START__")
+print(json.dumps(wrapper_result, ensure_ascii=False))
+print("__SYNAPPS_RESULT_END__")
+"""
+
+
+JAVASCRIPT_CODE_WRAPPER = r"""
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+const Module = require('module');
+
+const ALLOWED_ROOT = path.resolve('/tmp');
+
+function resolvePath(rawPath) {
+  const inputPath = String(rawPath);
+  if (path.isAbsolute(inputPath)) {
+    return path.resolve(inputPath);
+  }
+  return path.resolve(process.cwd(), inputPath);
+}
+
+function assertTmpPath(rawPath) {
+  const resolved = resolvePath(rawPath);
+  if (resolved === ALLOWED_ROOT || resolved.startsWith(ALLOWED_ROOT + path.sep)) {
+    return resolved;
+  }
+  throw new Error(`Filesystem access is restricted to /tmp: ${rawPath}`);
+}
+
+function wrapFs(target) {
+  const singlePathFns = [
+    'readFileSync', 'writeFileSync', 'appendFileSync', 'openSync', 'readdirSync',
+    'statSync', 'lstatSync', 'unlinkSync', 'rmSync', 'mkdirSync', 'mkdtempSync',
+    'accessSync', 'chmodSync', 'realpathSync', 'readlinkSync'
+  ];
+  for (const fn of singlePathFns) {
+    if (typeof target[fn] !== 'function') continue;
+    const original = target[fn].bind(target);
+    target[fn] = function(p, ...args) {
+      if (typeof p === 'number') {
+        return original(p, ...args);
+      }
+      return original(assertTmpPath(p), ...args);
+    };
+  }
+
+  for (const fn of ['renameSync', 'copyFileSync', 'linkSync', 'symlinkSync']) {
+    if (typeof target[fn] !== 'function') continue;
+    const original = target[fn].bind(target);
+    target[fn] = function(src, dst, ...args) {
+      return original(assertTmpPath(src), assertTmpPath(dst), ...args);
+    };
+  }
+}
+
+function wrapFsPromises(promisesApi) {
+  if (!promisesApi) return;
+  const singlePathFns = ['readFile', 'writeFile', 'appendFile', 'open', 'readdir', 'stat', 'lstat', 'unlink', 'rm', 'mkdir', 'realpath', 'readlink'];
+  for (const fn of singlePathFns) {
+    if (typeof promisesApi[fn] !== 'function') continue;
+    const original = promisesApi[fn].bind(promisesApi);
+    promisesApi[fn] = async function(p, ...args) {
+      if (typeof p === 'number') {
+        return original(p, ...args);
+      }
+      return original(assertTmpPath(p), ...args);
+    };
+  }
+  for (const fn of ['rename', 'copyFile', 'link', 'symlink']) {
+    if (typeof promisesApi[fn] !== 'function') continue;
+    const original = promisesApi[fn].bind(promisesApi);
+    promisesApi[fn] = async function(src, dst, ...args) {
+      return original(assertTmpPath(src), assertTmpPath(dst), ...args);
+    };
+  }
+}
+
+wrapFs(fs);
+wrapFsPromises(fs.promises);
+
+const blockedModules = new Set(['child_process', 'worker_threads', 'cluster', 'net', 'dgram']);
+const originalLoad = Module._load;
+Module._load = function(request, parent, isMain) {
+  const normalized = request.startsWith('node:') ? request.slice(5) : request;
+  if (blockedModules.has(normalized)) {
+    throw new Error(`Import '${normalized}' is blocked in code sandbox`);
+  }
+  if (normalized === 'fs') return fs;
+  if (normalized === 'fs/promises') return fs.promises;
+  return originalLoad.apply(this, arguments);
+};
+
+let payload = {};
+try {
+  const raw = fs.readFileSync(0, 'utf8');
+  payload = raw.trim() ? JSON.parse(raw) : {};
+} catch (err) {
+  payload = {};
+}
+
+const sandbox = {
+  data: payload.data,
+  context: payload.context || {},
+  metadata: payload.metadata || {},
+  result: null,
+  console,
+  require,
+  Buffer,
+  setTimeout,
+  clearTimeout,
+};
+
+const execTimeoutMs = Math.max(1, Number(payload.exec_timeout_ms || 1000));
+let wrapperResult = { ok: true, result: null };
+try {
+  const context = vm.createContext(sandbox, {
+    codeGeneration: { strings: false, wasm: false },
+  });
+  const script = new vm.Script(String(payload.code || ''), { filename: '<user_code.js>' });
+  script.runInContext(context, { timeout: execTimeoutMs });
+  wrapperResult.result = sandbox.result;
+} catch (err) {
+  wrapperResult = {
+    ok: false,
+    error: {
+      type: err && err.name ? err.name : 'Error',
+      message: err && err.message ? err.message : String(err),
+      stack: err && err.stack ? String(err.stack) : '',
+    },
+  };
+}
+
+console.log('__SYNAPPS_RESULT_START__');
+console.log(JSON.stringify(wrapperResult));
+console.log('__SYNAPPS_RESULT_END__');
+"""
 
 
 class MemoryStoreBackend(ABC):
@@ -2938,10 +3283,234 @@ class HTTPRequestNodeApplet(BaseApplet):
             return text_body
 
 
+class CodeNodeApplet(BaseApplet):
+    """Sandboxed code execution node for Python and JavaScript."""
+
+    VERSION = "1.0.0"
+    CAPABILITIES = [
+        "code-execution",
+        "python",
+        "javascript",
+        "sandboxed-subprocess",
+        "resource-limits",
+    ]
+
+    async def on_message(self, message: AppletMessage) -> AppletMessage:
+        try:
+            config = self._resolve_config(message)
+        except Exception as exc:
+            return AppletMessage(
+                content={"error": f"Invalid code node configuration: {exc}"},
+                context=message.context,
+                metadata={"applet": CODE_NODE_TYPE, "status": "error"},
+            )
+
+        code_text = config.code
+        if not code_text.strip() and isinstance(message.content, dict):
+            raw_code = message.content.get("code")
+            if isinstance(raw_code, str):
+                code_text = raw_code
+
+        if not code_text.strip():
+            return AppletMessage(
+                content={"error": "No code provided"},
+                context=message.context,
+                metadata={"applet": CODE_NODE_TYPE, "status": "error"},
+            )
+
+        started_at = time.perf_counter()
+        execution_result = await self._execute_sandboxed_code(message, config, code_text)
+        duration_ms = round((time.perf_counter() - started_at) * 1000.0, 3)
+
+        output_content = {
+            **execution_result,
+            "language": config.language,
+            "duration_ms": duration_ms,
+        }
+        output_context = {**message.context, "last_code_response": output_content}
+        output_metadata = {
+            "applet": CODE_NODE_TYPE,
+            "status": "success" if execution_result.get("ok") else "error",
+            "language": config.language,
+            "timed_out": execution_result.get("timed_out", False),
+            "exit_code": execution_result.get("exit_code"),
+            "duration_ms": duration_ms,
+        }
+        return AppletMessage(content=output_content, context=output_context, metadata=output_metadata)
+
+    def _resolve_config(self, message: AppletMessage) -> CodeNodeConfigModel:
+        node_data = message.metadata.get("node_data", {})
+        if not isinstance(node_data, dict):
+            node_data = {}
+
+        context_config = message.context.get("code_config", {})
+        if not isinstance(context_config, dict):
+            context_config = {}
+
+        metadata_config = message.metadata.get("code_config", {})
+        if not isinstance(metadata_config, dict):
+            metadata_config = {}
+
+        merged = {**context_config, **metadata_config, **node_data}
+        config_payload = {
+            "label": merged.get("label", "Code"),
+            "language": merged.get("language", merged.get("runtime", "python")),
+            "code": merged.get("code", ""),
+            "timeout_seconds": merged.get("timeout_seconds", merged.get("timeoutSeconds", 5.0)),
+            "cpu_time_seconds": merged.get("cpu_time_seconds", merged.get("cpuTimeSeconds", 3)),
+            "memory_limit_mb": merged.get("memory_limit_mb", merged.get("memoryLimitMb", 256)),
+            "max_output_bytes": merged.get("max_output_bytes", merged.get("maxOutputBytes", 262144)),
+            "working_dir": merged.get("working_dir", merged.get("workingDir", "/tmp")),
+            "env": merged.get("env", {}),
+            "extra": merged.get("extra", {}),
+        }
+        return CodeNodeConfigModel.model_validate(config_payload)
+
+    async def _execute_sandboxed_code(
+        self,
+        message: AppletMessage,
+        config: CodeNodeConfigModel,
+        code_text: str,
+    ) -> Dict[str, Any]:
+        sandbox_dir = tempfile.mkdtemp(prefix="synapps-code-", dir="/tmp")
+        requested_workdir = _safe_tmp_dir(config.working_dir)
+        if requested_workdir == "/tmp":
+            workdir = sandbox_dir
+        else:
+            workdir = requested_workdir
+            Path(workdir).mkdir(parents=True, exist_ok=True)
+
+        if config.language == "python":
+            runner_path = Path(sandbox_dir) / "sandbox_runner.py"
+            runner_path.write_text(PYTHON_CODE_WRAPPER, encoding="utf-8")
+            executable = os.environ.get("CODE_NODE_PYTHON_BIN") or sys.executable or "python3"
+            command = [executable, "-I", "-B", str(runner_path)]
+        else:
+            runner_path = Path(sandbox_dir) / "sandbox_runner.js"
+            runner_path.write_text(JAVASCRIPT_CODE_WRAPPER, encoding="utf-8")
+            executable = os.environ.get("CODE_NODE_NODE_BIN") or "node"
+            command = [executable, str(runner_path)]
+
+        payload = {
+            "code": code_text,
+            "data": message.content,
+            "context": message.context,
+            "metadata": message.metadata,
+            "exec_timeout_ms": max(1, int(config.timeout_seconds * 1000)),
+        }
+        payload_bytes = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+
+        env = {
+            "PATH": os.environ.get("PATH", ""),
+            "HOME": "/tmp",
+            "TMPDIR": "/tmp",
+            "TMP": "/tmp",
+            "TEMP": "/tmp",
+            "PYTHONIOENCODING": "utf-8",
+            "PYTHONUNBUFFERED": "1",
+        }
+        if isinstance(config.env, dict):
+            for key, value in config.env.items():
+                env[str(key)] = str(value)
+
+        effective_memory_limit_mb = config.memory_limit_mb
+        if config.language == "javascript":
+            effective_memory_limit_mb = max(effective_memory_limit_mb, 768)
+
+        preexec_fn = _sandbox_preexec_fn(
+            cpu_time_seconds=config.cpu_time_seconds,
+            memory_limit_mb=effective_memory_limit_mb,
+            max_output_bytes=config.max_output_bytes,
+        )
+
+        timed_out = False
+        stdout_text = ""
+        stderr_text = ""
+        stdout_truncated = False
+        stderr_truncated = False
+        return_code: Optional[int] = None
+
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *command,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=workdir,
+                env=env,
+                preexec_fn=preexec_fn,
+            )
+        except FileNotFoundError:
+            return {
+                "ok": False,
+                "timed_out": False,
+                "exit_code": None,
+                "stdout": "",
+                "stderr": f"Runtime not found: {command[0]}",
+                "result": None,
+                "error": {"message": f"Runtime not found: {command[0]}"},
+                "stdout_truncated": False,
+                "stderr_truncated": False,
+            }
+
+        stdout_task = asyncio.create_task(_read_stream_limited(process.stdout, config.max_output_bytes))
+        stderr_task = asyncio.create_task(_read_stream_limited(process.stderr, config.max_output_bytes))
+
+        try:
+            if process.stdin is not None:
+                process.stdin.write(payload_bytes)
+                await process.stdin.drain()
+                process.stdin.close()
+
+            await asyncio.wait_for(process.wait(), timeout=config.timeout_seconds)
+            return_code = process.returncode
+        except asyncio.TimeoutError:
+            timed_out = True
+            process.kill()
+            await process.wait()
+            return_code = process.returncode
+        finally:
+            stdout_bytes, stdout_truncated = await stdout_task
+            stderr_bytes, stderr_truncated = await stderr_task
+            stdout_text = stdout_bytes.decode("utf-8", errors="replace")
+            stderr_text = stderr_bytes.decode("utf-8", errors="replace")
+
+        if return_code in (-9, -24):
+            timed_out = True
+
+        cleaned_stdout, wrapper_payload = _extract_sandbox_result(stdout_text)
+        wrapper_ok = bool(wrapper_payload and wrapper_payload.get("ok"))
+        wrapper_error = wrapper_payload.get("error") if isinstance(wrapper_payload, dict) else None
+
+        result_payload = {
+            "ok": (not timed_out) and return_code == 0 and wrapper_ok,
+            "timed_out": timed_out,
+            "exit_code": return_code,
+            "stdout": cleaned_stdout,
+            "stderr": stderr_text,
+            "result": wrapper_payload.get("result") if isinstance(wrapper_payload, dict) else None,
+            "error": wrapper_error,
+            "stdout_truncated": stdout_truncated,
+            "stderr_truncated": stderr_truncated,
+        }
+
+        if timed_out and not result_payload.get("error"):
+            result_payload["error"] = {"message": "Execution timed out"}
+        elif return_code not in (0, None) and not result_payload.get("error"):
+            result_payload["error"] = {"message": f"Process exited with code {return_code}"}
+        elif wrapper_payload is None and not result_payload.get("error"):
+            result_payload["error"] = {"message": "Sandbox wrapper did not return a structured result"}
+
+        shutil.rmtree(sandbox_dir, ignore_errors=True)
+
+        return result_payload
+
+
 applet_registry["llm"] = LLMNodeApplet
 applet_registry[IMAGE_NODE_TYPE] = ImageGenNodeApplet
 applet_registry[MEMORY_NODE_TYPE] = MemoryNodeApplet
 applet_registry[HTTP_REQUEST_NODE_TYPE] = HTTPRequestNodeApplet
+applet_registry[CODE_NODE_TYPE] = CodeNodeApplet
 
 
 # ============================================================
@@ -2979,6 +3548,16 @@ class Orchestrator:
         }:
             applet_registry[HTTP_REQUEST_NODE_TYPE] = HTTPRequestNodeApplet
             return HTTPRequestNodeApplet()
+
+        if normalized_type in {
+            CODE_NODE_TYPE,
+            "code-node",
+            "code_node",
+            "code_execution",
+            "code-execution",
+        }:
+            applet_registry[CODE_NODE_TYPE] = CodeNodeApplet
+            return CodeNodeApplet()
 
         try:
             module_path = f"apps.applets.{normalized_type}.applet"

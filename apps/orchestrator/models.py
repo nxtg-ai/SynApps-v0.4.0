@@ -516,3 +516,49 @@ class HTTPRequestNodeConfigModel(BaseModel):
         if normalized not in {"auto", "json", "text", "form", "none"}:
             raise ValueError("body_type must be one of: auto, json, text, form, none")
         return normalized
+
+
+SUPPORTED_CODE_LANGUAGES = ("python", "javascript")
+
+
+class CodeNodeConfigModel(BaseModel):
+    """Configuration schema for the sandboxed code execution node."""
+
+    model_config = ConfigDict(extra="allow")
+
+    label: str = Field("Code", max_length=100)
+    language: str = Field("python")
+    code: str = Field("", max_length=200000)
+    timeout_seconds: float = Field(5.0, gt=0.0, le=120.0)
+    cpu_time_seconds: int = Field(3, ge=1, le=60)
+    memory_limit_mb: int = Field(256, ge=64, le=2048)
+    max_output_bytes: int = Field(262144, ge=1024, le=1048576)
+    working_dir: str = Field("/tmp")
+    env: Dict[str, str] = Field(default_factory=dict)
+    extra: Dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("language")
+    @classmethod
+    def validate_language(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        alias_map = {
+            "py": "python",
+            "python3": "python",
+            "js": "javascript",
+            "node": "javascript",
+            "nodejs": "javascript",
+        }
+        normalized = alias_map.get(normalized, normalized)
+        if normalized not in SUPPORTED_CODE_LANGUAGES:
+            raise ValueError(
+                f"language must be one of: {', '.join(SUPPORTED_CODE_LANGUAGES)}"
+            )
+        return normalized
+
+    @field_validator("working_dir")
+    @classmethod
+    def validate_working_dir(cls, value: str) -> str:
+        normalized = value.strip() or "/tmp"
+        if not normalized.startswith("/tmp"):
+            raise ValueError("working_dir must be under /tmp")
+        return normalized
