@@ -2,7 +2,7 @@
   "id": "T-051",
   "title": "Implement LLM Node and Provider Adapters",
   "description": "Implement the universal LLM Node backend and provider adapters for OpenAI, Anthropic, Google, Ollama, and Custom endpoints. Support streaming via SSE, structured output, and all configuration options.",
-  "status": "in_progress",
+  "status": "completed",
   "assigned_to": "codex",
   "task_type": "implement",
   "depends_on": [
@@ -20,8 +20,8 @@
     "No hardcoded provider logic outside adapters"
   ],
   "created_at": "2026-02-16T06:27:01.699015240Z",
-  "updated_at": "2026-02-18T01:24:23.116385238Z",
-  "completed_at": null,
+  "updated_at": "2026-02-18T01:30:22.679149546Z",
+  "completed_at": "2026-02-18T01:30:22.679149443Z",
   "plan_version": 3,
   "retry_count": 0
 }

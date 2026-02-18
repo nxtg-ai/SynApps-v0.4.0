@@ -9,7 +9,7 @@ from __future__ import annotations
 import time
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import Boolean, Float, ForeignKey, Integer, JSON, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -194,3 +194,117 @@ class WorkflowRunStatusModel(BaseModel):
         if result.get("results") is None:
             result["results"] = {}
         return result
+
+
+SUPPORTED_LLM_PROVIDERS = ("openai", "anthropic", "google", "ollama", "custom")
+
+
+class LLMMessageModel(BaseModel):
+    """Provider-agnostic LLM message."""
+
+    role: str = Field(..., min_length=1)
+    content: str = Field(..., description="Message text content")
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, value: str) -> str:
+        role = value.strip().lower()
+        if role not in {"system", "user", "assistant", "tool"}:
+            raise ValueError("role must be one of: system, user, assistant, tool")
+        return role
+
+
+class LLMNodeConfigModel(BaseModel):
+    """Configuration schema for the universal LLM node."""
+
+    model_config = ConfigDict(extra="allow")
+
+    label: str = Field("LLM", max_length=100)
+    provider: str = Field("openai")
+    model: Optional[str] = None
+    system_prompt: str = ""
+    temperature: float = Field(0.7, ge=0.0, le=2.0)
+    max_tokens: int = Field(1024, ge=1, le=32768)
+    top_p: float = Field(1.0, ge=0.0, le=1.0)
+    stop_sequences: List[str] = Field(default_factory=list)
+    stream: bool = False
+    structured_output: bool = False
+    json_schema: Optional[Dict[str, Any]] = None
+    api_key: Optional[str] = None
+    base_url: Optional[str] = None
+    timeout_seconds: float = Field(120.0, gt=0.0, le=600.0)
+    headers: Dict[str, str] = Field(default_factory=dict)
+    extra: Dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("provider")
+    @classmethod
+    def validate_provider(cls, value: str) -> str:
+        provider = value.strip().lower()
+        if provider not in SUPPORTED_LLM_PROVIDERS:
+            raise ValueError(
+                f"provider must be one of: {', '.join(SUPPORTED_LLM_PROVIDERS)}"
+            )
+        return provider
+
+
+class LLMRequestModel(BaseModel):
+    """Provider-agnostic LLM completion request."""
+
+    messages: List[LLMMessageModel] = Field(default_factory=list)
+    model: str = Field(..., min_length=1)
+    temperature: float = Field(0.7, ge=0.0, le=2.0)
+    max_tokens: int = Field(1024, ge=1, le=32768)
+    top_p: float = Field(1.0, ge=0.0, le=1.0)
+    stop_sequences: List[str] = Field(default_factory=list)
+    stream: bool = False
+    structured_output: bool = False
+    json_schema: Optional[Dict[str, Any]] = None
+    extra: Dict[str, Any] = Field(default_factory=dict)
+
+
+class LLMUsageModel(BaseModel):
+    """Token usage summary."""
+
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+
+
+class LLMStreamChunkModel(BaseModel):
+    """Single chunk from a streaming completion."""
+
+    content: str = ""
+    done: bool = False
+    usage: Optional[LLMUsageModel] = None
+
+
+class LLMResponseModel(BaseModel):
+    """Provider-agnostic completion response."""
+
+    content: str
+    model: str
+    provider: str
+    usage: LLMUsageModel = Field(default_factory=LLMUsageModel)
+    finish_reason: str = "stop"
+    raw: Dict[str, Any] = Field(default_factory=dict)
+
+
+class LLMModelInfoModel(BaseModel):
+    """Metadata for a model exposed by a provider."""
+
+    id: str
+    name: str
+    provider: str
+    context_window: int = 0
+    supports_streaming: bool = True
+    supports_vision: bool = False
+    max_output_tokens: Optional[int] = None
+
+
+class LLMProviderInfoModel(BaseModel):
+    """Provider availability and model catalog."""
+
+    name: str
+    configured: bool
+    reason: str = ""
+    models: List[LLMModelInfoModel] = Field(default_factory=list)
