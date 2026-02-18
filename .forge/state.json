@@ -2,7 +2,7 @@
   "version": "1.1.0",
   "project_name": "synapps",
   "created_at": "2026-02-15T03:04:41.518674601Z",
-  "updated_at": "2026-02-18T15:45:36.928177208Z",
+  "updated_at": "2026-02-18T15:46:30.220210287Z",
   "tools": [
     {
       "name": "claude",
@@ -44,8 +44,8 @@
   },
   "agent_permissions": {
     "codex": "yolo",
-    "claude": "yolo",
-    "gemini": "yolo"
+    "gemini": "yolo",
+    "claude": "yolo"
   },
   "git": {
     "auto_commit": true,
