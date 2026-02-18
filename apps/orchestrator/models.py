@@ -562,3 +562,80 @@ class CodeNodeConfigModel(BaseModel):
         if not normalized.startswith("/tmp"):
             raise ValueError("working_dir must be under /tmp")
         return normalized
+
+
+SUPPORTED_TRANSFORM_OPERATIONS = (
+    "json_path",
+    "template",
+    "regex_replace",
+    "split_join",
+)
+
+
+class TransformNodeConfigModel(BaseModel):
+    """Configuration schema for the transform node."""
+
+    model_config = ConfigDict(extra="allow")
+
+    label: str = Field("Transform", max_length=100)
+    operation: str = Field("template")
+    source: Any = Field(default="{{content}}")
+    json_path: str = Field("$")
+    template: str = Field("{{source}}")
+    regex_pattern: str = Field("", max_length=5000)
+    regex_replacement: str = Field("")
+    regex_flags: str = Field("")
+    regex_count: int = Field(0, ge=0, le=10000)
+    split_delimiter: str = Field(",")
+    split_maxsplit: int = Field(-1, ge=-1, le=10000)
+    split_index: Optional[int] = Field(None, ge=0, le=100000)
+    join_delimiter: str = Field(",")
+    return_list: bool = False
+    strip_items: bool = False
+    drop_empty: bool = False
+    extra: Dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("operation")
+    @classmethod
+    def validate_operation(cls, value: str) -> str:
+        normalized = value.strip().lower().replace("-", "_")
+        alias_map = {
+            "jsonpath": "json_path",
+            "json_extract": "json_path",
+            "extract": "json_path",
+            "template_string": "template",
+            "string_template": "template",
+            "format": "template",
+            "regex": "regex_replace",
+            "replace": "regex_replace",
+            "split": "split_join",
+            "join": "split_join",
+            "splitjoin": "split_join",
+        }
+        normalized = alias_map.get(normalized, normalized)
+        if normalized not in SUPPORTED_TRANSFORM_OPERATIONS:
+            raise ValueError(
+                f"operation must be one of: {', '.join(SUPPORTED_TRANSFORM_OPERATIONS)}"
+            )
+        return normalized
+
+    @field_validator("json_path")
+    @classmethod
+    def validate_json_path(cls, value: str) -> str:
+        normalized = value.strip() or "$"
+        if not normalized.startswith("$"):
+            normalized = f"${normalized if normalized.startswith('.') else f'.{normalized}'}"
+        return normalized
+
+    @field_validator("regex_flags")
+    @classmethod
+    def validate_regex_flags(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        allowed = {"i", "m", "s", "x"}
+        unique = []
+        for flag in normalized:
+            if flag not in allowed:
+                raise ValueError("regex_flags may contain only: i, m, s, x")
+            if flag not in unique:
+                unique.append(flag)
+        return "".join(unique)

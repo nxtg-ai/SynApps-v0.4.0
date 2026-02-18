@@ -62,6 +62,7 @@ from apps.orchestrator.models import (
     LLMModelInfoModel,
     MemoryNodeConfigModel,
     MemorySearchResultModel,
+    TransformNodeConfigModel,
     LLMNodeConfigModel,
     LLMProviderInfoModel,
     LLMRequestModel,
@@ -99,6 +100,7 @@ IMAGE_NODE_TYPE = "image"
 MEMORY_NODE_TYPE = "memory"
 HTTP_REQUEST_NODE_TYPE = "http_request"
 CODE_NODE_TYPE = "code"
+TRANSFORM_NODE_TYPE = "transform"
 DEFAULT_MEMORY_BACKEND = os.environ.get("MEMORY_BACKEND", "sqlite_fts").strip().lower()
 DEFAULT_MEMORY_NAMESPACE = os.environ.get("MEMORY_NAMESPACE", "default").strip() or "default"
 DEFAULT_MEMORY_SQLITE_PATH = str(
@@ -559,6 +561,61 @@ def _render_template_payload(template: Any, data: Dict[str, Any]) -> Any:
     if isinstance(template, dict):
         return {key: _render_template_payload(value, data) for key, value in template.items()}
     return template
+
+
+_JSON_PATH_SEGMENT_PATTERN = re.compile(
+    r"\.([a-zA-Z0-9_\-]+)|\[(\d+)\]|\['([^']+)'\]|\[\"([^\"]+)\"\]"
+)
+
+
+def _parse_json_path(path: str) -> Optional[List[Any]]:
+    """Parse a restricted JSON path expression into key/index segments."""
+    normalized = path.strip() or "$"
+    if not normalized.startswith("$"):
+        normalized = f"${normalized if normalized.startswith('.') else f'.{normalized}'}"
+
+    if normalized == "$":
+        return []
+
+    segments: List[Any] = []
+    index = 1
+    while index < len(normalized):
+        match = _JSON_PATH_SEGMENT_PATTERN.match(normalized, index)
+        if not match:
+            return None
+        key = match.group(1) or match.group(3) or match.group(4)
+        if key is not None:
+            segments.append(key)
+        else:
+            raw_index = match.group(2)
+            if raw_index is None:
+                return None
+            segments.append(int(raw_index))
+        index = match.end()
+    return segments
+
+
+def _resolve_json_path(data: Any, path: str) -> tuple[Any, bool]:
+    """Resolve a restricted JSON path against nested dictionaries/lists."""
+    segments = _parse_json_path(path)
+    if segments is None:
+        return None, False
+
+    current = data
+    for segment in segments:
+        if isinstance(segment, int):
+            if not isinstance(current, list):
+                return None, False
+            if segment < 0 or segment >= len(current):
+                return None, False
+            current = current[segment]
+            continue
+        if not isinstance(current, dict):
+            return None, False
+        if segment not in current:
+            return None, False
+        current = current[segment]
+    return current, True
 
 
 def _safe_tmp_dir(path_value: str) -> str:
@@ -3283,6 +3340,237 @@ class HTTPRequestNodeApplet(BaseApplet):
             return text_body
 
 
+class TransformNodeApplet(BaseApplet):
+    """Config-driven data transformation node."""
+
+    VERSION = "1.0.0"
+    CAPABILITIES = [
+        "json-path-extract",
+        "template-string",
+        "regex-replace",
+        "split-join",
+        "config-driven-transform",
+    ]
+
+    async def on_message(self, message: AppletMessage) -> AppletMessage:
+        try:
+            config = self._resolve_config(message)
+        except Exception as exc:
+            return AppletMessage(
+                content={"error": f"Invalid transform configuration: {exc}"},
+                context=message.context,
+                metadata={"applet": TRANSFORM_NODE_TYPE, "status": "error"},
+            )
+
+        template_data = self._template_data(message)
+        source_value = _render_template_payload(config.source, template_data)
+
+        try:
+            output_value = self._apply_transform(
+                config=config,
+                source_value=source_value,
+                template_data=template_data,
+            )
+        except Exception as exc:
+            return AppletMessage(
+                content={
+                    "ok": False,
+                    "operation": config.operation,
+                    "input": source_value,
+                    "error": str(exc),
+                },
+                context=message.context,
+                metadata={
+                    "applet": TRANSFORM_NODE_TYPE,
+                    "status": "error",
+                    "operation": config.operation,
+                },
+            )
+
+        output_content = {
+            "ok": True,
+            "operation": config.operation,
+            "input": source_value,
+            "output": output_value,
+        }
+        output_context = {**message.context, "last_transform_response": output_content}
+        output_metadata = {
+            "applet": TRANSFORM_NODE_TYPE,
+            "status": "success",
+            "operation": config.operation,
+        }
+        return AppletMessage(content=output_content, context=output_context, metadata=output_metadata)
+
+    def _resolve_config(self, message: AppletMessage) -> TransformNodeConfigModel:
+        node_data = message.metadata.get("node_data", {})
+        if not isinstance(node_data, dict):
+            node_data = {}
+
+        context_config = message.context.get("transform_config", {})
+        if not isinstance(context_config, dict):
+            context_config = {}
+        legacy_context_config = message.context.get("transform", {})
+        if isinstance(legacy_context_config, dict):
+            context_config = {**legacy_context_config, **context_config}
+
+        metadata_config = message.metadata.get("transform_config", {})
+        if not isinstance(metadata_config, dict):
+            metadata_config = {}
+        legacy_metadata_config = message.metadata.get("transform", {})
+        if isinstance(legacy_metadata_config, dict):
+            metadata_config = {**legacy_metadata_config, **metadata_config}
+
+        merged = {**context_config, **metadata_config, **node_data}
+        config_payload = {
+            "label": merged.get("label", "Transform"),
+            "operation": merged.get("operation", "template"),
+            "source": merged.get("source", merged.get("input", "{{content}}")),
+            "json_path": merged.get("json_path", merged.get("jsonPath", merged.get("path", "$"))),
+            "template": merged.get(
+                "template",
+                merged.get("template_string", merged.get("templateString", "{{source}}")),
+            ),
+            "regex_pattern": merged.get("regex_pattern", merged.get("regexPattern", merged.get("pattern", ""))),
+            "regex_replacement": merged.get(
+                "regex_replacement",
+                merged.get("regexReplacement", merged.get("replacement", "")),
+            ),
+            "regex_flags": merged.get("regex_flags", merged.get("regexFlags", "")),
+            "regex_count": merged.get("regex_count", merged.get("regexCount", 0)),
+            "split_delimiter": merged.get(
+                "split_delimiter",
+                merged.get("splitDelimiter", merged.get("delimiter", ",")),
+            ),
+            "split_maxsplit": merged.get(
+                "split_maxsplit",
+                merged.get("splitMaxsplit", merged.get("maxsplit", -1)),
+            ),
+            "split_index": merged.get("split_index", merged.get("splitIndex")),
+            "join_delimiter": merged.get(
+                "join_delimiter",
+                merged.get("joinDelimiter", merged.get("joiner", ",")),
+            ),
+            "return_list": merged.get("return_list", merged.get("returnList", False)),
+            "strip_items": merged.get("strip_items", merged.get("stripItems", False)),
+            "drop_empty": merged.get("drop_empty", merged.get("dropEmpty", False)),
+            "extra": merged.get("extra", {}),
+        }
+        return TransformNodeConfigModel.model_validate(config_payload)
+
+    def _template_data(self, message: AppletMessage) -> Dict[str, Any]:
+        context = message.context if isinstance(message.context, dict) else {}
+        results = context.get("results", {})
+        if not isinstance(results, dict):
+            results = {}
+        return {
+            "input": message.content,
+            "content": message.content,
+            "context": context,
+            "results": results,
+            "metadata": message.metadata,
+            "run_id": context.get("run_id", message.metadata.get("run_id")),
+            "node_id": message.metadata.get("node_id"),
+        }
+
+    def _apply_transform(
+        self,
+        config: TransformNodeConfigModel,
+        source_value: Any,
+        template_data: Dict[str, Any],
+    ) -> Any:
+        if config.operation == "json_path":
+            return self._transform_json_path(source_value, config.json_path)
+        if config.operation == "template":
+            return self._transform_template(config.template, source_value, template_data)
+        if config.operation == "regex_replace":
+            return self._transform_regex_replace(
+                source_value=source_value,
+                pattern=config.regex_pattern,
+                replacement=config.regex_replacement,
+                flags_text=config.regex_flags,
+                count=config.regex_count,
+            )
+        if config.operation == "split_join":
+            return self._transform_split_join(source_value, config)
+        raise ValueError(f"Unsupported transform operation: {config.operation}")
+
+    def _transform_json_path(self, source_value: Any, json_path: str) -> Any:
+        result, found = _resolve_json_path(source_value, json_path)
+        if not found:
+            raise ValueError(f"json_path not found: {json_path}")
+        return result
+
+    def _transform_template(
+        self,
+        template: str,
+        source_value: Any,
+        template_data: Dict[str, Any],
+    ) -> Any:
+        scope = {
+            **template_data,
+            "source": source_value,
+            "value": source_value,
+        }
+        return _render_template_payload(template, scope)
+
+    def _transform_regex_replace(
+        self,
+        source_value: Any,
+        pattern: str,
+        replacement: str,
+        flags_text: str,
+        count: int,
+    ) -> str:
+        if not pattern:
+            raise ValueError("regex_pattern is required for regex_replace operation")
+
+        flags = 0
+        if "i" in flags_text:
+            flags |= re.IGNORECASE
+        if "m" in flags_text:
+            flags |= re.MULTILINE
+        if "s" in flags_text:
+            flags |= re.DOTALL
+        if "x" in flags_text:
+            flags |= re.VERBOSE
+
+        compiled = re.compile(pattern, flags=flags)
+        source_text = _as_text(source_value)
+        return compiled.sub(replacement, source_text, count=count)
+
+    def _transform_split_join(
+        self,
+        source_value: Any,
+        config: TransformNodeConfigModel,
+    ) -> Any:
+        if isinstance(source_value, list):
+            parts = [_as_text(item) for item in source_value]
+        else:
+            source_text = _as_text(source_value)
+            if config.split_delimiter == "":
+                parts = list(source_text)
+            else:
+                maxsplit = config.split_maxsplit
+                parts = source_text.split(config.split_delimiter, maxsplit)
+
+        normalized: List[str] = []
+        for item in parts:
+            value = item.strip() if config.strip_items else item
+            if config.drop_empty and value == "":
+                continue
+            normalized.append(value)
+
+        if config.split_index is not None:
+            if config.split_index >= len(normalized):
+                raise ValueError("split_index is out of range")
+            return normalized[config.split_index]
+
+        if config.return_list:
+            return normalized
+
+        return config.join_delimiter.join(normalized)
+
+
 class CodeNodeApplet(BaseApplet):
     """Sandboxed code execution node for Python and JavaScript."""
 
@@ -3511,6 +3799,7 @@ applet_registry[IMAGE_NODE_TYPE] = ImageGenNodeApplet
 applet_registry[MEMORY_NODE_TYPE] = MemoryNodeApplet
 applet_registry[HTTP_REQUEST_NODE_TYPE] = HTTPRequestNodeApplet
 applet_registry[CODE_NODE_TYPE] = CodeNodeApplet
+applet_registry[TRANSFORM_NODE_TYPE] = TransformNodeApplet
 
 
 # ============================================================
@@ -3558,6 +3847,17 @@ class Orchestrator:
         }:
             applet_registry[CODE_NODE_TYPE] = CodeNodeApplet
             return CodeNodeApplet()
+
+        if normalized_type in {
+            TRANSFORM_NODE_TYPE,
+            "transform-node",
+            "transform_node",
+            "transformer",
+            "data_transform",
+            "data-transform",
+        }:
+            applet_registry[TRANSFORM_NODE_TYPE] = TransformNodeApplet
+            return TransformNodeApplet()
 
         try:
             module_path = f"apps.applets.{normalized_type}.applet"
