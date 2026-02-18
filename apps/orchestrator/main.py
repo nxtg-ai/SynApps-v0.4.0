@@ -244,7 +244,7 @@ class FlowNode(BaseModel):
     id: str
     type: str
     position: Dict[str, int]
-    data: Dict[str, Any] = {}
+    data: Dict[str, Any] = Field(default_factory=dict)
 
 class FlowEdge(BaseModel):
     id: str
@@ -260,8 +260,8 @@ class Flow(BaseModel):
 
 class AppletMessage(BaseModel):
     content: Any
-    context: Dict[str, Any] = {}
-    metadata: Dict[str, Any] = {}
+    context: Dict[str, Any] = Field(default_factory=dict)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
 class WorkflowRunStatus(BaseModel):
     run_id: str
@@ -272,7 +272,7 @@ class WorkflowRunStatus(BaseModel):
     total_steps: int = 0
     start_time: float = 0
     end_time: Optional[float] = None
-    results: Dict[str, Any] = {}
+    results: Dict[str, Any] = Field(default_factory=dict)
     error: Optional[str] = None
 
 
@@ -342,13 +342,6 @@ class BaseApplet:
         raise NotImplementedError("Applets must implement on_message")
 
 
-def model_to_dict(model):
-    """Convert a Pydantic model to a dictionary, handling both v1 and v2 Pydantic."""
-    if isinstance(model, dict):
-        return model
-    return model.model_dump() if hasattr(model, 'model_dump') else model.dict()
-
-
 # ============================================================
 # Orchestrator Core
 # ============================================================
@@ -395,7 +388,7 @@ class Orchestrator:
         }
 
         memory_completed_applets = []
-        status_dict = model_to_dict(status)
+        status_dict = status.copy()
 
         workflow_run_repo = WorkflowRunRepository()
         logger.info(f"Starting workflow execution with run ID: {run_id}")

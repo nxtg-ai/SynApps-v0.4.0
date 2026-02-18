@@ -1,11 +1,12 @@
 # Base image for the orchestrator (Python FastAPI)
-FROM python:3.9-slim as orchestrator
+FROM python:3.11-slim as orchestrator
 
 WORKDIR /app
 
 # Copy requirements and install dependencies
 COPY apps/orchestrator/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
 
 # Copy orchestrator code
 COPY apps/orchestrator/ .

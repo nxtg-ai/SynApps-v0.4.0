@@ -4,52 +4,67 @@ Database and API models for the SynApps orchestrator.
 This module defines SQLAlchemy ORM models for database persistence
 and Pydantic models for API validation.
 """
-from typing import Dict, List, Any, Optional
+from __future__ import annotations
+
 import time
-from sqlalchemy import Column, String, Integer, Float, Boolean, ForeignKey, JSON
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
+from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel, Field
+from sqlalchemy import Boolean, Float, ForeignKey, Integer, JSON, String
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-# SQLAlchemy Base
-Base = declarative_base()
 
-# SQLAlchemy ORM Models
+class Base(DeclarativeBase):
+    """SQLAlchemy declarative base."""
+
+
 class Flow(Base):
     """ORM model for workflow flows."""
+
     __tablename__ = "flows"
-    
-    id = Column(String, primary_key=True)
-    name = Column(String, nullable=False)
-    
-    # Relationships
-    nodes = relationship("FlowNode", back_populates="flow", cascade="all, delete-orphan")
-    edges = relationship("FlowEdge", back_populates="flow", cascade="all, delete-orphan")
-    
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+
+    nodes: Mapped[List["FlowNode"]] = relationship(
+        "FlowNode",
+        back_populates="flow",
+        cascade="all, delete-orphan",
+    )
+    edges: Mapped[List["FlowEdge"]] = relationship(
+        "FlowEdge",
+        back_populates="flow",
+        cascade="all, delete-orphan",
+    )
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert ORM model to dictionary."""
         return {
             "id": self.id,
             "name": self.name,
             "nodes": [node.to_dict() for node in self.nodes],
-            "edges": [edge.to_dict() for edge in self.edges]
+            "edges": [edge.to_dict() for edge in self.edges],
         }
 
 
 class FlowNode(Base):
     """ORM model for workflow nodes."""
+
     __tablename__ = "flow_nodes"
-    
-    id = Column(String, primary_key=True)
-    flow_id = Column(String, ForeignKey("flows.id", ondelete="CASCADE"), nullable=False)
-    type = Column(String, nullable=False)
-    position_x = Column(Float, nullable=False)
-    position_y = Column(Float, nullable=False)
-    data = Column(JSON, nullable=True)
-    
-    # Relationships
-    flow = relationship("Flow", back_populates="nodes")
-    
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    flow_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("flows.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    type: Mapped[str] = mapped_column(String, nullable=False)
+    position_x: Mapped[float] = mapped_column(Float, nullable=False)
+    position_y: Mapped[float] = mapped_column(Float, nullable=False)
+    data: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+
+    flow: Mapped["Flow"] = relationship("Flow", back_populates="nodes")
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert ORM model to dictionary."""
         return {
@@ -57,52 +72,61 @@ class FlowNode(Base):
             "type": self.type,
             "position": {
                 "x": self.position_x,
-                "y": self.position_y
+                "y": self.position_y,
             },
-            "data": self.data or {}
+            "data": self.data or {},
         }
 
 
 class FlowEdge(Base):
     """ORM model for workflow edges."""
+
     __tablename__ = "flow_edges"
-    
-    id = Column(String, primary_key=True)
-    flow_id = Column(String, ForeignKey("flows.id", ondelete="CASCADE"), nullable=False)
-    source = Column(String, nullable=False)
-    target = Column(String, nullable=False)
-    animated = Column(Boolean, default=False)
-    
-    # Relationships
-    flow = relationship("Flow", back_populates="edges")
-    
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    flow_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("flows.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    source: Mapped[str] = mapped_column(String, nullable=False)
+    target: Mapped[str] = mapped_column(String, nullable=False)
+    animated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    flow: Mapped["Flow"] = relationship("Flow", back_populates="edges")
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert ORM model to dictionary."""
         return {
             "id": self.id,
             "source": self.source,
             "target": self.target,
-            "animated": self.animated
+            "animated": self.animated,
         }
 
 
 class WorkflowRun(Base):
     """ORM model for workflow runs."""
+
     __tablename__ = "workflow_runs"
-    
-    id = Column(String, primary_key=True)
-    flow_id = Column(String, ForeignKey("flows.id", ondelete="SET NULL"), nullable=True)
-    status = Column(String, nullable=False, default="idle")
-    current_applet = Column(String, nullable=True)
-    progress = Column(Integer, nullable=False, default=0)
-    total_steps = Column(Integer, nullable=False, default=0)
-    start_time = Column(Float, nullable=False)
-    end_time = Column(Float, nullable=True)
-    results = Column(JSON, nullable=True)
-    error = Column(String, nullable=True)
-    input_data = Column(JSON, nullable=True)  # Added input_data column to store workflow input
-    completed_applets = Column(JSON, nullable=True)  # Added completed_applets column
-    
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    flow_id: Mapped[Optional[str]] = mapped_column(
+        String,
+        ForeignKey("flows.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    status: Mapped[str] = mapped_column(String, nullable=False, default="idle")
+    current_applet: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    progress: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_steps: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    start_time: Mapped[float] = mapped_column(Float, nullable=False)
+    end_time: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    results: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    error: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    input_data: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    completed_applets: Mapped[Optional[List[str]]] = mapped_column(JSON, nullable=True)
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert ORM model to dictionary."""
         return {
@@ -117,13 +141,13 @@ class WorkflowRun(Base):
             "results": self.results or {},
             "error": self.error,
             "input_data": self.input_data,
-            "completed_applets": self.completed_applets or []
+            "completed_applets": self.completed_applets or [],
         }
 
 
-# Pydantic API Models
 class FlowNodeModel(BaseModel):
     """API model for flow nodes."""
+
     id: str
     type: str
     position: Dict[str, float]
@@ -132,6 +156,7 @@ class FlowNodeModel(BaseModel):
 
 class FlowEdgeModel(BaseModel):
     """API model for flow edges."""
+
     id: str
     source: str
     target: str
@@ -140,6 +165,7 @@ class FlowEdgeModel(BaseModel):
 
 class FlowModel(BaseModel):
     """API model for flows."""
+
     id: Optional[str] = None
     name: str
     nodes: List[FlowNodeModel] = Field(default_factory=list)
@@ -148,6 +174,7 @@ class FlowModel(BaseModel):
 
 class WorkflowRunStatusModel(BaseModel):
     """API model for workflow run status."""
+
     run_id: str
     flow_id: str
     status: str = "idle"
@@ -160,11 +187,10 @@ class WorkflowRunStatusModel(BaseModel):
     error: Optional[str] = None
     input_data: Optional[Dict[str, Any]] = None
     completed_applets: List[str] = Field(default_factory=list)
-    
-    def dict(self, *args, **kwargs) -> Dict[str, Any]:
-        """Override dict method to provide a consistent output."""
-        result = super().dict(*args, **kwargs)
-        # Ensure results is never None
+
+    def model_dump(self, *args: Any, **kwargs: Any) -> Dict[str, Any]:
+        """Ensure `results` remains a dictionary in serialized output."""
+        result = super().model_dump(*args, **kwargs)
         if result.get("results") is None:
             result["results"] = {}
         return result

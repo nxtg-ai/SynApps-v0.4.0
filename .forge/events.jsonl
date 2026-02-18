@@ -157,3 +157,4 @@
 {"timestamp":"2026-02-18T00:48:49.147811045Z","event_type":"task_started","task_id":null,"agent":null,"message":"Reset T-049 to pending (dashboard exiting)","metadata":null}
 {"timestamp":"2026-02-18T00:53:21.732235930Z","event_type":"task_completed","task_id":"T-049","agent":"codex","message":"T-049 completed by codex (exit 0)","metadata":null}
 {"timestamp":"2026-02-18T00:55:03.006815460Z","event_type":"task_completed","task_id":"T-077","agent":"claude","message":"T-077 completed by claude (exit 0)","metadata":null}
+{"timestamp":"2026-02-18T01:00:01.871549869Z","event_type":"task_completed","task_id":"T-041","agent":"codex","message":"T-041 completed by codex (exit 0)","metadata":null}

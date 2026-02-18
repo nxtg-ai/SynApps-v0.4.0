@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock, AsyncMock
 from apps.orchestrator.main import (
     app, broadcast_status, connected_clients, Orchestrator, 
-    BaseApplet, AppletMessage, _ws_message, model_to_dict
+    BaseApplet, AppletMessage, _ws_message
 )
 from apps.applets.writer.applet import WriterApplet
 
@@ -131,24 +131,6 @@ async def test_list_applets_directory_error():
                 assert not any(a["type"] == "broken_applet" for a in data["items"])
 
 @pytest.mark.asyncio
-async def test_model_to_dict_v1_v2():
-    """Test model_to_dict helper."""
-    # Dict input
-    d = {"a": 1}
-    assert model_to_dict(d) == d
-    
-    # Mock model with model_dump (Pydantic v2)
-    m2 = MagicMock()
-    m2.model_dump.return_value = {"v2": True}
-    assert model_to_dict(m2) == {"v2": True}
-    
-    # Mock model with dict (Pydantic v1)
-    m1 = MagicMock()
-    del m1.model_dump
-    m1.dict.return_value = {"v1": True}
-    assert model_to_dict(m1) == {"v1": True}
-
-@pytest.mark.asyncio
 async def test_ws_message_helper():
     """Test _ws_message helper."""
     msg = _ws_message("test_type", {"key": "val"})
@@ -259,4 +241,3 @@ async def test_db_migration_failure():
     with patch("sqlite3.connect", side_effect=Exception("Connection failed")):
         success = await add_completed_applets_column()
         assert success is False
-
