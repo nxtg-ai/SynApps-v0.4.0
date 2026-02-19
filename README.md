@@ -53,8 +53,9 @@ SynApps is a **web-based visual platform for modular AI agents called Snaplets**
 # From the repo root
 cd apps/orchestrator && pip install -e . && cd ../..
 
-# Edit .env.development with your API keys (the .local suffix keeps keys out of git)
-cp .env.development .env.development.local
+# Set up your environment variables
+cp .env.example .env
+# Then edit .env with your actual API keys
 
 # Run database migrations
 alembic upgrade head

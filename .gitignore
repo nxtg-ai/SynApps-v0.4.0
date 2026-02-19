@@ -38,15 +38,10 @@ yarn-error.log*
 *.swo
 .DS_Store
 
-# Environment variables
+# Environment variables (all .env* files except the template)
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# Local development
-.env.local
+.env.*
+!.env.example
 
 # Private documentation
 .docs/
@@ -66,11 +61,6 @@ yarn-error.log*
 
 # Misc
 .DS_Store
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
 
 # Debug
 npm-debug.log*
