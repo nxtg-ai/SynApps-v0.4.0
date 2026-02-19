@@ -2,7 +2,7 @@
   "id": "V-024",
   "title": "Verify: Implement Core Applets: Image Gen, Memory, HTTP, Code, Transform, If/Else, Merge",
   "description": "Run automated tests for task T-026.\nReview changes and verify acceptance criteria.\nOriginal: Implement new universal applets: Image Gen Node, upgraded Memory Node (persistent vector store), HTTP Request Node, Code Node (sandboxed), Transform Node, If/Else Node, Merge Node.\nCriteria:\n- All core applets implemented and registered\n- Each applet passes unit tests\n- Code Node uses sandboxed subprocess with resource limits",
-  "status": "in_progress",
+  "status": "completed",
   "assigned_to": "claude",
   "task_type": "review",
   "depends_on": [
@@ -23,8 +23,8 @@
     "Code Node uses sandboxed subprocess with resource limits"
   ],
   "created_at": "2026-02-18T03:57:57.745400174Z",
-  "updated_at": "2026-02-19T00:52:49.338857276Z",
-  "completed_at": null,
+  "updated_at": "2026-02-19T00:56:40.633655746Z",
+  "completed_at": "2026-02-19T00:56:40.633655709Z",
   "parent_task": "T-026",
   "phase": "verify",
   "retry_count": 0
