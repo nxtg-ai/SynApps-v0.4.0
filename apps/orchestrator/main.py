@@ -45,7 +45,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import httpx
 import jwt
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import select
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -454,7 +454,13 @@ def paginate(items: list, page: int, page_size: int) -> dict:
 # Request Validation Models (Pydantic v2 strict)
 # ============================================================
 
-class FlowNodeRequest(BaseModel):
+class StrictRequestModel(BaseModel):
+    """Base model for API request payloads that rejects unknown fields."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class FlowNodeRequest(StrictRequestModel):
     """Strictly validated flow node for API requests."""
     id: str = Field(..., min_length=1, max_length=200)
     type: str = Field(..., min_length=1, max_length=100)
@@ -469,7 +475,7 @@ class FlowNodeRequest(BaseModel):
         return v
 
 
-class FlowEdgeRequest(BaseModel):
+class FlowEdgeRequest(StrictRequestModel):
     """Strictly validated flow edge for API requests."""
     id: str = Field(..., min_length=1, max_length=200)
     source: str = Field(..., min_length=1)
@@ -477,7 +483,7 @@ class FlowEdgeRequest(BaseModel):
     animated: bool = False
 
 
-class CreateFlowRequest(BaseModel):
+class CreateFlowRequest(StrictRequestModel):
     """Strictly validated flow creation/update request."""
     id: Optional[str] = Field(None, max_length=200)
     name: str = Field(..., min_length=1, max_length=200)
@@ -499,12 +505,12 @@ class CreateFlowRequest(BaseModel):
         return v
 
 
-class RunFlowRequest(BaseModel):
+class RunFlowRequest(StrictRequestModel):
     """Strictly validated request body for running a flow."""
     input: Dict[str, Any] = Field(default_factory=dict, description="Input data for the workflow")
 
 
-class RerunFlowRequest(BaseModel):
+class RerunFlowRequest(StrictRequestModel):
     """Request body for re-running a previous flow execution with input overrides."""
     input: Dict[str, Any] = Field(
         default_factory=dict,
@@ -516,10 +522,34 @@ class RerunFlowRequest(BaseModel):
     )
 
 
-class AISuggestRequest(BaseModel):
+class AISuggestRequest(StrictRequestModel):
     """Strictly validated request body for AI suggestions."""
     prompt: str = Field(..., min_length=1, max_length=5000, description="The prompt for AI suggestion")
     context: Optional[str] = Field(None, max_length=10000, description="Optional context for the suggestion")
+
+
+class AuthRegisterRequestStrict(AuthRegisterRequestModel):
+    """Strict request model that rejects unknown registration fields."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class AuthLoginRequestStrict(AuthLoginRequestModel):
+    """Strict request model that rejects unknown login fields."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class AuthRefreshRequestStrict(AuthRefreshRequestModel):
+    """Strict request model that rejects unknown refresh-token fields."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class APIKeyCreateRequestStrict(APIKeyCreateRequestModel):
+    """Strict request model that rejects unknown API-key creation fields."""
+
+    model_config = ConfigDict(extra="forbid")
 
 
 def _trace_value(value: Any, depth: int = 0) -> Any:
@@ -6758,7 +6788,7 @@ v1 = APIRouter(prefix="/api/v1", tags=["v1"])
 
 
 @v1.post("/auth/register", response_model=AuthTokenResponseModel, status_code=201)
-async def register(body: AuthRegisterRequestModel):
+async def register(body: AuthRegisterRequestStrict):
     """Register a user with email/password and issue JWT access/refresh tokens."""
     now = _utc_now()
     async with get_db_session() as session:
@@ -6784,7 +6814,7 @@ async def register(body: AuthRegisterRequestModel):
 
 
 @v1.post("/auth/login", response_model=AuthTokenResponseModel)
-async def login(body: AuthLoginRequestModel):
+async def login(body: AuthLoginRequestStrict):
     """Authenticate via email/password and issue JWT access/refresh tokens."""
     async with get_db_session() as session:
         user_result = await session.execute(
@@ -6803,7 +6833,7 @@ async def login(body: AuthLoginRequestModel):
 
 
 @v1.post("/auth/refresh", response_model=AuthTokenResponseModel)
-async def refresh_token(body: AuthRefreshRequestModel):
+async def refresh_token(body: AuthRefreshRequestStrict):
     """Rotate a valid refresh token and return a new access/refresh pair."""
     raw_refresh = body.refresh_token.strip()
     payload = _decode_token(raw_refresh, expected_type="refresh")
@@ -6844,7 +6874,7 @@ async def refresh_token(body: AuthRefreshRequestModel):
 
 
 @v1.post("/auth/logout")
-async def logout(body: AuthRefreshRequestModel):
+async def logout(body: AuthRefreshRequestStrict):
     """Revoke a refresh token."""
     raw_refresh = body.refresh_token.strip()
     refresh_hash = _hash_sha256(raw_refresh)
@@ -6874,7 +6904,7 @@ async def auth_me(current_user: Dict[str, Any] = Depends(get_authenticated_user)
 
 @v1.post("/auth/api-keys", response_model=APIKeyCreateResponseModel, status_code=201)
 async def create_api_key(
-    body: APIKeyCreateRequestModel,
+    body: APIKeyCreateRequestStrict,
     current_user: Dict[str, Any] = Depends(get_authenticated_user),
 ):
     """Create an API key for header-based authentication."""

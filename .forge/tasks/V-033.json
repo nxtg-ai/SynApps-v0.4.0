@@ -2,7 +2,7 @@
   "id": "V-033",
   "title": "Verify: Optimize Backend and Frontend Performance",
   "description": "Run automated tests for task T-035.\nReview changes and verify acceptance criteria.\nOriginal: Implement backend async everywhere, connection pooling, lazy applet loading. On frontend, add code splitting, tree-shaking, and ReactFlow virtualization.\nCriteria:\n- Backend async and connection pooling enabled\n- Lazy applet loading works\n- Frontend code splitting and tree-shaking in place\n- ReactFlow virtualization for large workflows",
-  "status": "pending",
+  "status": "in_progress",
   "assigned_to": "codex",
   "task_type": "review",
   "depends_on": [
@@ -19,7 +19,7 @@
     "ReactFlow virtualization for large workflows"
   ],
   "created_at": "2026-02-18T03:57:57.745630969Z",
-  "updated_at": "2026-02-18T03:57:57.745630969Z",
+  "updated_at": "2026-02-19T01:21:48.141117616Z",
   "completed_at": null,
   "parent_task": "T-035",
   "phase": "verify",
