@@ -2,7 +2,7 @@
   "id": "V-032",
   "title": "Verify: Harden REST API and WebSocket Protocol",
   "description": "Run automated tests for task T-034.\nReview changes and verify acceptance criteria.\nOriginal: Ensure REST API uses consistent error format, pagination, strict request validation, and versioning. Update WebSocket protocol for structured messages, reconnection, and authentication.\nCriteria:\n- REST API returns consistent error objects\n- All list endpoints paginated\n- Strict validation via Pydantic v2\n- API versioning in place\n- WebSocket messages structured and authenticated",
-  "status": "pending",
+  "status": "in_progress",
   "assigned_to": "codex",
   "task_type": "review",
   "depends_on": [
@@ -19,7 +19,7 @@
     "WebSocket messages structured and authenticated"
   ],
   "created_at": "2026-02-18T03:57:57.745604827Z",
-  "updated_at": "2026-02-18T03:57:57.745604827Z",
+  "updated_at": "2026-02-19T01:16:26.428076879Z",
   "completed_at": null,
   "parent_task": "T-034",
   "phase": "verify",
