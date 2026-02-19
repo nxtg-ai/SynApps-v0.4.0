@@ -2,7 +2,7 @@
   "id": "V-029",
   "title": "Verify: Expand Backend Test Coverage to 80%",
   "description": "Run automated tests for task T-031.\nReview changes and verify acceptance criteria.\nOriginal: Write unit and integration tests for all applets, orchestrator engine, API endpoints, and auth flow to achieve at least 80% coverage.\nCriteria:\n- Backend test coverage >= 80%\n- All tests pass\n- Coverage report generated",
-  "status": "pending",
+  "status": "in_progress",
   "assigned_to": "codex",
   "task_type": "review",
   "depends_on": [
@@ -17,7 +17,7 @@
     "Coverage report generated"
   ],
   "created_at": "2026-02-18T03:57:57.745528741Z",
-  "updated_at": "2026-02-18T03:57:57.745528741Z",
+  "updated_at": "2026-02-19T01:04:37.481719813Z",
   "completed_at": null,
   "parent_task": "T-031",
   "phase": "verify",
