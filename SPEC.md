@@ -2,7 +2,7 @@
 
 ## Vision
 
-SynApps is a free, open-source visual AI workflow builder — the answer to "why is LangFlow so complicated?" and "why am I paying for N8N?" Users drag-and-drop AI agent nodes, connect them visually, hit run, and watch the workflow execute in real-time. No code required. No subscription wall.
+SynApps is a free, open-source visual AI workflow builder — the answer to "why is LangFlow so complicated?" and "why am I paying for N8N?" Users drag-and-drop AI agent nodes, connect them visually, hit run, and watch the workflow execute in real-time. No code required. No subscription wall. 
 
 v1.0 takes the working v0.5 alpha and makes it production-grade: modern stack, beautiful UI, hardened execution engine, and FM-agnostic so users can swap Claude, GPT, Gemini, or local models per node.
 

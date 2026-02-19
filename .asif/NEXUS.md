@@ -201,6 +201,9 @@ Ship the dogfood milestone. 2Brain is waiting.
 ### PI-002: Portfolio Standard Is Pydantic v2 + FastAPI Modern (2026-02-17)
 You are the only project still on Pydantic v1. The portfolio standard is Pydantic v2 + FastAPI 0.115+ + Python 3.11+. Your modernization (N-07) isn't just tech debt — it's alignment with the entire ecosystem. oneDB, threedb, and Podcast-Pipeline all use Pydantic v2.
 
+### PI-003: Podcast-Pipeline Has a Shipped DAG Execution Engine (2026-02-18)
+Podcast-Pipeline (P-04) shipped a stage graph orchestrator (N-01) with topological sort, dependency resolution, and parallel level computation — 14 tests passing. Your N-10 (Parallel Execution Engine) needs the same thing: topological sort with parallel group detection, fan-out/fan-in. Both are Python. Reference their implementation before building from scratch.
+
 ---
 
 ## Team Questions

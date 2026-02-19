@@ -1,15 +1,15 @@
 # UAT Report — synapps
 
-**Date:** 2026-02-18 09:06
+**Date:** 2026-02-18 16:45
 
 ## Summary
 
 | Metric | Count |
 |--------|-------|
 | Total tasks | 76 |
-| Passed | 0 |
+| Passed | 1 |
 | With findings | 0 |
-| Untested | 76 |
+| Untested | 75 |
 | Total findings | 0 |
 | Issues (non-positive) | 0 |
 
@@ -18,7 +18,7 @@
 | Task | Title | Status |
 |------|-------|--------|
 | T-001 | Vision | Untested |
-| T-002 | Current State (v0.5.2) | Untested |
+| T-002 | Current State (v0.5.2) | Passed |
 | T-003 | Target State (v1.0) | Untested |
 | T-004 | Competitive Positioning | Untested |
 | T-005 | Out of Scope (v1.x / v2.0) | Untested |
