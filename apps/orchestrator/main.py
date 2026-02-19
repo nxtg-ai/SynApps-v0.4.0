@@ -226,6 +226,48 @@ app = FastAPI(
 # CORS Configuration (environment-aware)
 # ============================================================
 _is_production = os.environ.get("PRODUCTION", "false").strip().lower() in {"1", "true", "yes"}
+
+
+def _is_secure_request(request: Request) -> bool:
+    """Return True when the incoming request is HTTPS (direct or proxy-terminated)."""
+    if request.url.scheme.lower() == "https":
+        return True
+
+    # Common reverse-proxy hint (e.g. nginx, ALB, ingress).
+    forwarded_proto = request.headers.get("x-forwarded-proto", "")
+    if forwarded_proto:
+        proto = forwarded_proto.split(",", 1)[0].strip().lower()
+        if proto == "https":
+            return True
+
+    # RFC 7239 Forwarded header support.
+    forwarded = request.headers.get("forwarded", "")
+    if forwarded:
+        match = re.search(r"(?:^|[;,\s])proto=(https)(?:[;,\s]|$)", forwarded, flags=re.IGNORECASE)
+        if match:
+            return True
+
+    return False
+
+
+if _is_production:
+    @app.middleware("http")
+    async def enforce_https_in_production(request: Request, call_next):
+        """Fail closed in production when traffic is not served over HTTPS."""
+        if not _is_secure_request(request):
+            return _error_response(
+                426,
+                "HTTPS_REQUIRED",
+                "HTTPS is required in production.",
+            )
+
+        response = await call_next(request)
+        response.headers.setdefault(
+            "Strict-Transport-Security",
+            "max-age=31536000; includeSubDomains; preload",
+        )
+        return response
+
 _cors_raw = os.environ.get("BACKEND_CORS_ORIGINS", "")
 _cors_origins = [o.strip() for o in _cors_raw.split(",") if o.strip()]
 
