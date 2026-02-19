@@ -323,6 +323,45 @@ from apps.orchestrator.middleware.rate_limiter import add_rate_limiter  # noqa: 
 
 add_rate_limiter(app)
 
+
+async def _resolve_rate_limit_user(request: Request) -> Optional[Dict[str, Any]]:
+    """Best-effort auth parsing for per-user rate-limit keys."""
+    x_api_key = request.headers.get("X-API-Key")
+    authorization = request.headers.get("Authorization")
+
+    try:
+        if x_api_key and x_api_key.strip():
+            principal = await _authenticate_user_by_api_key(x_api_key.strip())
+            principal.setdefault("tier", "free")
+            return principal
+
+        if authorization:
+            auth_text = authorization.strip()
+            if auth_text.lower().startswith("bearer "):
+                principal = await _authenticate_user_by_jwt(auth_text[7:].strip())
+                principal.setdefault("tier", "free")
+                return principal
+            if auth_text.lower().startswith("apikey "):
+                principal = await _authenticate_user_by_api_key(auth_text[7:].strip())
+                principal.setdefault("tier", "free")
+                return principal
+    except HTTPException:
+        # Invalid credentials are handled by endpoint auth dependencies.
+        return None
+    except Exception:
+        return None
+
+    return None
+
+
+@app.middleware("http")
+async def attach_rate_limit_identity(request: Request, call_next):
+    """Attach authenticated principal to request state for per-user rate limiting."""
+    principal = await _resolve_rate_limit_user(request)
+    if principal is not None:
+        request.state.user = principal
+    return await call_next(request)
+
 # ============================================================
 # Error Handling - Consistent Error Format
 # ============================================================
