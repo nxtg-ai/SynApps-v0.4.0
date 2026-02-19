@@ -2,7 +2,7 @@
   "version": "1.1.0",
   "project_name": "synapps",
   "created_at": "2026-02-15T03:04:41.518674601Z",
-  "updated_at": "2026-02-19T00:53:10.471650715Z",
+  "updated_at": "2026-02-19T00:56:27.115289367Z",
   "tools": [
     {
       "name": "claude",
@@ -39,6 +39,15 @@
     "blocked": 0
   },
   "active_locks": {
+    "V-026": {
+      "task_id": "V-026",
+      "agent": "codex",
+      "locked_at": "2026-02-19T00:56:27.115289302Z",
+      "files": [
+        "apps/orchestrator/main.py",
+        "apps/orchestrator/models.py"
+      ]
+    },
     "V-024": {
       "task_id": "V-024",
       "agent": "claude",
@@ -61,25 +70,15 @@
         "apps/applets/writer/applet.py",
         "apps/web-frontend/src/"
       ]
-    },
-    "V-025": {
-      "task_id": "V-025",
-      "agent": "codex",
-      "locked_at": "2026-02-19T00:53:10.471650528Z",
-      "files": [
-        "apps/applets/writer/applet.py",
-        "apps/applets/artist/applet.py",
-        "apps/applets/memory/applet.py"
-      ]
     }
   },
   "agent_auth": {
     "codex": "subscription"
   },
   "agent_permissions": {
-    "codex": "yolo",
+    "claude": "yolo",
     "gemini": "yolo",
-    "claude": "yolo"
+    "codex": "yolo"
   },
   "git": {
     "auto_commit": true,
