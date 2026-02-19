@@ -2,7 +2,7 @@
   "id": "V-047",
   "title": "Verify: Migrate ArtistApplet to Image Gen Node",
   "description": "Run automated tests for task T-054.\nReview changes and verify acceptance criteria.\nOriginal: Migrate existing ArtistApplet to the new Image Gen Node. Implement auto-migration logic to convert legacy Artist nodes to Image Gen Node with Stability AI preset.\nCriteria:\n- Legacy ArtistApplet nodes are auto-migrated\n- No loss of data or configuration\n- Image Gen Node replaces ArtistApplet in all workflows",
-  "status": "pending",
+  "status": "completed",
   "assigned_to": "claude",
   "task_type": "review",
   "depends_on": [
@@ -18,8 +18,8 @@
     "Image Gen Node replaces ArtistApplet in all workflows"
   ],
   "created_at": "2026-02-18T03:57:57.746088550Z",
-  "updated_at": "2026-02-19T01:39:10.437479277Z",
-  "completed_at": null,
+  "updated_at": "2026-02-19T01:44:05.741398166Z",
+  "completed_at": "2026-02-19T01:44:05.741398080Z",
   "parent_task": "T-054",
   "phase": "verify",
   "retry_count": 0
