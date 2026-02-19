@@ -3,7 +3,7 @@
   "title": "Verify: Migrate MemoryApplet to Memory Node",
   "description": "Run automated tests for task T-056.\nReview changes and verify acceptance criteria.\nOriginal: Migrate existing MemoryApplet to the new persistent Memory Node. Implement auto-migration logic for legacy nodes.\nCriteria:\n- Legacy MemoryApplet nodes are auto-migrated\n- No loss of data or configuration\n- Memory Node replaces MemoryApplet in all workflows",
   "status": "pending",
-  "assigned_to": "codex",
+  "assigned_to": "claude",
   "task_type": "review",
   "depends_on": [
     "T-056"
@@ -18,7 +18,7 @@
     "Memory Node replaces MemoryApplet in all workflows"
   ],
   "created_at": "2026-02-18T03:57:57.746146968Z",
-  "updated_at": "2026-02-18T03:57:57.746146968Z",
+  "updated_at": "2026-02-19T01:39:12.422986842Z",
   "completed_at": null,
   "parent_task": "T-056",
   "phase": "verify",

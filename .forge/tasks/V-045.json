@@ -3,7 +3,7 @@
   "title": "Verify: Migrate WriterApplet to LLM Node",
   "description": "Run automated tests for task T-052.\nReview changes and verify acceptance criteria.\nOriginal: Migrate existing WriterApplet to the new LLM Node. Implement auto-migration logic to convert legacy Writer nodes to LLM Node with OpenAI/GPT-4o preset.\nCriteria:\n- Legacy WriterApplet nodes are auto-migrated\n- No loss of data or configuration\n- LLM Node replaces WriterApplet in all workflows",
   "status": "pending",
-  "assigned_to": "codex",
+  "assigned_to": "claude",
   "task_type": "review",
   "depends_on": [
     "T-052"
@@ -18,7 +18,7 @@
     "LLM Node replaces WriterApplet in all workflows"
   ],
   "created_at": "2026-02-18T03:57:57.746036509Z",
-  "updated_at": "2026-02-18T03:57:57.746036509Z",
+  "updated_at": "2026-02-19T01:39:05.637491460Z",
   "completed_at": null,
   "parent_task": "T-052",
   "phase": "verify",

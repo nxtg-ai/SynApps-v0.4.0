@@ -3,7 +3,7 @@
   "title": "Verify: Implement WebSocket Protocol with Auth and Recovery",
   "description": "Run automated tests for task T-070.\nReview changes and verify acceptance criteria.\nOriginal: Implement structured WebSocket message format, reconnection with state recovery, and authentication on WebSocket connections.\nCriteria:\n- WebSocket messages follow specified format\n- Client can reconnect and recover state\n- WebSocket connections require authentication",
   "status": "pending",
-  "assigned_to": "codex",
+  "assigned_to": "claude",
   "task_type": "review",
   "depends_on": [
     "T-070"
@@ -17,7 +17,7 @@
     "WebSocket connections require authentication"
   ],
   "created_at": "2026-02-18T03:57:57.746502191Z",
-  "updated_at": "2026-02-18T03:57:57.746502191Z",
+  "updated_at": "2026-02-19T01:39:28.333951495Z",
   "completed_at": null,
   "parent_task": "T-070",
   "phase": "verify",

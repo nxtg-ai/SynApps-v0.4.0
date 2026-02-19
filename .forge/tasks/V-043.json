@@ -3,7 +3,7 @@
   "title": "Verify: Update ReactFlow to v12",
   "description": "Run automated tests for task T-049.\nReview changes and verify acceptance criteria.\nOriginal: Upgrade ReactFlow to version 12 in the frontend. Refactor any breaking changes and ensure compatibility with TypeScript.\nCriteria:\n- ReactFlow v12 is installed\n- All workflow editor features work\n- No runtime errors related to ReactFlow",
   "status": "pending",
-  "assigned_to": "codex",
+  "assigned_to": "claude",
   "task_type": "review",
   "depends_on": [
     "T-049"
@@ -17,7 +17,7 @@
     "No runtime errors related to ReactFlow"
   ],
   "created_at": "2026-02-18T03:57:57.745986834Z",
-  "updated_at": "2026-02-18T03:57:57.745986834Z",
+  "updated_at": "2026-02-19T01:39:03.085631676Z",
   "completed_at": null,
   "parent_task": "T-049",
   "phase": "verify",
