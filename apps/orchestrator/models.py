@@ -10,7 +10,7 @@ import time
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import Boolean, Float, ForeignKey, Integer, JSON, String
+from sqlalchemy import Boolean, Float, ForeignKey, Index, Integer, JSON, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -146,6 +146,7 @@ class FlowNode(Base):
         String,
         ForeignKey("flows.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
     type: Mapped[str] = mapped_column(String, nullable=False)
     position_x: Mapped[float] = mapped_column(Float, nullable=False)
@@ -177,6 +178,7 @@ class FlowEdge(Base):
         String,
         ForeignKey("flows.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
     source: Mapped[str] = mapped_column(String, nullable=False)
     target: Mapped[str] = mapped_column(String, nullable=False)
@@ -198,14 +200,20 @@ class WorkflowRun(Base):
     """ORM model for workflow runs."""
 
     __tablename__ = "workflow_runs"
+    __table_args__ = (
+        # start_time is the run creation timestamp used by history views.
+        Index("ix_workflow_runs_created_at", "start_time"),
+        Index("ix_workflow_runs_flow_status_created_at", "flow_id", "status", "start_time"),
+    )
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     flow_id: Mapped[Optional[str]] = mapped_column(
         String,
         ForeignKey("flows.id", ondelete="SET NULL"),
         nullable=True,
+        index=True,
     )
-    status: Mapped[str] = mapped_column(String, nullable=False, default="idle")
+    status: Mapped[str] = mapped_column(String, nullable=False, default="idle", index=True)
     current_applet: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     progress: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     total_steps: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
