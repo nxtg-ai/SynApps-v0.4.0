@@ -2,7 +2,7 @@
   "id": "V-064",
   "title": "Verify: Add ESLint, Prettier, and Ruff with Pre-commit Hooks",
   "description": "Run automated tests for task T-071.\nReview changes and verify acceptance criteria.\nOriginal: Add ESLint 9 (flat config) and Prettier to the frontend, Ruff to the backend, and configure pre-commit hooks for lint, format, and type check.\nCriteria:\n- ESLint and Prettier configured for frontend\n- Ruff configured for backend\n- Pre-commit hooks run lint, format, type check",
-  "status": "pending",
+  "status": "completed",
   "assigned_to": "codex",
   "task_type": "review",
   "depends_on": [
@@ -15,8 +15,8 @@
     "Pre-commit hooks run lint, format, type check"
   ],
   "created_at": "2026-02-18T03:57:57.746526984Z",
-  "updated_at": "2026-02-18T03:57:57.746526984Z",
-  "completed_at": null,
+  "updated_at": "2026-02-19T02:14:36.894369698Z",
+  "completed_at": "2026-02-19T02:14:36.894369405Z",
   "parent_task": "T-071",
   "phase": "verify",
   "retry_count": 0
