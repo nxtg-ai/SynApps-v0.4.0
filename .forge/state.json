@@ -2,7 +2,7 @@
   "version": "1.1.0",
   "project_name": "synapps",
   "created_at": "2026-02-15T03:04:41.518674601Z",
-  "updated_at": "2026-02-19T01:53:49.978066951Z",
+  "updated_at": "2026-02-19T01:54:14.814093091Z",
   "tools": [
     {
       "name": "claude",
@@ -38,24 +38,14 @@
     "failed": 0,
     "blocked": 0
   },
-  "active_locks": {
-    "V-050": {
-      "task_id": "V-050",
-      "agent": "codex",
-      "locked_at": "2026-02-19T01:52:16.426238520Z",
-      "files": [
-        "apps/orchestrator/main.py",
-        "apps/orchestrator/models.py"
-      ]
-    }
-  },
+  "active_locks": {},
   "agent_auth": {
     "codex": "subscription"
   },
   "agent_permissions": {
+    "gemini": "yolo",
     "claude": "yolo",
-    "codex": "yolo",
-    "gemini": "yolo"
+    "codex": "yolo"
   },
   "git": {
     "auto_commit": true,
