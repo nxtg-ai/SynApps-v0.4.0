@@ -2,7 +2,7 @@
   "id": "V-025",
   "title": "Verify: Migrate Legacy Applets to New Nodes",
   "description": "Run automated tests for task T-027.\nReview changes and verify acceptance criteria.\nOriginal: Implement migration logic to auto-convert WriterApplet, ArtistApplet, and MemoryApplet to the new LLM Node, Image Gen Node, and upgraded Memory Node, preserving user data.\nCriteria:\n- Legacy applets auto-migrate on load\n- No user data lost\n- Migration is idempotent",
-  "status": "pending",
+  "status": "in_progress",
   "assigned_to": "codex",
   "task_type": "review",
   "depends_on": [
@@ -19,7 +19,7 @@
     "Migration is idempotent"
   ],
   "created_at": "2026-02-18T03:57:57.745427047Z",
-  "updated_at": "2026-02-18T03:57:57.745427047Z",
+  "updated_at": "2026-02-19T00:53:10.471567965Z",
   "completed_at": null,
   "parent_task": "T-027",
   "phase": "verify",

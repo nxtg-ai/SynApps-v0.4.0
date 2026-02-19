@@ -2,8 +2,8 @@
   "id": "V-023",
   "title": "Verify: Implement FM-Agnostic LLM Node and Provider Adapters",
   "description": "Run automated tests for task T-025.\nReview changes and verify acceptance criteria.\nOriginal: Replace WriterApplet with a universal LLM Node supporting OpenAI, Anthropic, Google, Ollama, and custom endpoints. Implement provider adapter pattern, node config UI, and streaming via SSE.\nCriteria:\n- LLM Node supports all listed providers\n- Provider adapters implement common interface\n- Streaming output works in frontend\n- No hardcoded provider logic outside adapter layer",
-  "status": "pending",
-  "assigned_to": "codex",
+  "status": "in_progress",
+  "assigned_to": "claude",
   "task_type": "review",
   "depends_on": [
     "T-025"
@@ -19,7 +19,7 @@
     "No hardcoded provider logic outside adapter layer"
   ],
   "created_at": "2026-02-18T03:57:57.745372682Z",
-  "updated_at": "2026-02-18T03:57:57.745372682Z",
+  "updated_at": "2026-02-19T00:52:26.998943680Z",
   "completed_at": null,
   "parent_task": "T-025",
   "phase": "verify",

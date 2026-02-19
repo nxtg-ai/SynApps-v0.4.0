@@ -2,7 +2,7 @@
   "version": "1.1.0",
   "project_name": "synapps",
   "created_at": "2026-02-15T03:04:41.518674601Z",
-  "updated_at": "2026-02-19T00:48:43.785623962Z",
+  "updated_at": "2026-02-19T00:53:10.471650715Z",
   "tools": [
     {
       "name": "claude",
@@ -38,14 +38,48 @@
     "failed": 0,
     "blocked": 0
   },
-  "active_locks": {},
+  "active_locks": {
+    "V-024": {
+      "task_id": "V-024",
+      "agent": "claude",
+      "locked_at": "2026-02-19T00:52:49.338975937Z",
+      "files": [
+        "apps/applets/image_gen/applet.py",
+        "apps/applets/memory/applet.py",
+        "apps/applets/http_request/applet.py",
+        "apps/applets/code/applet.py",
+        "apps/applets/transform/applet.py",
+        "apps/applets/if_else/applet.py",
+        "apps/applets/merge/applet.py"
+      ]
+    },
+    "V-023": {
+      "task_id": "V-023",
+      "agent": "gemini",
+      "locked_at": "2026-02-19T00:52:25.850810982Z",
+      "files": [
+        "apps/applets/writer/applet.py",
+        "apps/web-frontend/src/"
+      ]
+    },
+    "V-025": {
+      "task_id": "V-025",
+      "agent": "codex",
+      "locked_at": "2026-02-19T00:53:10.471650528Z",
+      "files": [
+        "apps/applets/writer/applet.py",
+        "apps/applets/artist/applet.py",
+        "apps/applets/memory/applet.py"
+      ]
+    }
+  },
   "agent_auth": {
     "codex": "subscription"
   },
   "agent_permissions": {
-    "claude": "yolo",
     "codex": "yolo",
-    "gemini": "yolo"
+    "gemini": "yolo",
+    "claude": "yolo"
   },
   "git": {
     "auto_commit": true,
