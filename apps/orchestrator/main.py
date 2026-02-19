@@ -113,6 +113,7 @@ logger = logging.getLogger("orchestrator")
 # ============================================================
 
 API_VERSION = "1.0.0"
+APP_START_TIME = time.time()
 WS_AUTH_TOKEN = os.environ.get("WS_AUTH_TOKEN")
 JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "synapps-dev-jwt-secret-change-me")
 JWT_ALGORITHM = os.environ.get("JWT_ALGORITHM", "HS256")
@@ -7256,11 +7257,7 @@ async def ai_suggest(
 @v1.get("/health")
 async def health_v1():
     """Versioned health check endpoint."""
-    return {
-        "status": "healthy",
-        "service": "SynApps Orchestrator API",
-        "version": API_VERSION,
-    }
+    return _health_payload()
 
 
 # Include versioned router
@@ -7271,14 +7268,27 @@ app.include_router(v1)
 # Health Check (unversioned)
 # ============================================================
 
-@app.get("/")
-async def health():
-    """Health check endpoint."""
+
+def _health_payload() -> Dict[str, Any]:
+    uptime_seconds = max(0, int(time.time() - APP_START_TIME))
     return {
         "status": "healthy",
         "service": "SynApps Orchestrator API",
         "version": API_VERSION,
+        "uptime": uptime_seconds,
     }
+
+
+@app.get("/health")
+async def health():
+    """Unversioned health check endpoint."""
+    return _health_payload()
+
+
+@app.get("/")
+async def health_root():
+    """Root health check endpoint."""
+    return _health_payload()
 
 
 # ============================================================
