@@ -2,7 +2,7 @@
   "version": "1.1.0",
   "project_name": "synapps",
   "created_at": "2026-02-15T03:04:41.518674601Z",
-  "updated_at": "2026-02-19T00:46:08.144775247Z",
+  "updated_at": "2026-02-19T00:46:48.402110865Z",
   "tools": [
     {
       "name": "claude",
@@ -39,10 +39,10 @@
     "blocked": 0
   },
   "active_locks": {
-    "V-020": {
-      "task_id": "V-020",
+    "V-021": {
+      "task_id": "V-021",
       "agent": "codex",
-      "locked_at": "2026-02-19T00:44:24.564637050Z",
+      "locked_at": "2026-02-19T00:46:48.402110686Z",
       "files": [
         "apps/web-frontend/src/"
       ]
@@ -52,8 +52,8 @@
     "codex": "subscription"
   },
   "agent_permissions": {
-    "claude": "yolo",
     "gemini": "yolo",
+    "claude": "yolo",
     "codex": "yolo"
   },
   "git": {

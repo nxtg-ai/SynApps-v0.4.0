@@ -2,7 +2,7 @@
   "id": "V-021",
   "title": "Verify: Implement Dashboard and New Pages",
   "description": "Run automated tests for task T-022.\nReview changes and verify acceptance criteria.\nOriginal: Create dashboard with workflow cards, quick-run, search/filter, usage stats. Add settings page (API keys, theme, model selection) and applet library page.\nCriteria:\n- Dashboard, settings, and applet library pages implemented\n- All features functional and responsive",
-  "status": "pending",
+  "status": "in_progress",
   "assigned_to": "codex",
   "task_type": "review",
   "depends_on": [
@@ -16,7 +16,7 @@
     "All features functional and responsive"
   ],
   "created_at": "2026-02-18T03:57:57.745309231Z",
-  "updated_at": "2026-02-18T03:57:57.745309231Z",
+  "updated_at": "2026-02-19T00:46:48.402025953Z",
   "completed_at": null,
   "parent_task": "T-022",
   "phase": "verify",

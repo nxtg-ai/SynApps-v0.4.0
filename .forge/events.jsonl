@@ -219,3 +219,4 @@
 {"timestamp":"2026-02-18T19:45:32.220360613Z","event_type":"task_started","task_id":null,"agent":null,"message":"Reset V-020 to pending (dashboard exiting)","metadata":null}
 {"timestamp":"2026-02-18T19:45:32.221642283Z","event_type":"task_started","task_id":null,"agent":null,"message":"Reset V-018 to pending (dashboard exiting)","metadata":null}
 {"timestamp":"2026-02-19T00:46:08.144877104Z","event_type":"task_completed","task_id":"V-018","agent":"claude","message":"V-018 completed by claude (exit 0)","metadata":null}
+{"timestamp":"2026-02-19T00:46:48.400138315Z","event_type":"task_completed","task_id":"V-020","agent":"codex","message":"V-020 completed by codex (exit 0)","metadata":null}
