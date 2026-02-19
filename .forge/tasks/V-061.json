@@ -2,7 +2,7 @@
   "id": "V-061",
   "title": "Verify: Implement Sandboxing for Code Node",
   "description": "Run automated tests for task T-068.\nReview changes and verify acceptance criteria.\nOriginal: Harden the Code Node to ensure sandboxing: subprocess with resource limits, no filesystem access beyond /tmp, input sanitization.\nCriteria:\n- Code Node execution is sandboxed\n- Resource limits enforced\n- No unauthorized filesystem or network access",
-  "status": "pending",
+  "status": "in_progress",
   "assigned_to": "claude",
   "task_type": "review",
   "depends_on": [
@@ -17,7 +17,7 @@
     "No unauthorized filesystem or network access"
   ],
   "created_at": "2026-02-18T03:57:57.746448859Z",
-  "updated_at": "2026-02-19T01:39:24.725938215Z",
+  "updated_at": "2026-02-19T02:01:08.059351013Z",
   "completed_at": null,
   "parent_task": "T-068",
   "phase": "verify",
