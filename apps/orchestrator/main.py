@@ -355,12 +355,22 @@ async def _resolve_rate_limit_user(request: Request) -> Optional[Dict[str, Any]]
     return None
 
 
+def _anonymous_rate_limit_principal(request: Request) -> Dict[str, Any]:
+    """Build a stable anonymous principal from the direct socket client."""
+    client_host = request.client.host if request.client else "unknown"
+    return {
+        "id": f"anonymous:{client_host}",
+        "tier": "anonymous",
+    }
+
+
 @app.middleware("http")
 async def attach_rate_limit_identity(request: Request, call_next):
     """Attach authenticated principal to request state for per-user rate limiting."""
     principal = await _resolve_rate_limit_user(request)
-    if principal is not None:
-        request.state.user = principal
+    if principal is None:
+        principal = _anonymous_rate_limit_principal(request)
+    request.state.user = principal
     return await call_next(request)
 
 # ============================================================
