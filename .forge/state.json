@@ -2,7 +2,7 @@
   "version": "1.1.0",
   "project_name": "synapps",
   "created_at": "2026-02-15T03:04:41.518674601Z",
-  "updated_at": "2026-02-19T01:46:46.300403645Z",
+  "updated_at": "2026-02-19T01:46:46.398643222Z",
   "tools": [
     {
       "name": "claude",
@@ -39,15 +39,6 @@
     "blocked": 0
   },
   "active_locks": {
-    "V-049": {
-      "task_id": "V-049",
-      "agent": "claude",
-      "locked_at": "2026-02-19T01:46:13.045006904Z",
-      "files": [
-        "apps/applets/memory/applet.py",
-        "apps/orchestrator/main.py"
-      ]
-    },
     "V-046": {
       "task_id": "V-046",
       "agent": "codex",
@@ -62,9 +53,9 @@
     "codex": "subscription"
   },
   "agent_permissions": {
-    "claude": "yolo",
+    "codex": "yolo",
     "gemini": "yolo",
-    "codex": "yolo"
+    "claude": "yolo"
   },
   "git": {
     "auto_commit": true,
