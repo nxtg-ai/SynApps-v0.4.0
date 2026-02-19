@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import WorkflowCanvas from './WorkflowCanvas';
 import { useWorkflowStore } from '@/stores/workflowStore';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { ReactFlowProvider } from '@xyflow/react';
+import { ReactFlow, ReactFlowProvider } from '@xyflow/react';
 import { act } from '@testing-library/react'; // Corrected act import
 
 // Mock React Flow components as they are complex to test in unit environment
@@ -77,5 +77,45 @@ describe('WorkflowCanvas', () => {
     renderWorkflowCanvas();
     expect(screen.getByTestId('mock-minimap')).toBeInTheDocument();
     expect(screen.getByTestId('mock-controls')).toBeInTheDocument();
+  });
+
+  it('should disable visible-elements virtualization for small workflows', () => {
+    act(() => {
+      useWorkflowStore.getState().setFlow({
+        id: 'small-flow',
+        name: 'Small Flow',
+        nodes: [
+          { id: 'n-1', type: 'start', position: { x: 0, y: 0 }, data: {} },
+          { id: 'n-2', type: 'end', position: { x: 200, y: 0 }, data: {} },
+        ],
+        edges: [],
+      });
+    });
+
+    renderWorkflowCanvas();
+    const reactFlowProps = vi.mocked(ReactFlow).mock.calls.at(-1)?.[0];
+    expect(reactFlowProps?.onlyRenderVisibleElements).toBe(false);
+  });
+
+  it('should enable visible-elements virtualization for large workflows', () => {
+    act(() => {
+      const largeNodes = Array.from({ length: 120 }, (_, index) => ({
+        id: `n-${index}`,
+        type: 'writer',
+        position: { x: index * 20, y: (index % 10) * 40 },
+        data: {},
+      }));
+
+      useWorkflowStore.getState().setFlow({
+        id: 'large-flow',
+        name: 'Large Flow',
+        nodes: largeNodes,
+        edges: [],
+      });
+    });
+
+    renderWorkflowCanvas();
+    const reactFlowProps = vi.mocked(ReactFlow).mock.calls.at(-1)?.[0];
+    expect(reactFlowProps?.onlyRenderVisibleElements).toBe(true);
   });
 });

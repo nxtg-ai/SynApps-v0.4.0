@@ -73,6 +73,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow: propFlow, onFlowC
   // Convert Flow to ReactFlow nodes and edges
   const [nodes, setNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
+  const enableVirtualization = nodes.length >= 100;
   const runStatus = useExecutionStore((state) => state.runStatus);
   const setRunStatus = useExecutionStore((state) => state.setRunStatus);
   const completedNodes = useExecutionStore((state) => state.completedNodes);
@@ -761,6 +762,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow: propFlow, onFlowC
           onDrop={onDrop}
           onDragOver={onDragOver}
           connectionLineType={ConnectionLineType.SmoothStep}
+          onlyRenderVisibleElements={enableVirtualization}
           fitView
           onNodeContextMenu={onNodeContextMenu}
         >

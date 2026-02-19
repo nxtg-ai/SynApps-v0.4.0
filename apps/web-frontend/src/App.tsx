@@ -3,15 +3,16 @@
  */
 import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
-import DashboardPage from './pages/DashboardPage/DashboardPage';
-import EditorPage from './pages/EditorPage/EditorPage';
-import HistoryPage from './pages/HistoryPage/HistoryPage';
-import AppletLibraryPage from './pages/AppletLibraryPage/AppletLibraryPage';
-import SettingsPage from './pages/SettingsPage/SettingsPage';
-import NotFoundPage from './pages/NotFoundPage/NotFoundPage';
 import webSocketService from './services/WebSocketService';
 import { Button } from './components/ui/button';
 import { useSettingsStore } from './stores/settingsStore';
+
+const DashboardPage = React.lazy(() => import('./pages/DashboardPage/DashboardPage'));
+const EditorPage = React.lazy(() => import('./pages/EditorPage/EditorPage'));
+const HistoryPage = React.lazy(() => import('./pages/HistoryPage/HistoryPage'));
+const AppletLibraryPage = React.lazy(() => import('./pages/AppletLibraryPage/AppletLibraryPage'));
+const SettingsPage = React.lazy(() => import('./pages/SettingsPage/SettingsPage'));
+const NotFoundPage = React.lazy(() => import('./pages/NotFoundPage/NotFoundPage'));
 
 const AppRoutes: React.FC = () => {
   const location = useLocation();
@@ -29,15 +30,23 @@ const AppRoutes: React.FC = () => {
         </header>
       ) : null}
 
-      <Routes>
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
-        <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/editor/:flowId?" element={<EditorPage />} />
-        <Route path="/history" element={<HistoryPage />} />
-        <Route path="/applets" element={<AppletLibraryPage />} />
-        <Route path="/settings" element={<SettingsPage />} />
-        <Route path="*" element={<NotFoundPage />} />
-      </Routes>
+      <React.Suspense
+        fallback={
+          <div className="mx-auto flex min-h-[40vh] max-w-7xl items-center justify-center px-4 text-sm text-slate-300">
+            Loading page...
+          </div>
+        }
+      >
+        <Routes>
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/editor/:flowId?" element={<EditorPage />} />
+          <Route path="/history" element={<HistoryPage />} />
+          <Route path="/applets" element={<AppletLibraryPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+      </React.Suspense>
     </div>
   );
 };
