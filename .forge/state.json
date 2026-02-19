@@ -2,7 +2,7 @@
   "version": "1.1.0",
   "project_name": "synapps",
   "created_at": "2026-02-15T03:04:41.518674601Z",
-  "updated_at": "2026-02-19T02:03:32.272028119Z",
+  "updated_at": "2026-02-19T02:04:31.964279969Z",
   "tools": [
     {
       "name": "claude",
@@ -39,13 +39,21 @@
     "blocked": 0
   },
   "active_locks": {
-    "V-058": {
-      "task_id": "V-058",
+    "V-060": {
+      "task_id": "V-060",
       "agent": "codex",
-      "locked_at": "2026-02-19T02:01:50.925630769Z",
+      "locked_at": "2026-02-19T02:04:31.964279899Z",
       "files": [
-        "apps/orchestrator/models.py",
-        "apps/orchestrator/main.py"
+        "apps/orchestrator/main.py",
+        "apps/orchestrator/middleware/billing_guard.py"
+      ]
+    },
+    "V-065": {
+      "task_id": "V-065",
+      "agent": "claude",
+      "locked_at": "2026-02-19T02:04:13.135362864Z",
+      "files": [
+        "apps/orchestrator/tests/test_main.py"
       ]
     }
   },
@@ -53,9 +61,9 @@
     "codex": "subscription"
   },
   "agent_permissions": {
+    "claude": "yolo",
     "gemini": "yolo",
-    "codex": "yolo",
-    "claude": "yolo"
+    "codex": "yolo"
   },
   "git": {
     "auto_commit": true,
