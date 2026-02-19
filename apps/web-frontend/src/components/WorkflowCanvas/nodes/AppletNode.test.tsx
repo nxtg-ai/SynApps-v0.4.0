@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import AppletNode from './AppletNode';
 import type { Node, NodeProps } from '@xyflow/react';
 import { vi } from 'vitest';
@@ -30,6 +30,14 @@ describe('AppletNode Component', () => {
     zIndex: 1,
     isConnectable: true
   } as unknown as NodeProps<AppletFlowNode>;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
   test('renders with correct label', () => {
     render(<AppletNode {...defaultProps} />);
@@ -100,5 +108,49 @@ describe('AppletNode Component', () => {
     render(<AppletNode {...artistProps} />);
     expect(screen.getByRole('img', { name: 'Artist' })).toBeInTheDocument();
     expect(screen.getByText('Creates images using AI models')).toBeInTheDocument();
+  });
+
+  test.each([
+    ['memory', 'Memory', 'Stores and retrieves context'],
+    ['researcher', 'Researcher', 'Searches for information'],
+    ['analyzer', 'Analyzer', 'Analyzes data and provides insights'],
+    ['summarizer', 'Summarizer', 'Creates concise summaries'],
+    ['custom', 'Applet', 'Custom applet module'],
+  ])('supports %s icon/description defaults', (type, ariaLabel, description) => {
+    render(
+      <AppletNode
+        {...defaultProps}
+        type={type}
+        data={{ label: `Node ${type}` }}
+      />,
+    );
+
+    expect(screen.getByRole('img', { name: ariaLabel })).toBeInTheDocument();
+    expect(screen.getByText(description)).toBeInTheDocument();
+  });
+
+  test.each(['success', 'error'])('applies %s status class', (status) => {
+    const { container } = render(
+      <AppletNode
+        {...defaultProps}
+        data={{
+          ...defaultProps.data,
+          status,
+        }}
+      />,
+    );
+
+    expect((container.firstChild as HTMLElement).classList.contains(status)).toBe(true);
+  });
+
+  test('removes transient animation class after timeout', () => {
+    const { container } = render(<AppletNode {...defaultProps} />);
+    const nodeElement = container.firstChild as HTMLElement;
+
+    expect(nodeElement.className).toContain('animating');
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    expect(nodeElement.className).not.toContain('animating');
   });
 });

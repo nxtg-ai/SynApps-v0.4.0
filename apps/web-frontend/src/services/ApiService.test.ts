@@ -1,194 +1,204 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import axios from 'axios';
-// Import the actual ApiService for typing purposes only if needed,
-// but we will mock its export.
-// import { default as ActualApiService } from './ApiService'; 
-import { Flow, AppletMetadata, WorkflowRunStatus, CodeSuggestionRequest, CodeSuggestionResponse } from '../types';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type {
+  AppletMetadata,
+  CodeSuggestionRequest,
+  CodeSuggestionResponse,
+  Flow,
+  WorkflowRunStatus,
+} from '../types';
 
-// Mock the entire axios module.
-// This mock will ensure that any internal calls to axios.create() inside ApiService
-// will use our mocked version.
-vi.mock('axios');
+const {
+  mockCreate,
+  mockGet,
+  mockPost,
+  mockDelete,
+  mockInterceptorUse,
+  mockAxiosInstance,
+} = vi.hoisted(() => {
+  const create = vi.fn();
+  const get = vi.fn();
+  const post = vi.fn();
+  const del = vi.fn();
+  const use = vi.fn();
 
-// Cast axios to a mocked AxiosInstance for easier typing
-const mockedAxios = vi.mocked(axios);
+  const instance = {
+    get,
+    post,
+    delete: del,
+    interceptors: {
+      response: {
+        use,
+      },
+    },
+  };
 
-// Before we describe the tests, mock the ApiService module itself.
-// This is necessary because ApiService.ts exports a singleton instance
-// that is created at module load time. To ensure it uses our mocked axios,
-// we need to control its instantiation or replace its export.
-// Since we cannot change ApiService.ts, we mock its export directly.
-const mockApiService = {
-  getApplets: vi.fn(),
-  getFlows: vi.fn(),
-  getFlow: vi.fn(),
-  saveFlow: vi.fn(),
-  deleteFlow: vi.fn(),
-  runFlow: vi.fn(),
-  getRuns: vi.fn(),
-  getRun: vi.fn(),
-  getCodeSuggestion: vi.fn(),
-};
+  return {
+    mockCreate: create,
+    mockGet: get,
+    mockPost: post,
+    mockDelete: del,
+    mockInterceptorUse: use,
+    mockAxiosInstance: instance,
+  };
+});
 
-vi.mock('./ApiService', () => ({
-  default: mockApiService,
-  apiService: mockApiService, // Ensure both named and default exports are mocked
+vi.mock('axios', () => ({
+  default: {
+    create: mockCreate,
+  },
+  create: mockCreate,
 }));
 
+const loadApiService = async () => {
+  vi.resetModules();
+  const module = await import('./ApiService');
+  return module.default;
+};
+
 describe('ApiService', () => {
-  // We don't instantiate ApiService directly here, as we're testing the mocked export.
-  // We'll use the mocked functions from `mockApiService`.
-
   beforeEach(() => {
-    vi.clearAllMocks(); // Clear mocks for axios and mockApiService functions
+    vi.clearAllMocks();
+    vi.unstubAllEnvs();
+    mockCreate.mockReturnValue(mockAxiosInstance as never);
+  });
 
-    // Reset the mock for axios.create for other tests that might use it directly
-    mockedAxios.create.mockReturnValue({
-      get: vi.fn(),
-      post: vi.fn(),
-      delete: vi.fn(),
-      interceptors: {
-        response: {
-          use: vi.fn(),
-        },
+  it('creates axios client with default settings and interceptor', async () => {
+    await loadApiService();
+
+    expect(mockCreate).toHaveBeenCalledWith({
+      baseURL: 'http://localhost:8000',
+      timeout: 30000,
+      headers: {
+        'Content-Type': 'application/json',
       },
-    } as any);
-
-    // Now, reset all the specific mockApiService functions
-    for (const key in mockApiService) {
-      if (Object.prototype.hasOwnProperty.call(mockApiService, key)) {
-        // @ts-ignore
-        mockApiService[key].mockClear();
-      }
-    }
+    });
+    expect(mockInterceptorUse).toHaveBeenCalledTimes(1);
   });
 
-  // Re-enable this test if ApiService ever exposes its constructor with an injectable axios
-  // it('should initialize with the correct base URL and default headers', () => {
-  //   // This test cannot be reliably run if we mock ApiService directly.
-  //   // It would require inspecting the internal implementation of the *real* ApiService.
-  //   // For now, we assume the real ApiService's constructor logic is correct if it uses axios.create
-  //   expect(mockedAxios.create).toHaveBeenCalledWith(
-  //     expect.objectContaining({
-  //       baseURL: 'http://localhost:8000',
-  //       timeout: 30000,
-  //       headers: {
-  //         'Content-Type': 'application/json',
-  //       },
-  //     })
-  //   );
-  // });
+  it('uses REACT_APP_API_URL when provided', async () => {
+    vi.stubEnv('REACT_APP_API_URL', 'https://api.example.test');
 
-  describe('getApplets', () => {
-    it('should fetch all applets successfully', async () => {
-      const mockApplets: AppletMetadata[] = [{ id: 'applet1', name: 'Test Applet', description: 'desc', inputs: [], outputs: [] }];
-      // Mock the return value of the mocked apiService.getApplets
-      mockApiService.getApplets.mockResolvedValue(mockApplets);
+    await loadApiService();
 
-      // Call the mocked function
-      const applets = await mockApiService.getApplets();
-      expect(applets).toEqual(mockApplets);
-      expect(mockApiService.getApplets).toHaveBeenCalledTimes(1);
-    });
-
-    it('should handle errors when fetching applets', async () => {
-      const errorMessage = 'Network Error';
-      mockApiService.getApplets.mockRejectedValue(new Error(errorMessage));
-
-      await expect(mockApiService.getApplets()).rejects.toThrow(errorMessage);
-      expect(mockApiService.getApplets).toHaveBeenCalledTimes(1);
-    });
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        baseURL: 'https://api.example.test',
+      }),
+    );
   });
 
-  // Similarly, add tests for all other methods of mockApiService,
-  // asserting that they are called correctly and return expected values.
+  it('logs and rethrows interceptor errors', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-  describe('getFlows', () => {
-    it('should fetch all flows successfully', async () => {
-      const mockFlows: Flow[] = [{ id: 'flow1', name: 'Flow 1', nodes: [], edges: [] }];
-      mockApiService.getFlows.mockResolvedValue(mockFlows);
+    await loadApiService();
+    const [, onError] = mockInterceptorUse.mock.calls[0];
+    const error = { response: { data: { message: 'boom' } } };
 
-      const flows = await mockApiService.getFlows();
-      expect(flows).toEqual(mockFlows);
-      expect(mockApiService.getFlows).toHaveBeenCalledTimes(1);
-    });
+    await expect(onError(error)).rejects.toBe(error);
+    expect(errorSpy).toHaveBeenCalledWith('API Error:', { message: 'boom' });
   });
 
-  describe('getFlow', () => {
-    it('should fetch a specific flow successfully', async () => {
-      const mockFlow: Flow = { id: 'flow1', name: 'Flow 1', nodes: [], edges: [] };
-      mockApiService.getFlow.mockResolvedValue(mockFlow);
+  it('getApplets calls /applets and returns response data', async () => {
+    const apiService = await loadApiService();
+    const applets: AppletMetadata[] = [
+      {
+        type: 'writer',
+        name: 'Writer',
+        description: 'Writes text',
+        version: '1.0.0',
+        capabilities: ['draft'],
+      },
+    ];
+    mockGet.mockResolvedValue({ data: applets });
 
-      const flow = await mockApiService.getFlow('flow1');
-      expect(flow).toEqual(mockFlow);
-      expect(mockApiService.getFlow).toHaveBeenCalledWith('flow1');
-    });
+    const result = await apiService.getApplets();
+
+    expect(mockGet).toHaveBeenCalledWith('/applets');
+    expect(result).toEqual(applets);
   });
 
-  describe('saveFlow', () => {
-    it('should save a flow successfully', async () => {
-      const mockFlow: Flow = { id: 'flow1', name: 'Flow 1', nodes: [], edges: [] };
-      const mockResponse = { id: 'flow1' };
-      mockApiService.saveFlow.mockResolvedValue(mockResponse);
+  it('getFlows/getFlow call expected endpoints', async () => {
+    const apiService = await loadApiService();
+    const flow: Flow = { id: 'flow-1', name: 'Flow 1', nodes: [], edges: [] };
+    mockGet.mockResolvedValueOnce({ data: [flow] });
+    mockGet.mockResolvedValueOnce({ data: flow });
 
-      const response = await mockApiService.saveFlow(mockFlow);
-      expect(response).toEqual(mockResponse);
-      expect(mockApiService.saveFlow).toHaveBeenCalledWith(mockFlow);
-    });
+    const flows = await apiService.getFlows();
+    const oneFlow = await apiService.getFlow('flow-1');
+
+    expect(mockGet).toHaveBeenNthCalledWith(1, '/flows');
+    expect(mockGet).toHaveBeenNthCalledWith(2, '/flows/flow-1');
+    expect(flows).toEqual([flow]);
+    expect(oneFlow).toEqual(flow);
   });
 
-  describe('deleteFlow', () => {
-    it('should delete a flow successfully', async () => {
-      mockApiService.deleteFlow.mockResolvedValue(undefined);
+  it('saveFlow posts flow and returns created id', async () => {
+    const apiService = await loadApiService();
+    const flow: Flow = { id: '', name: 'New Flow', nodes: [], edges: [] };
+    mockPost.mockResolvedValue({ data: { id: 'flow-new' } });
 
-      await mockApiService.deleteFlow('flow1');
-      expect(mockApiService.deleteFlow).toHaveBeenCalledWith('flow1');
-    });
+    const result = await apiService.saveFlow(flow);
+
+    expect(mockPost).toHaveBeenCalledWith('/flows', flow);
+    expect(result).toEqual({ id: 'flow-new' });
   });
 
-  describe('runFlow', () => {
-    it('should run a flow successfully', async () => {
-      const mockInputData = { param1: 'value1' };
-      const mockResponse = { run_id: 'run1' };
-      mockApiService.runFlow.mockResolvedValue(mockResponse);
+  it('deleteFlow deletes by flow id', async () => {
+    const apiService = await loadApiService();
+    mockDelete.mockResolvedValue({});
 
-      const response = await mockApiService.runFlow('flow1', mockInputData);
-      expect(response).toEqual(mockResponse);
-      expect(mockApiService.runFlow).toHaveBeenCalledWith('flow1', mockInputData);
-    });
+    await apiService.deleteFlow('flow-delete');
+
+    expect(mockDelete).toHaveBeenCalledWith('/flows/flow-delete');
   });
 
-  describe('getRuns', () => {
-    it('should fetch all workflow runs successfully', async () => {
-      const mockRuns: WorkflowRunStatus[] = [{ flow_id: 'flow1', status: 'running', progress: 0, total_steps: 1 }];
-      mockApiService.getRuns.mockResolvedValue(mockRuns);
+  it('runFlow posts run payload and returns run id', async () => {
+    const apiService = await loadApiService();
+    const payload = { prompt: 'hello' };
+    mockPost.mockResolvedValue({ data: { run_id: 'run-1' } });
 
-      const runs = await mockApiService.getRuns();
-      expect(runs).toEqual(mockRuns);
-      expect(mockApiService.getRuns).toHaveBeenCalledTimes(1);
-    });
+    const result = await apiService.runFlow('flow-1', payload);
+
+    expect(mockPost).toHaveBeenCalledWith('/flows/flow-1/run', payload);
+    expect(result).toEqual({ run_id: 'run-1' });
   });
 
-  describe('getRun', () => {
-    it('should fetch a specific workflow run successfully', async () => {
-      const mockRun: WorkflowRunStatus = { flow_id: 'flow1', status: 'completed', progress: 1, total_steps: 1 };
-      mockApiService.getRun.mockResolvedValue(mockRun);
+  it('getRuns/getRun call expected endpoints', async () => {
+    const apiService = await loadApiService();
+    const run: WorkflowRunStatus = {
+      run_id: 'run-1',
+      flow_id: 'flow-1',
+      status: 'running',
+      progress: 0,
+      total_steps: 1,
+      start_time: 1,
+      results: {},
+    };
+    mockGet.mockResolvedValueOnce({ data: [run] });
+    mockGet.mockResolvedValueOnce({ data: run });
 
-      const run = await mockApiService.getRun('run1');
-      expect(run).toEqual(mockRun);
-      expect(mockApiService.getRun).toHaveBeenCalledWith('run1');
-    });
+    const runs = await apiService.getRuns();
+    const oneRun = await apiService.getRun('run-1');
+
+    expect(mockGet).toHaveBeenNthCalledWith(1, '/runs');
+    expect(mockGet).toHaveBeenNthCalledWith(2, '/runs/run-1');
+    expect(runs).toEqual([run]);
+    expect(oneRun).toEqual(run);
   });
 
-  describe('getCodeSuggestion', () => {
-    it('should get AI code suggestions successfully', async () => {
-      const mockRequest: CodeSuggestionRequest = { code: 'print("hello")', hint: 'add comment' };
-      const mockResponse: CodeSuggestionResponse = { suggestion: 'print("hello") # add comment' };
-      mockApiService.getCodeSuggestion.mockResolvedValue(mockResponse);
+  it('getCodeSuggestion posts request and returns response', async () => {
+    const apiService = await loadApiService();
+    const request: CodeSuggestionRequest = { code: 'print("x")', hint: 'comment' };
+    const response: CodeSuggestionResponse = {
+      original: 'print("x")',
+      suggestion: 'print("x")  # comment',
+      diff: '+ # comment',
+    };
+    mockPost.mockResolvedValue({ data: response });
 
-      const response = await mockApiService.getCodeSuggestion(mockRequest);
-      expect(response).toEqual(mockResponse);
-      expect(mockApiService.getCodeSuggestion).toHaveBeenCalledWith(mockRequest);
-    });
+    const result = await apiService.getCodeSuggestion(request);
+
+    expect(mockPost).toHaveBeenCalledWith('/ai/suggest', request);
+    expect(result).toEqual(response);
   });
 });
