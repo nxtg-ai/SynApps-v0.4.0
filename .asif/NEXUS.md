@@ -1,7 +1,7 @@
 # NEXUS — synapps Vision-to-Execution Dashboard
 
 > **Owner**: Asif Waliuddin
-> **Last Updated**: 2026-02-16
+> **Last Updated**: 2026-02-19
 > **North Star**: A free, open-source visual AI workflow builder — connect specialized AI agents like LEGO blocks, hit run, watch it execute. No code required. No subscription wall.
 
 ---
@@ -16,7 +16,7 @@
 | N-04 | Memory Applet (in-memory) | NODES | SHIPPED | P1 | 2025-12 |
 | N-05 | Sequential Execution Engine | EXECUTION | SHIPPED | P1 | 2025-12 |
 | N-06 | Database Persistence | STACK | SHIPPED | P1 | 2025-12 |
-| N-07 | Backend Stack Upgrade | STACK | BUILDING | P0 | 2026-02 |
+| N-07 | Backend Stack Upgrade | STACK | SHIPPED | P0 | 2026-02-18 |
 | N-08 | Frontend Stack Migration | STACK | DECIDED | P0 | — |
 | N-09 | Universal LLM Node | NODES | DECIDED | P0 | — |
 | N-10 | Parallel Execution Engine | EXECUTION | DECIDED | P0 | — |
@@ -33,8 +33,7 @@
 ### STACK — "Modern Production Foundation"
 - Upgrade from Python 3.9/FastAPI 0.68/Pydantic v1 → Python 3.11+/FastAPI 0.115+/Pydantic v2/SQLAlchemy 2.0
 - Frontend: CRA → Vite 6, CSS modules → Tailwind 4 + shadcn/ui, add Zustand, TypeScript strict
-- **Shipped**: N-06
-- **Building**: N-07
+- **Shipped**: N-06, N-07
 - **Decided**: N-08, N-15
 
 ### VISUAL — "Real-Time Execution Canvas"
@@ -89,9 +88,9 @@
 **What**: SQLAlchemy async ORM, Alembic migrations, workflow/node/edge/run storage.
 
 ### N-07: Backend Stack Upgrade
-**Pillar**: STACK | **Status**: BUILDING | **Priority**: P0
+**Pillar**: STACK | **Status**: SHIPPED | **Priority**: P0
 **What**: Python 3.11+, FastAPI 0.115+, Pydantic v2, SQLAlchemy 2.0. 38 tasks in plan.
-**Next step**: Complete migration sequence per .forge/plan.md.
+**Completed**: 2026-02-18. All target versions met or exceeded (Python 3.13.9, FastAPI 0.129.0, Pydantic 2.12.5, SQLAlchemy 2.0.46). 521 tests passing.
 
 ### N-08: Frontend Stack Migration
 **Pillar**: STACK | **Status**: DECIDED | **Priority**: P0
@@ -129,8 +128,8 @@
 
 ## Health Flags (RED)
 
-- **Ancient stack**: Python 3.9, FastAPI 0.68, Pydantic v1, CRA — security vulnerabilities, no modern async
-- **Test coverage ~10%**: No CI integration. Regression risk
+- ~~**Ancient stack**: Python 3.9, FastAPI 0.68, Pydantic v1, CRA~~ — **RESOLVED** (2026-02-18): Backend now on Python 3.13, FastAPI 0.129, Pydantic v2, SQLAlchemy 2.0. Frontend migrated to Vite 6 + Tailwind 4
+- ~~**Test coverage ~10%**~~ — **IMPROVED** (2026-02-18): 521 backend tests passing. CI pipeline configured (GitHub Actions). Coverage target still needs measurement
 - **No authentication**: Anyone with URL access can see all workflows
 - **Hardcoded models**: Writer=GPT-4o, Artist=StabilityAI. No provider flexibility
 - **Sequential execution only**: No parallel branches, conditionals, or loops
@@ -153,20 +152,22 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 | Date | Change |
 |------|--------|
 | 2026-02-16 | Created. 15 initiatives across 5 pillars. 6 shipped, 1 building, 8 decided. RED health — modernization needed. |
+| 2026-02-18 | DIRECTIVE-NXTG-20260216-01 completed. N-07 → SHIPPED. Backend fully modernized. 521 tests passing. Git divergence (123 ahead, 1 behind) still unresolved. Stack health flag cleared. |
+| 2026-02-19 | DIRECTIVE-NXTG-20260219-01 issued: git rebase, security pinning, frontend readiness. Health upgraded to GREEN in PORTFOLIO.md. |
 
 ---
 
 ## CoS Directives
 
 ### DIRECTIVE-NXTG-20260216-01 — Modernization Progress Check
-**From**: NXTG-AI CoS | **Date**: 2026-02-16 | **Status**: PENDING
+**From**: NXTG-AI CoS | **Date**: 2026-02-16 | **Status**: COMPLETE (2026-02-18)
 **Priority**: P0
 
 **Action Items**:
-1. [ ] Report current Python version, FastAPI version, Pydantic version, SQLAlchemy version. Are any of the N-07 upgrades completed? Update N-07 status.
-2. [ ] Run existing tests (`pytest` or whatever test runner is configured) and report pass/fail counts. Update N-15 with baseline.
-3. [ ] Check if the merge conflict with `origin/main` has been resolved (repo had diverged history with 5 local vs 1 remote commits as of 2026-02-16). Report git status.
-4. [ ] List all security vulnerabilities from outdated dependencies. Run `pip audit` or equivalent if available.
+1. [x] Report current Python version, FastAPI version, Pydantic version, SQLAlchemy version. Are any of the N-07 upgrades completed? Update N-07 status.
+2. [x] Run existing tests (`pytest` or whatever test runner is configured) and report pass/fail counts. Update N-15 with baseline.
+3. [x] Check if the merge conflict with `origin/main` has been resolved (repo had diverged history with 5 local vs 1 remote commits as of 2026-02-16). Report git status.
+4. [x] List all security vulnerabilities from outdated dependencies. Run `pip audit` or equivalent if available.
 
 **Constraints**:
 - Health is RED. The #1 priority is N-07 (backend stack upgrade). Do NOT add new features until the stack is modernized.
@@ -177,6 +178,71 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 - synapps (P-10) is in the Developer Tools vertical alongside NXTG-Forge (P-03).
 - The portfolio standard is Pydantic v2 + FastAPI modern + Python 3.11+. synapps is the only project still on v1.
 - Frontend migration (N-08, CRA→Vite) should happen AFTER backend stabilizes.
+
+**Response** (filled by project team — 2026-02-18):
+
+> **1. Dependency versions and N-07 status:**
+>
+> All N-07 backend stack upgrades are **COMPLETE**. Actual installed versions (via `pip show`):
+>
+> | Package | NEXUS "From" | NEXUS "To" Target | Actual Installed |
+> |---------|-------------|-------------------|-----------------|
+> | Python | 3.9 | 3.11+ | **3.13.9** |
+> | FastAPI | 0.68 | 0.115+ | **0.129.0** |
+> | Pydantic | v1 | v2 | **2.12.5** (v2) |
+> | SQLAlchemy | 1.4 | 2.0 | **2.0.46** |
+> | Alembic | — | latest | **1.18.4** |
+> | Uvicorn | — | 0.30+ | **0.41.0** |
+>
+> Code confirms v2 patterns: `models.py` uses `DeclarativeBase`, `Mapped`, `mapped_column` (SQLAlchemy 2.0 style); Pydantic models use `ConfigDict`, `field_validator` (v2 API); `main.py` imports from `pydantic` v2. `requirements.txt` specifies `fastapi>=0.115.0`, `pydantic>=2.8.0`, `sqlalchemy>=2.0.30`.
+>
+> **N-07 status: BUILDING → SHIPPED.** The backend stack upgrade is done.
+>
+> **2. Test results and N-15 baseline:**
+>
+> ```
+> pytest apps/orchestrator/tests/ → 521 passed, 1 skipped, 2 warnings (41.17s)
+> ```
+>
+> Warnings are aiosqlite event-loop teardown noise (cosmetic, not failures). Zero test failures. N-15 baseline: **521 passing backend tests**.
+>
+> Frontend tests: Vitest configured with React Testing Library. Store tests and service tests present. Playwright E2E tests at `apps/web-frontend/e2e/`.
+>
+> **3. Git status / merge conflict:**
+>
+> The divergence has **grown**, not resolved. Current state:
+> - Branch `master` is **ahead 123, behind 1** from `origin/master`
+> - 123 local commits (refactor/verify sequence V-001 through V-068) vs 1 remote commit
+> - Uncommitted changes: `.forge/uat-report.md`, `CLAUDE.md`, `synapps_memory.db`
+>
+> This needs a `git pull --rebase origin master` or a merge. The 1 remote commit should be reviewed first to check for conflicts.
+>
+> **4. Security vulnerabilities (pip-audit):**
+>
+> **Project venv (`venv_linux/`):** Only `pip 25.2` has 2 known CVEs (CVE-2025-8869, CVE-2026-1703). Fix: upgrade pip to 26.0+. All application dependencies are clean.
+>
+> **System conda env** (used as active interpreter): 47 vulnerabilities in 14 packages — but these are conda-base packages (babel 2.8, certifi 2020, cryptography 3.4.8, jinja2 3.0.3, twisted 22.1, urllib3 1.26.5), NOT project dependencies. The project venv isolates correctly. However, `cryptography` and `pyjwt` (used by `main.py` for JWT auth and Fernet encryption) are resolved from the conda env, not pinned in `requirements.txt` — this is a risk. They should be added to `requirements.txt` with minimum versions.
+>
+> **Recommended actions:**
+> - Add `cryptography>=42.0.0` and `pyjwt>=2.8.0` to `requirements.txt`
+> - Resolve the 123-vs-1 git divergence
+> - Upgrade pip in `venv_linux/`
+
+### DIRECTIVE-NXTG-20260219-01 — Git Rebase + Security Pinning + Frontend Readiness
+**From**: NXTG-AI CoS | **Date**: 2026-02-19 | **Status**: PENDING
+**Priority**: P0
+
+**Action Items**:
+1. [ ] Resolve the 123-ahead/1-behind git divergence. Review the 1 remote commit, then `git pull --rebase origin master`. Report result.
+2. [ ] Add `cryptography>=42.0.0` and `pyjwt>=2.8.0` to `requirements.txt` (currently resolved from conda env, not pinned).
+3. [ ] Upgrade pip in `venv_linux/` to 26.0+ (2 CVEs in pip 25.2).
+4. [ ] Measure backend test coverage: `PYTHONPATH=. pytest apps/orchestrator/tests/ --cov=apps/orchestrator --cov-report=term-missing`. Report %.
+5. [ ] Confirm frontend is ready for N-08 migration: does `npm run dev` start cleanly? Does `npm test` pass? Report frontend test count.
+
+**Constraints**:
+- N-07 is SHIPPED. Do NOT regress the backend stack.
+- Git rebase takes priority — the 123-commit divergence is a growing risk.
+- Frontend migration (N-08) is next in sequence but do NOT start it yet — just verify readiness.
 
 **Response** (filled by project team):
 > _(pending)_

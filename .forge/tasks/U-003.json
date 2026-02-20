@@ -1,0 +1,23 @@
+{
+  "id": "U-003",
+  "title": "UAT: Implement Dashboard and New Pages",
+  "description": "Human validation for task T-022.\nVerify user-facing behavior meets expectations.",
+  "status": "pending",
+  "assigned_to": null,
+  "task_type": "uat",
+  "depends_on": [
+    "V-021"
+  ],
+  "locked_files": [],
+  "acceptance_criteria": [
+    "Feature works as expected from user perspective",
+    "Verify: Dashboard, settings, and applet library pages implemented",
+    "Verify: All features functional and responsive"
+  ],
+  "created_at": "2026-02-19T04:01:59.538187294Z",
+  "updated_at": "2026-02-19T04:01:59.538187294Z",
+  "completed_at": null,
+  "parent_task": "T-022",
+  "phase": "uat",
+  "retry_count": 0
+}

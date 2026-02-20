@@ -1,0 +1,25 @@
+{
+  "id": "U-007",
+  "title": "UAT: Migrate Frontend to Vite and Tailwind",
+  "description": "Human validation for task T-046.\nVerify user-facing behavior meets expectations.",
+  "status": "pending",
+  "assigned_to": null,
+  "task_type": "uat",
+  "depends_on": [
+    "V-040"
+  ],
+  "locked_files": [],
+  "acceptance_criteria": [
+    "Feature works as expected from user perspective",
+    "Verify: Frontend builds and runs with Vite",
+    "Verify: Tailwind and shadcn/ui are integrated",
+    "Verify: No CSS modules remain",
+    "Verify: UI renders correctly"
+  ],
+  "created_at": "2026-02-19T04:01:59.538385097Z",
+  "updated_at": "2026-02-19T04:01:59.538385097Z",
+  "completed_at": null,
+  "parent_task": "T-046",
+  "phase": "uat",
+  "retry_count": 0
+}

@@ -1,0 +1,24 @@
+{
+  "id": "U-005",
+  "title": "UAT: Upgrade SQLAlchemy ORM to 2.0",
+  "description": "Human validation for task T-043.\nVerify user-facing behavior meets expectations.",
+  "status": "pending",
+  "assigned_to": null,
+  "task_type": "uat",
+  "depends_on": [
+    "V-038"
+  ],
+  "locked_files": [],
+  "acceptance_criteria": [
+    "Feature works as expected from user perspective",
+    "Verify: All ORM code uses SQLAlchemy 2.0 patterns",
+    "Verify: Alembic migrations run successfully",
+    "Verify: App starts and database operations work"
+  ],
+  "created_at": "2026-02-19T04:01:59.538321969Z",
+  "updated_at": "2026-02-19T04:01:59.538321969Z",
+  "completed_at": null,
+  "parent_task": "T-043",
+  "phase": "uat",
+  "retry_count": 0
+}

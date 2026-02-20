@@ -1,0 +1,24 @@
+{
+  "id": "U-009",
+  "title": "UAT: Review and Refactor Existing Frontend Code",
+  "description": "Human validation for task T-077.\nVerify user-facing behavior meets expectations.",
+  "status": "pending",
+  "assigned_to": null,
+  "task_type": "uat",
+  "depends_on": [
+    "T-077"
+  ],
+  "locked_files": [],
+  "acceptance_criteria": [
+    "Feature works as expected from user perspective",
+    "Verify: Frontend code follows modern best practices",
+    "Verify: Accessibility and responsiveness improved",
+    "Verify: No legacy patterns remain"
+  ],
+  "created_at": "2026-02-19T04:01:59.538566038Z",
+  "updated_at": "2026-02-19T04:01:59.538566038Z",
+  "completed_at": null,
+  "parent_task": "T-077",
+  "phase": "uat",
+  "retry_count": 0
+}

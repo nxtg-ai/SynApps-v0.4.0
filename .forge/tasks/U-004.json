@@ -1,0 +1,25 @@
+{
+  "id": "U-004",
+  "title": "UAT: Implement FM-Agnostic LLM Node and Provider Adapters",
+  "description": "Human validation for task T-025.\nVerify user-facing behavior meets expectations.",
+  "status": "pending",
+  "assigned_to": null,
+  "task_type": "uat",
+  "depends_on": [
+    "V-023"
+  ],
+  "locked_files": [],
+  "acceptance_criteria": [
+    "Feature works as expected from user perspective",
+    "Verify: LLM Node supports all listed providers",
+    "Verify: Provider adapters implement common interface",
+    "Verify: Streaming output works in frontend",
+    "Verify: No hardcoded provider logic outside adapter layer"
+  ],
+  "created_at": "2026-02-19T04:01:59.538226952Z",
+  "updated_at": "2026-02-19T04:01:59.538226952Z",
+  "completed_at": null,
+  "parent_task": "T-025",
+  "phase": "uat",
+  "retry_count": 0
+}
