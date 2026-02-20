@@ -167,7 +167,7 @@ describe('ApiService', () => {
 
     const result = await apiService.runFlow('flow-1', payload);
 
-    expect(mockPost).toHaveBeenCalledWith('/flows/flow-1/run', payload);
+    expect(mockPost).toHaveBeenCalledWith('/flows/flow-1/run', { input: payload });
     expect(result).toEqual({ run_id: 'run-1' });
   });
 

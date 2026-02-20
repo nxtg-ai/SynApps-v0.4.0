@@ -21,7 +21,7 @@
 | N-09 | Universal LLM Node | NODES | DECIDED | P0 | — |
 | N-10 | Parallel Execution Engine | EXECUTION | DECIDED | P0 | — |
 | N-11 | Conditional Routing (If/Else) | EXECUTION | DECIDED | P1 | — |
-| N-12 | JWT Authentication | SECURITY | DECIDED | P0 | — |
+| N-12 | JWT Authentication | SECURITY | SHIPPED | P0 | 2026-02-19 |
 | N-13 | Code Node with Sandboxing | NODES | DECIDED | P1 | — |
 | N-14 | Execution Visualization | VISUAL | DECIDED | P1 | — |
 | N-15 | Comprehensive Testing | STACK | DECIDED | P0 | — |
@@ -57,7 +57,7 @@
 ### SECURITY — "Enterprise Readiness"
 - JWT auth with refresh tokens. Encrypted API keys at rest
 - Rate limiting per-user. Sandboxed Code Node. Input sanitization
-- **Decided**: N-12
+- **Shipped**: N-12
 
 ---
 
@@ -109,8 +109,9 @@
 **What**: If/Else node (contains, equals, regex, JSON path). Switch node (multi-branch).
 
 ### N-12: JWT Authentication
-**Pillar**: SECURITY | **Status**: DECIDED | **Priority**: P0
+**Pillar**: SECURITY | **Status**: SHIPPED | **Priority**: P0
 **What**: Email/password + refresh tokens. OAuth2 stretch (Google, GitHub). Encrypted API key storage.
+**Completed**: 2026-02-19. Backend: JWT access/refresh tokens, bcrypt password hashing, Fernet-encrypted API key storage, rate-limited auth endpoints. Frontend: login/register pages, protected routes, auto-refresh interceptor with retry queue, Zustand auth store with localStorage persistence.
 
 ### N-13: Code Node with Sandboxing
 **Pillar**: NODES | **Status**: DECIDED | **Priority**: P1
@@ -130,7 +131,7 @@
 
 - ~~**Ancient stack**: Python 3.9, FastAPI 0.68, Pydantic v1, CRA~~ — **RESOLVED** (2026-02-18): Backend now on Python 3.13, FastAPI 0.129, Pydantic v2, SQLAlchemy 2.0. Frontend migrated to Vite 6 + Tailwind 4
 - ~~**Test coverage ~10%**~~ — **IMPROVED** (2026-02-18): 521 backend tests passing. CI pipeline configured (GitHub Actions). Coverage target still needs measurement
-- **No authentication**: Anyone with URL access can see all workflows
+- ~~**No authentication**: Anyone with URL access can see all workflows~~ — **RESOLVED** (2026-02-19): JWT auth with refresh tokens, login/register pages, protected routes, auto-refresh interceptor. N-12 backend shipped; frontend wired up.
 - **Hardcoded models**: Writer=GPT-4o, Artist=StabilityAI. No provider flexibility
 - **Sequential execution only**: No parallel branches, conditionals, or loops
 - **38-task backlog to v1.0**: Estimated 2-3 months full-time
@@ -154,6 +155,7 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 | 2026-02-16 | Created. 15 initiatives across 5 pillars. 6 shipped, 1 building, 8 decided. RED health — modernization needed. |
 | 2026-02-18 | DIRECTIVE-NXTG-20260216-01 completed. N-07 → SHIPPED. Backend fully modernized. 521 tests passing. Git divergence (123 ahead, 1 behind) still unresolved. Stack health flag cleared. |
 | 2026-02-19 | DIRECTIVE-NXTG-20260219-01 issued: git rebase, security pinning, frontend readiness. Health upgraded to GREEN in PORTFOLIO.md. |
+| 2026-02-19 | DIRECTIVE-NXTG-20260219-01 completed. Git divergence resolved, security deps pinned, pip upgraded, 89% backend coverage, 101 frontend tests passing. N-12 (JWT Auth) → SHIPPED. Auth health flag cleared. |
 
 ---
 
@@ -229,7 +231,7 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 > - Upgrade pip in `venv_linux/`
 
 ### DIRECTIVE-NXTG-20260219-01 — Git Rebase + Security Pinning + Frontend Readiness
-**From**: NXTG-AI CoS | **Date**: 2026-02-19 | **Status**: PENDING
+**From**: NXTG-AI CoS | **Date**: 2026-02-19 | **Status**: COMPLETE (2026-02-19)
 **Priority**: P0
 
 **Action Items**:
@@ -244,8 +246,52 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 - Git rebase takes priority — the 123-commit divergence is a growing risk.
 - Frontend migration (N-08) is next in sequence but do NOT start it yet — just verify readiness.
 
-**Response** (filled by project team):
-> _(pending)_
+**Response** (filled by project team — 2026-02-19):
+
+> **1. Git divergence resolved:**
+>
+> The 123-ahead/1-behind divergence was resolved in the previous session. The remote commit was reviewed, rebased, and all 123+ local commits pushed to `origin/master`. Current state:
+> ```
+> master is up to date with origin/master (0 ahead, 0 behind)
+> ```
+>
+> **2. Security dependencies pinned:**
+>
+> Added to `apps/orchestrator/requirements.txt`:
+> ```
+> cryptography>=42.0.0
+> pyjwt[crypto]>=2.8.0
+> ```
+> These were previously resolved from the conda env and not pinned. Now explicitly declared as project dependencies.
+>
+> **3. pip upgraded in venv_linux:**
+>
+> ```
+> pip 25.2 → pip 26.0.1
+> ```
+> Both CVEs (CVE-2025-8869, CVE-2026-1703) resolved.
+>
+> **4. Backend test coverage:**
+>
+> ```
+> PYTHONPATH=. pytest apps/orchestrator/tests/ --cov=apps/orchestrator --cov-report=term-missing
+> → 522 passed, 1 skipped | 89% coverage
+> ```
+> Coverage exceeds the N-15 target of 80%+. 1 additional test passing since last directive (521→522).
+>
+> **5. Frontend readiness for N-08 migration:**
+>
+> | Metric | Result |
+> |--------|--------|
+> | `npm run dev` | Starts cleanly on :3000 |
+> | `npm test` | **101 passed**, 0 failed |
+> | Source files | 38 TypeScript files |
+> | Components | 13 components |
+> | Pages | 8 pages |
+> | Stores | 3 Zustand stores (workflow, execution, settings + new auth) |
+> | Services | ApiService (axios), WebSocketService, AuthService (new) |
+>
+> Frontend is ready for N-08 migration. Vite 6 + Tailwind 4 + React 18 + TypeScript strict are already in place. Auth system (login/register/JWT refresh) was wired up this session. All tests green.
 
 ---
 
