@@ -13,6 +13,7 @@ const {
   mockPost,
   mockDelete,
   mockInterceptorUse,
+  mockRequestInterceptorUse,
   mockAxiosInstance,
 } = vi.hoisted(() => {
   const create = vi.fn();
@@ -21,11 +22,16 @@ const {
   const del = vi.fn();
   const use = vi.fn();
 
+  const requestUse = vi.fn();
+
   const instance = {
     get,
     post,
     delete: del,
     interceptors: {
+      request: {
+        use: requestUse,
+      },
       response: {
         use,
       },
@@ -38,6 +44,7 @@ const {
     mockPost: post,
     mockDelete: del,
     mockInterceptorUse: use,
+    mockRequestInterceptorUse: requestUse,
     mockAxiosInstance: instance,
   };
 });
@@ -73,6 +80,7 @@ describe('ApiService', () => {
       },
     });
     expect(mockInterceptorUse).toHaveBeenCalledTimes(1);
+    expect(mockRequestInterceptorUse).toHaveBeenCalledTimes(1);
   });
 
   it('uses REACT_APP_API_URL when provided', async () => {

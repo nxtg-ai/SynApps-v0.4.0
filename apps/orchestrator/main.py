@@ -28,13 +28,14 @@ import threading
 from typing import Any, AsyncIterator, Dict, List, Optional, Type
 from pathlib import Path
 
-# Load environment variables from .env.development file
+# Load environment variables: .env takes priority, falls back to .env.development
 from dotenv import load_dotenv
 
-# Load .env.development file from the project root directory
 project_root = Path(__file__).parent.parent.parent
-dotenv_path = project_root / ".env.development"
-load_dotenv(dotenv_path=dotenv_path)
+env_path = project_root / ".env"
+if not env_path.exists():
+    env_path = project_root / ".env.development"
+load_dotenv(dotenv_path=env_path)
 
 from fastapi import (
     Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect,

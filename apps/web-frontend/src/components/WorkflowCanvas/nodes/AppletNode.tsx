@@ -52,19 +52,19 @@ const AppletNode: React.FC<NodeProps<AppletFlowNode>> = ({ data, id, type, selec
   const getColor = () => {
     switch (appletType) {
       case 'writer':
-        return 'rgba(59, 130, 246, 0.05)';
+        return '#eff6ff';
       case 'artist':
-        return 'rgba(249, 115, 22, 0.05)';
+        return '#fff7ed';
       case 'memory':
-        return 'rgba(168, 85, 247, 0.05)';
+        return '#faf5ff';
       case 'researcher':
-        return 'rgba(20, 184, 166, 0.05)';
+        return '#f0fdfa';
       case 'analyzer':
-        return 'rgba(236, 72, 153, 0.05)';
+        return '#fdf2f8';
       case 'summarizer':
-        return 'rgba(234, 179, 8, 0.05)';
+        return '#fefce8';
       default:
-        return 'rgba(100, 116, 139, 0.05)';
+        return '#f8fafc';
     }
   };
   

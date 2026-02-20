@@ -81,3 +81,25 @@ export interface CodeSuggestionResponse {
   suggestion: string;
   diff: string;
 }
+
+// ── Auth ────────────────────────────────────────────────────────────────
+
+export interface AuthCredentials {
+  email: string;
+  password: string;
+}
+
+export interface AuthTokenResponse {
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
+  access_expires_in: number;
+  refresh_expires_in: number;
+}
+
+export interface UserProfile {
+  id: string;
+  email: string;
+  is_active: boolean;
+  created_at: number;
+}

@@ -125,6 +125,7 @@
 .template-button {
   padding: 6px 12px;
   background-color: white;
+  color: #333;
   border: 1px solid #d9d9d9;
   border-radius: 4px;
   font-size: 0.9rem;
@@ -140,6 +141,7 @@
 .load-button {
   padding: 6px 12px;
   background-color: white;
+  color: #333;
   border: 1px solid #d9d9d9;
   border-radius: 4px;
   font-size: 0.9rem;
@@ -158,6 +160,7 @@
   border-radius: 4px;
   font-size: 0.9rem;
   min-width: 200px;
+  color: #333;
 }
 
 .workflow-name-input:focus {
@@ -169,6 +172,7 @@
 .save-button {
   padding: 6px 12px;
   background-color: white;
+  color: #333;
   border: 1px solid #d9d9d9;
   border-radius: 4px;
   font-size: 0.9rem;
@@ -281,6 +285,7 @@
   font-family: monospace;
   font-size: 0.9rem;
   resize: vertical;
+  color: #333;
 }
 
 .input-textarea:focus {

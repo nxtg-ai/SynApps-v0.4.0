@@ -3,8 +3,11 @@
  * Provides consistent layout with sidebar navigation and header
  */
 import React, { ReactNode } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import NotificationCenter from '../Notifications/NotificationCenter';
+import { useAuthStore } from '../../stores/authStore';
+import { authService } from '../../services/AuthService';
+import webSocketService from '../../services/WebSocketService';
 import './MainLayout.css';
 
 interface MainLayoutProps {
@@ -15,6 +18,27 @@ interface MainLayoutProps {
 
 const MainLayout: React.FC<MainLayoutProps> = ({ children, title, actions }) => {
   const location = useLocation();
+  const navigate = useNavigate();
+  const user = useAuthStore((s) => s.user);
+  const clearAuth = useAuthStore((s) => s.clearAuth);
+
+  const handleLogout = async () => {
+    const refreshToken =
+      typeof window !== 'undefined' ? window.localStorage.getItem('refresh_token') : null;
+
+    // Clear client-side auth immediately (resilient: even if server call fails)
+    webSocketService.disconnect();
+    clearAuth();
+    navigate('/login', { replace: true });
+
+    if (refreshToken) {
+      try {
+        await authService.logout(refreshToken);
+      } catch {
+        // Server-side revocation failed – tokens already cleared locally
+      }
+    }
+  };
   
   // Navigation items
   const navItems = [
@@ -46,6 +70,15 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, title, actions }) => 
           ))}
         </nav>
         
+        {user && (
+          <div className="sidebar-user">
+            <span className="sidebar-user-email" title={user.email}>{user.email}</span>
+            <button className="sidebar-logout-btn" onClick={handleLogout}>
+              Sign out
+            </button>
+          </div>
+        )}
+
         <div className="version-info">
           <span><a href="https://github.com/nxtg-ai/SynApps-v0.4.0" target="_blank" rel="noopener noreferrer">SynApps-v0.4.0 GitHub</a></span>
         </div>

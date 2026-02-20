@@ -33,11 +33,17 @@ class WebSocketService {
     this.socket = new WebSocket(wsUrl);
     
     this.socket.onopen = () => {
-
       this.isConnected = true;
       if (this.reconnectTimer) {
         clearTimeout(this.reconnectTimer);
         this.reconnectTimer = null;
+      }
+
+      // Send auth token if available
+      const token =
+        typeof window !== 'undefined' ? window.localStorage.getItem('access_token') : null;
+      if (token && this.socket) {
+        this.socket.send(JSON.stringify({ type: 'auth', token }));
       }
     };
     

@@ -2,14 +2,14 @@
 
 .applet-node {
   min-width: 200px;
-  border: 1px solid rgba(226, 232, 240, 0.8);
+  border: 2px solid #cbd5e1;
   border-radius: 12px;
-  background-color: rgba(255, 255, 255, 0.95);
+  background-color: #ffffff;
+  color: #1e293b;
   padding: 16px;
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15), 0 2px 4px rgba(0, 0, 0, 0.1);
   position: relative;
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  backdrop-filter: blur(8px);
 }
 
 .applet-node.running {
@@ -73,10 +73,10 @@
   gap: 6px;
 }
 
-.node-label {
+.node-label, .applet-name {
   font-weight: 600;
   font-size: 14px;
-  color: #262626;
+  color: #1e293b;
   margin-bottom: 4px;
 }
 
@@ -129,10 +129,10 @@
 .start-node {
   padding: 16px 20px;
   border-radius: 12px;
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(59, 130, 246, 0.05));
-  border: 1px solid rgba(59, 130, 246, 0.5);
-  color: #3b82f6;
-  box-shadow: 0 8px 16px -4px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(59, 130, 246, 0.1);
+  background: linear-gradient(135deg, #dbeafe, #eff6ff);
+  border: 2px solid #3b82f6;
+  color: #1e40af;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25), 0 2px 4px rgba(0, 0, 0, 0.1);
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -140,14 +140,13 @@
   font-weight: 600;
   letter-spacing: 0.01em;
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  backdrop-filter: blur(8px);
   min-width: 140px;
 }
 
 .start-node .node-icon {
   font-size: 24px;
   margin-bottom: 8px;
-  background-color: rgba(59, 130, 246, 0.1);
+  background-color: #bfdbfe;
   width: 40px;
   height: 40px;
   border-radius: 50%;
@@ -174,10 +173,10 @@
 .end-node {
   padding: 16px 20px;
   border-radius: 12px;
-  background: linear-gradient(135deg, rgba(236, 72, 153, 0.1), rgba(236, 72, 153, 0.05));
-  border: 1px solid rgba(236, 72, 153, 0.5);
-  color: #ec4899;
-  box-shadow: 0 8px 16px -4px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(236, 72, 153, 0.1);
+  background: linear-gradient(135deg, #fce7f3, #fdf2f8);
+  border: 2px solid #ec4899;
+  color: #be185d;
+  box-shadow: 0 4px 12px rgba(236, 72, 153, 0.25), 0 2px 4px rgba(0, 0, 0, 0.1);
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -185,14 +184,13 @@
   font-weight: 600;
   letter-spacing: 0.01em;
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  backdrop-filter: blur(8px);
   min-width: 140px;
 }
 
 .end-node .node-icon {
   font-size: 24px;
   margin-bottom: 8px;
-  background-color: rgba(236, 72, 153, 0.1);
+  background-color: #fbcfe8;
   width: 40px;
   height: 40px;
   border-radius: 50%;
