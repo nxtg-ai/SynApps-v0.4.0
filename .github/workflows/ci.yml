@@ -3,12 +3,10 @@ name: CI
 on:
   pull_request:
     branches:
-      - main
-      - develop
+      - master
   push:
     branches:
-      - main
-      - develop
+      - master
   workflow_dispatch:
 
 permissions:
@@ -72,7 +70,7 @@ jobs:
         run: npm ci
 
       - name: Run frontend lint
-        run: npx eslint src --ext .js,.jsx,.ts,.tsx --ignore-pattern '**/*.test.tsx'
+        run: npm run lint
 
   frontend-type-check:
     name: Frontend Type Check
@@ -95,7 +93,7 @@ jobs:
         run: npm ci
 
       - name: Run frontend type-check
-        run: npx tsc --noEmit
+        run: npm run typecheck
 
   backend-test:
     name: Backend Tests
@@ -165,7 +163,7 @@ jobs:
         run: npm ci
 
       - name: Run frontend tests with coverage
-        run: CI=true npm test -- --watchAll=false --coverage
+        run: npm test -- --coverage --coverage.reporter=text --coverage.reporter=lcov
 
       - name: Upload frontend coverage artifact
         uses: actions/upload-artifact@v4
@@ -292,5 +290,5 @@ jobs:
             echo "| Scope | Coverage | Covered / Total |"
             echo "| --- | ---: | ---: |"
             echo "| Backend (pytest-cov XML) | ${backend_pct}% | ${backend_covered}/${backend_total} |"
-            echo "| Frontend (Jest lcov) | ${frontend_pct}% | ${frontend_covered}/${frontend_total} |"
+            echo "| Frontend (Vitest lcov) | ${frontend_pct}% | ${frontend_covered}/${frontend_total} |"
           } >> "$GITHUB_STEP_SUMMARY"
