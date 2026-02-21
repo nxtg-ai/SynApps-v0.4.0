@@ -26,6 +26,7 @@
 | N-14 | Execution Visualization | VISUAL | SHIPPED | P1 | 2026-02-20 |
 | N-15 | Comprehensive Testing | STACK | SHIPPED | P0 | 2026-02-20 |
 | N-16 | 2Brain Dogfood Template | DOGFOOD | SHIPPED | P0 | 2026-02-20 |
+| N-17 | Workflow Export/Import + UX Polish | VISUAL | SHIPPED | P1 | 2026-02-20 |
 
 ---
 
@@ -139,6 +140,14 @@
 **What**: First real-world workflow template — validates SynApps with 2Brain's capture→classify→store pipeline (PI-001).
 **Completed**: 2026-02-20. Created "2Brain Inbox Triage" template: Start (raw text) → LLM (Ollama llama3.1 classifier categorizes into idea/task/reference/note) → Code (Python structurer adds timestamp, validates category, formats JSON) → Memory (stores in 2brain namespace) → End. 5 nodes, 4 edges, showcases 3 distinct node types (LLM, Code, Memory) working together in a real pipeline. Registered in template gallery alongside 3 existing templates. Build verified, 101 frontend tests passing.
 
+### N-17: Workflow Export/Import + UX Polish
+**Pillar**: VISUAL | **Status**: SHIPPED | **Priority**: P1
+**What**: Export workflows as portable JSON files, import them back. Fix run button UX. Update version strings to v1.0.
+**Completed**: 2026-02-20. Three deliverables:
+1. **Backend export/import endpoints**: `GET /api/v1/flows/{id}/export` returns clean JSON with `Content-Disposition` header (strips DB-internal fields, adds `synapps_version`). `POST /api/v1/flows/import` accepts JSON, re-maps all node/edge IDs to avoid collisions, creates new flow. 5 new tests (export, export-404, import, import-invalid, roundtrip).
+2. **Frontend UI**: Export button on EditorPage toolbar (downloads `.synapps.json` file). Import button on DashboardPage (file picker → upload → navigate to editor). ApiService methods for both operations.
+3. **UX fixes**: Run button no longer resets immediately after HTTP POST — stays in "Running..." state until WebSocket `workflow.status` event signals success or error. Version strings updated from "v0.4.0 Alpha" to "v1.0" across Dashboard, Settings, and sidebar. 528 backend tests passing, 101 frontend tests, production build verified.
+
 ---
 
 ## Health Flags (RED)
@@ -178,6 +187,7 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 | 2026-02-20 | N-14 (Execution Visualization) → SHIPPED. Removed dead anime.js, fixed WebSocket resubscription bug, implemented CSS-driven glow/spinner/badges, SVG animated edge particles, mini-output preview. 14/15 initiatives now shipped. |
 | 2026-02-20 | N-13 (Code Node with Sandboxing) → SHIPPED. Fixed critical PYTHON_CODE_WRAPPER missing imports bug. Frontend wired: Code node in palette, nodeTypes, config modal (language/code/timeout/memory/CPU), AppletNode icon/color. **15/15 initiatives shipped — v1.0 roadmap complete.** |
 | 2026-02-20 | N-16 (2Brain Dogfood Template) → SHIPPED. First real-world workflow: Start → Ollama classifier → Python structurer → Memory store → End. PI-001 dogfood milestone delivered. |
+| 2026-02-20 | N-17 (Workflow Export/Import + UX Polish) → SHIPPED. Export/import endpoints + UI, run button UX fix, version strings updated to v1.0. 528 backend tests, 101 frontend tests. **17/17 initiatives shipped.** |
 
 ---
 

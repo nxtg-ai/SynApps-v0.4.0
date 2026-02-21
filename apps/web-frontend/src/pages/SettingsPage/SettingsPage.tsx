@@ -211,7 +211,7 @@ const SettingsPage: React.FC = () => {
           <div className="info-section">
             <h3>About SynApps</h3>
             <p>
-              SynApps MVP v0.4.0 - A web-based visual platform for modular AI agents.
+              SynApps v1.0 - A web-based visual platform for modular AI agents.
             </p>
             <p>
               SynApps allows indie creators to build autonomous AI applets like LEGO blocks, 

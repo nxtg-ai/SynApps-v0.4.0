@@ -102,16 +102,13 @@ const EditorPage: React.FC = () => {
 
 
         
-        // More relaxed condition - just check if we have results when status is success
-        if (status.status === 'success' && status.results) {
-
-          setWorkflowResults(status.results);
+        if (status.status === 'success') {
+          if (status.results) {
+            setWorkflowResults(status.results);
+          }
           setIsRunning(false);
-          
-          // Force re-render
-          setTimeout(() => {
-
-          }, 100);
+        } else if (status.status === 'error') {
+          setIsRunning(false);
         }
       });
 
@@ -167,9 +164,11 @@ const EditorPage: React.FC = () => {
       
 
       await apiService.runFlow(flow.id, parsedInput);
+      // Don't reset isRunning here — the WebSocket 'workflow.status' handler
+      // will set isRunning(false) when the run completes or errors.
     } catch (error) {
       console.error('Error running flow:', error);
-    } finally {
+      // Only reset on HTTP error (the run never started)
       setIsRunning(false);
     }
   };
@@ -323,7 +322,28 @@ class ${nodeType.charAt(0).toUpperCase() + nodeType.slice(1)}Applet(BaseApplet):
       >
         {isSaving ? 'Saving...' : 'Save'}
       </button>
-      <button 
+      <button
+        className="export-button"
+        onClick={async () => {
+          if (!flow?.id || !flowId) return;
+          try {
+            const data = await apiService.exportFlow(flow.id);
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${(flow.name || 'workflow').replace(/[^a-zA-Z0-9_-]/g, '_')}.synapps.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+          } catch (error) {
+            console.error('Export failed:', error);
+          }
+        }}
+        disabled={!flow?.id || !flowId}
+      >
+        Export
+      </button>
+      <button
         className="run-button"
         onClick={runFlow}
         disabled={isRunning || !flow || !flow.id || !flowId}

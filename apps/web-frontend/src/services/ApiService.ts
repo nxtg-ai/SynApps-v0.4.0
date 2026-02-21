@@ -201,6 +201,22 @@ class ApiService {
     const response = await this.api.post('/ai/suggest', request);
     return response.data;
   }
+
+  /**
+   * Export a flow as JSON
+   */
+  public async exportFlow(flowId: string): Promise<any> {
+    const response = await this.api.get(`/flows/${flowId}/export`);
+    return response.data;
+  }
+
+  /**
+   * Import a flow from JSON
+   */
+  public async importFlow(flowData: any): Promise<{ id: string }> {
+    const response = await this.api.post('/flows/import', flowData);
+    return response.data;
+  }
 }
 
 // Create a singleton instance

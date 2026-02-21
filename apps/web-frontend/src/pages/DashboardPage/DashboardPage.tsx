@@ -2,7 +2,7 @@
  * DashboardPage component
  * Landing page with workflow templates and recent runs
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import MainLayout from '../../components/Layout/MainLayout';
 import TemplateLoader from '../../components/TemplateLoader/TemplateLoader';
@@ -17,6 +17,7 @@ const DashboardPage: React.FC = () => {
   const [recentFlows, setRecentFlows] = useState<Flow[]>([]);
   const [recentRuns, setRecentRuns] = useState<WorkflowRunStatus[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Load recent flows and runs
   useEffect(() => {
@@ -55,6 +56,31 @@ const DashboardPage: React.FC = () => {
     setIsTemplateModalOpen(false);
   };
   
+  // Handle workflow import from JSON file
+  const handleImportFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const flowData = JSON.parse(text);
+
+      if (!flowData.name || !Array.isArray(flowData.nodes)) {
+        alert('Invalid workflow file: missing name or nodes.');
+        return;
+      }
+
+      const response = await apiService.importFlow(flowData);
+      navigate(`/editor/${response.id}`);
+    } catch (error) {
+      console.error('Import failed:', error);
+      alert('Failed to import workflow. Please check the file format.');
+    } finally {
+      // Reset file input so the same file can be imported again
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   // Format date for display
   const formatDate = (timestamp: number) => {
     const date = new Date(timestamp);
@@ -66,22 +92,32 @@ const DashboardPage: React.FC = () => {
       <div className="dashboard">
         <section className="welcome-section">
           <div className="welcome-text">
-            <h2>Welcome to SynApps | (v.0.4.0) Alpha</h2>
-            <p>
-              Thank you for your participation in this alpha release: <a href="https://github.com/nxtg-ai/SynApps-v0.4.0" target="_blank" rel="noopener noreferrer">SynApps-v0.4.0 GitHub</a>
-            </p>
+            <h2>Welcome to SynApps v1.0</h2>
             <p>
               Build modular AI workflows with autonomous agents that work together.
-              Get started by creating a new workflow from a template or open a recent one.
+              Get started by creating a new workflow from a template, import an existing one, or open a recent workflow.
             </p>
           </div>
           <div className="welcome-actions">
-            <button 
+            <button
               className="new-workflow-button"
               onClick={() => setIsTemplateModalOpen(true)}
             >
               Create New Workflow
             </button>
+            <button
+              className="import-workflow-button"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              Import Workflow
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json,.synapps.json"
+              style={{ display: 'none' }}
+              onChange={handleImportFile}
+            />
           </div>
         </section>
         

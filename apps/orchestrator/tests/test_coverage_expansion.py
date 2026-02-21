@@ -353,3 +353,139 @@ async def test_orchestrator_execute_flow_generic_error():
         assert mock_broadcast.call_count >= 1
         assert mock_broadcast.call_args[0][0]["status"] == "error"
         assert "DB Error" in mock_broadcast.call_args[0][0]["error"]
+
+
+# ── Export / Import tests ─────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_export_flow():
+    """Export a saved flow and verify the JSON structure."""
+    client = TestClient(app)
+
+    # Create a flow first
+    flow_data = {
+        "id": "export-test-flow",
+        "name": "Export Test",
+        "nodes": [
+            {"id": "n1", "type": "start", "position": {"x": 0, "y": 0}, "data": {"label": "Start"}},
+            {"id": "n2", "type": "llm", "position": {"x": 0, "y": 100}, "data": {"label": "LLM", "provider": "openai"}},
+        ],
+        "edges": [
+            {"id": "e1", "source": "n1", "target": "n2"},
+        ],
+    }
+    resp = client.post("/api/v1/flows", json=flow_data)
+    assert resp.status_code == 201
+
+    # Export it
+    resp = client.get("/api/v1/flows/export-test-flow/export")
+    assert resp.status_code == 200
+    export = resp.json()
+    assert export["synapps_version"] == "1.0.0"
+    assert export["name"] == "Export Test"
+    assert len(export["nodes"]) == 2
+    assert len(export["edges"]) == 1
+
+    # Check Content-Disposition header
+    assert "attachment" in resp.headers.get("content-disposition", "")
+    assert ".synapps.json" in resp.headers.get("content-disposition", "")
+
+
+@pytest.mark.asyncio
+async def test_export_flow_not_found():
+    """Export a non-existent flow returns 404."""
+    client = TestClient(app)
+    resp = client.get("/api/v1/flows/no-such-flow/export")
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_import_flow():
+    """Import a flow from JSON and verify it's accessible."""
+    client = TestClient(app)
+
+    import_data = {
+        "synapps_version": "1.0.0",
+        "name": "Imported Flow",
+        "nodes": [
+            {"id": "s1", "type": "start", "position": {"x": 0, "y": 0}, "data": {"label": "Start"}},
+            {"id": "e1", "type": "end", "position": {"x": 0, "y": 200}, "data": {"label": "End"}},
+        ],
+        "edges": [
+            {"id": "edge1", "source": "s1", "target": "e1"},
+        ],
+    }
+
+    resp = client.post("/api/v1/flows/import", json=import_data)
+    assert resp.status_code == 201
+    data = resp.json()
+    assert "id" in data
+
+    # Verify the imported flow can be retrieved
+    flow_resp = client.get(f"/api/v1/flows/{data['id']}")
+    assert flow_resp.status_code == 200
+    flow = flow_resp.json()
+    assert flow["name"] == "Imported Flow"
+    assert len(flow["nodes"]) == 2
+    assert len(flow["edges"]) == 1
+
+    # IDs should be remapped (not the original ones)
+    node_ids = [n["id"] for n in flow["nodes"]]
+    assert "s1" not in node_ids
+    assert "e1" not in node_ids
+
+
+@pytest.mark.asyncio
+async def test_import_flow_invalid():
+    """Import with missing required fields returns 422."""
+    client = TestClient(app)
+
+    # Missing 'name'
+    resp = client.post("/api/v1/flows/import", json={"nodes": [], "edges": []})
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_export_import_roundtrip():
+    """Create a flow, export it, import the export, and verify equivalence."""
+    client = TestClient(app)
+
+    # Create
+    flow_data = {
+        "id": "roundtrip-flow",
+        "name": "Roundtrip Test",
+        "nodes": [
+            {"id": "a", "type": "start", "position": {"x": 10, "y": 20}, "data": {"label": "Begin"}},
+            {"id": "b", "type": "llm", "position": {"x": 10, "y": 120}, "data": {"label": "Think", "provider": "ollama"}},
+            {"id": "c", "type": "end", "position": {"x": 10, "y": 220}, "data": {"label": "Done"}},
+        ],
+        "edges": [
+            {"id": "ab", "source": "a", "target": "b"},
+            {"id": "bc", "source": "b", "target": "c"},
+        ],
+    }
+    client.post("/api/v1/flows", json=flow_data)
+
+    # Export
+    export_resp = client.get("/api/v1/flows/roundtrip-flow/export")
+    assert export_resp.status_code == 200
+    exported = export_resp.json()
+
+    # Import the exported JSON
+    import_resp = client.post("/api/v1/flows/import", json=exported)
+    assert import_resp.status_code == 201
+    new_id = import_resp.json()["id"]
+
+    # Retrieve and compare
+    new_flow = client.get(f"/api/v1/flows/{new_id}").json()
+    assert new_flow["name"] == "Roundtrip Test"
+    assert len(new_flow["nodes"]) == 3
+    assert len(new_flow["edges"]) == 2
+
+    # Edge sources/targets should be remapped consistently
+    edge_sources = {e["source"] for e in new_flow["edges"]}
+    edge_targets = {e["target"] for e in new_flow["edges"]}
+    node_ids = {n["id"] for n in new_flow["nodes"]}
+    assert edge_sources.issubset(node_ids)
+    assert edge_targets.issubset(node_ids)

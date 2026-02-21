@@ -80,7 +80,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, title, actions }) => 
         )}
 
         <div className="version-info">
-          <span><a href="https://github.com/nxtg-ai/SynApps-v0.4.0" target="_blank" rel="noopener noreferrer">SynApps-v0.4.0 GitHub</a></span>
+          <span><a href="https://github.com/nxtg-ai/SynApps-v0.4.0" target="_blank" rel="noopener noreferrer">SynApps v1.0</a></span>
         </div>
       </aside>
       

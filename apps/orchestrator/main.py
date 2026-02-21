@@ -7119,6 +7119,99 @@ async def delete_flow(
     return {"message": "Flow deleted"}
 
 
+@v1.get("/flows/{flow_id}/export")
+async def export_flow(
+    flow_id: str,
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
+    """Export a flow as a downloadable JSON file."""
+    flow = await FlowRepository.get_by_id(flow_id)
+    if not flow:
+        raise HTTPException(status_code=404, detail="Flow not found")
+
+    # Build a clean export payload (strip internal DB-only fields)
+    export_data = {
+        "synapps_version": "1.0.0",
+        "name": flow["name"],
+        "nodes": [
+            {
+                "id": n["id"],
+                "type": n["type"],
+                "position": n["position"],
+                "data": n.get("data", {}),
+            }
+            for n in flow.get("nodes", [])
+        ],
+        "edges": [
+            {
+                "id": e["id"],
+                "source": e["source"],
+                "target": e["target"],
+                "animated": e.get("animated", False),
+            }
+            for e in flow.get("edges", [])
+        ],
+    }
+
+    safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", flow["name"])[:60]
+    return JSONResponse(
+        content=export_data,
+        headers={
+            "Content-Disposition": f'attachment; filename="{safe_name}.synapps.json"',
+        },
+    )
+
+
+class ImportFlowRequest(BaseModel):
+    """Request body for importing a flow."""
+    model_config = ConfigDict(strict=False)
+
+    synapps_version: Optional[str] = None
+    name: str = Field(..., min_length=1, max_length=200)
+    nodes: List[Dict[str, Any]] = Field(default_factory=list)
+    edges: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+@v1.post("/flows/import", status_code=201)
+async def import_flow(
+    body: ImportFlowRequest,
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
+    """Import a flow from a JSON export. Assigns a new ID to avoid collisions."""
+    new_id = str(uuid.uuid4())
+
+    # Re-map node and edge IDs to avoid collisions with existing flows
+    id_map: Dict[str, str] = {}
+    new_nodes = []
+    for node in body.nodes:
+        old_id = node.get("id", str(uuid.uuid4()))
+        new_node_id = str(uuid.uuid4())
+        id_map[old_id] = new_node_id
+        new_nodes.append({
+            **node,
+            "id": new_node_id,
+        })
+
+    new_edges = []
+    for edge in body.edges:
+        new_edges.append({
+            "id": str(uuid.uuid4()),
+            "source": id_map.get(edge.get("source", ""), edge.get("source", "")),
+            "target": id_map.get(edge.get("target", ""), edge.get("target", "")),
+            "animated": edge.get("animated", False),
+        })
+
+    flow_data = {
+        "id": new_id,
+        "name": body.name,
+        "nodes": new_nodes,
+        "edges": new_edges,
+    }
+
+    await FlowRepository.save(flow_data)
+    return {"message": "Flow imported", "id": new_id}
+
+
 async def _run_flow_impl(
     flow_id: str,
     body: RunFlowRequest,
