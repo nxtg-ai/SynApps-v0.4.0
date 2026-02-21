@@ -170,8 +170,30 @@ const AppletNode: React.FC<NodeProps<AppletFlowNode>> = ({ data, id, type, selec
         )}
       </div>
       
+      {/* Spinner overlay for running nodes */}
+      {status === 'running' && (
+        <div className="node-spinner-overlay">
+          <div className="node-spinner" />
+        </div>
+      )}
+
+      {/* Success/error badge */}
+      {status === 'success' && <div className="node-success-badge">&#10003;</div>}
+      {status === 'error' && <div className="node-error-badge">!</div>}
+
+      {/* Mini-output preview for completed nodes */}
+      {status === 'success' && (data as any).output && (
+        <div className="node-output-preview">
+          {typeof (data as any).output === 'string'
+            ? (data as any).output.slice(0, 120)
+            : typeof (data as any).output?.content === 'string'
+              ? (data as any).output.content.slice(0, 120)
+              : JSON.stringify((data as any).output).slice(0, 120)}
+        </div>
+      )}
+
       <div className={`applet-status-indicator ${status}`} />
-      
+
       <Handle
         type="source"
         position={Position.Bottom}

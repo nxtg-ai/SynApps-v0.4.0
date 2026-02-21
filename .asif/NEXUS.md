@@ -23,7 +23,7 @@
 | N-11 | Conditional Routing (If/Else) | EXECUTION | SHIPPED | P1 | 2026-02-20 |
 | N-12 | JWT Authentication | SECURITY | SHIPPED | P0 | 2026-02-19 |
 | N-13 | Code Node with Sandboxing | NODES | DECIDED | P1 | — |
-| N-14 | Execution Visualization | VISUAL | DECIDED | P1 | — |
+| N-14 | Execution Visualization | VISUAL | SHIPPED | P1 | 2026-02-20 |
 | N-15 | Comprehensive Testing | STACK | SHIPPED | P0 | 2026-02-20 |
 
 ---
@@ -38,8 +38,7 @@
 ### VISUAL — "Real-Time Execution Canvas"
 - React Flow canvas with drag-and-drop. Animated edge flow, node glow, execution timeline
 - Dashboard and settings pages. Responsive layout, dark mode default
-- **Shipped**: N-01
-- **Decided**: N-14
+- **Shipped**: N-01, N-14
 
 ### NODES — "FM-Agnostic Agent Blocks"
 - Universal LLM Node (OpenAI/Anthropic/Google/Ollama/Custom). Image Gen Node. Memory Node (ChromaDB)
@@ -120,8 +119,9 @@
 **What**: Python/JavaScript execution in subprocess. Resource limits, filesystem restrictions, timeout enforcement.
 
 ### N-14: Execution Visualization
-**Pillar**: VISUAL | **Status**: DECIDED | **Priority**: P1
+**Pillar**: VISUAL | **Status**: SHIPPED | **Priority**: P1
 **What**: Animated edge flow particles, node glow, progress spinner, execution timeline bar, mini-output preview.
+**Completed**: 2026-02-20. Removed dead anime.js code (3 bugs prevented it from ever working). Fixed WebSocket resubscription bug (nodes/edges in dependency array caused excessive re-renders). Implemented CSS-driven execution visualization: node glow with drop-shadow pulsing, spinning progress indicator for running nodes, success/error badges with pop animation, mini-output preview for completed nodes, SVG animated edge particles (3 staggered circles with animateMotion along bezier paths), edge glow layer. Fixed progress bar NaN on zero total_steps. All 101 frontend tests passing, production build verified.
 
 ### N-15: Comprehensive Testing
 **Pillar**: STACK | **Status**: SHIPPED | **Priority**: P0
@@ -164,6 +164,7 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 | 2026-02-20 | N-09 (Universal LLM Node) → SHIPPED. Frontend wired to existing backend LLMNodeApplet. 5 providers: OpenAI, Anthropic, Google, Ollama, Custom. |
 | 2026-02-20 | N-10 (Parallel Execution Engine) → SHIPPED. Frontend wired: Merge (3 strategies) and ForEach (sequential/parallel) nodes added to palette, nodeTypes, and config modal. Backend engine (BFS + asyncio.gather + concurrency semaphore) was already complete. |
 | 2026-02-20 | N-11 (Conditional Routing) → SHIPPED. Frontend wired: If/Else node (4 operations) added to palette, nodeTypes, and config modal. Backend IfElseNodeApplet was already complete. |
+| 2026-02-20 | N-14 (Execution Visualization) → SHIPPED. Removed dead anime.js, fixed WebSocket resubscription bug, implemented CSS-driven glow/spinner/badges, SVG animated edge particles, mini-output preview. 14/15 initiatives now shipped. |
 
 ---
 

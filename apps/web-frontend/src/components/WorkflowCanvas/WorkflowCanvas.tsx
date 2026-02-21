@@ -23,7 +23,6 @@ import {
   ReactFlowInstance
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import anime from 'animejs';
 import { Flow, WorkflowRunStatus } from '../../types';
 import { generateId } from '../../utils/flowUtils';
 import './WorkflowCanvas.css';
@@ -34,6 +33,9 @@ import { useWorkflowStore } from '../../stores/workflowStore';
 import AppletNode from './nodes/AppletNode';
 import StartNode from './nodes/StartNode';
 import EndNode from './nodes/EndNode';
+
+// Custom edge types
+import AnimatedEdge from './edges/AnimatedEdge';
 
 // Handlers for workflow execution
 import webSocketService from '../../services/WebSocketService';
@@ -58,6 +60,10 @@ const nodeTypes = {
   merge: AppletNode,
   for_each: AppletNode,
   if_else: AppletNode,
+};
+
+const edgeTypes = {
+  animated: AnimatedEdge,
 };
 
 const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow: propFlow, onFlowChange: propOnFlowChange, readonly = false }) => {
@@ -108,9 +114,6 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow: propFlow, onFlowC
     nodeType: null,
     nodeData: null
   });
-  
-  // Reference to the anime.js timeline
-  const animationRef = useRef<anime.AnimeTimelineInstance | null>(null);
   
   // Reference to the ReactFlow wrapper div
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
@@ -247,6 +250,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow: propFlow, onFlowC
       id: edge.id,
       source: edge.source,
       target: edge.target,
+      type: 'animated',
       animated: edge.animated || false,
     }));
     
@@ -337,130 +341,69 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow: propFlow, onFlowC
     [readonly]
   );
   
-  // Subscribe to workflow status updates
+  // Refs to avoid WebSocket resubscription on every node/edge state change
+  const nodesRef = useRef<Node[]>(nodes);
+  const edgesRef = useRef<Edge[]>(edges);
+  const workflowResultsRef = useRef<Record<string, any> | null>(null);
+
+  useEffect(() => { nodesRef.current = nodes; }, [nodes]);
+  useEffect(() => { edgesRef.current = edges; }, [edges]);
+
+  // Subscribe to workflow status updates (stable — only re-subscribes on flow.id change)
   useEffect(() => {
     const unsubscribe = webSocketService.subscribe('workflow.status', (status: WorkflowRunStatus) => {
       // Only update if it's our flow
-      if (status.flow_id === flow.id) {
-        setRunStatus(status);
-        
-        // Update completed nodes
-        if (status.completed_applets && Array.isArray(status.completed_applets)) {
-          setCompletedNodes(status.completed_applets);
-          
-          // If there's a current applet and it's running, animate it
-          if (status.current_applet && status.status === 'running') {
-            // Find the node in our nodes array
-            const runningNode = nodes.find(node => 
-              node.id === status.current_applet
-            );
-            
-            if (runningNode) {
-              animateWorkflow(status);
-            }
-          }
+      if (status.flow_id !== flow.id) return;
+
+      setRunStatus(status);
+
+      if (status.completed_applets && Array.isArray(status.completed_applets)) {
+        setCompletedNodes(status.completed_applets);
+      }
+
+      // Capture results for mini-output previews
+      if (status.results) {
+        workflowResultsRef.current = status.results;
+      }
+
+      // Update node statuses + inject mini-output previews
+      setNodes(prevNodes => prevNodes.map(node => {
+        let nodeStatus = node.data?.status || 'idle';
+        if (status.current_applet && node.id === status.current_applet) {
+          nodeStatus = status.status === 'error' ? 'error' : 'running';
+        } else if (status.completed_applets?.includes(node.id)) {
+          nodeStatus = 'success';
         }
-        
-        // Update node statuses
-        setNodes(prevNodes => {
-          return prevNodes.map(node => {
-            // Current node is running
-            if (status.current_applet && node.id === status.current_applet) {
-              return {
-                ...node,
-                data: { ...node.data, status: 'running' }
-              };
-            }
-            
-            // Node is already completed
-            if (status.completed_applets && Array.isArray(status.completed_applets) && 
-                status.completed_applets.includes(node.id)) {
-              return {
-                ...node,
-                data: { ...node.data, status: 'success' }
-              };
-            }
-            
-            // Error state
-            if (status.status === 'error' && status.current_applet && node.id === status.current_applet) {
-              return {
-                ...node,
-                data: { ...node.data, status: 'error' }
-              };
-            }
-            
-            // Default state
-            return {
-              ...node,
-              data: { ...node.data, status: node.data?.status || 'idle' }
-            };
-          });
-        });
-        
-        // Update edge animations
-        const updatedEdges = edges.map(edge => {
-          // Find which node is the target of this edge
-          const targetNode = nodes.find(node => node.id === edge.target);
-          
-          // If target node is the current one or completed, animate the edge
-          if (targetNode && status.current_applet && 
-              (targetNode.id === status.current_applet || targetNode.data?.status === 'success')) {
-            return {
-              ...edge,
-              animated: true
-            };
+
+        // Inject per-node output for mini-preview (match by node ID or type)
+        const results = workflowResultsRef.current;
+        const nodeOutput = results
+          ? (results[node.id] || results[node.type || ''] || undefined)
+          : undefined;
+
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            status: nodeStatus,
+            ...(nodeOutput !== undefined && { output: nodeOutput })
           }
-          
-          return edge;
-        });
-        
-        setEdges(updatedEdges);
-        
-        // Create animations
-        animateWorkflow(status);
-      }
+        };
+      }));
+
+      // Update edge animations using ref (no stale closure)
+      setEdges(prevEdges => prevEdges.map(edge => {
+        const isTargetActive = status.current_applet === edge.target;
+        const isTargetDone = status.completed_applets?.includes(edge.target);
+        return {
+          ...edge,
+          animated: !!(isTargetActive || isTargetDone)
+        };
+      }));
     });
-    
-    return () => {
-      unsubscribe();
-    };
-  }, [flow.id, nodes, edges, flow.nodes]);
-  
-  // Animation function
-  const animateWorkflow = (status: WorkflowRunStatus) => {
-    // Stop any existing animation
-    if (animationRef.current) {
-      animationRef.current.pause();
-    }
-    
-    // Create a new animation timeline
-    const timeline = anime.timeline({
-      easing: 'easeOutElastic(1, .8)',
-      duration: 800
-    });
-    
-    // Find the current node element
-    if (status.current_applet) {
-      const nodeElement = document.querySelector(
-        `[data-id="${status.current_applet}"]`
-      );
-      
-      if (nodeElement) {
-        // Pulse animation for the current node
-        timeline.add({
-          targets: nodeElement,
-          scale: [1, 1.05, 1],
-          opacity: [1, 0.8, 1],
-          duration: 1000,
-          easing: 'easeInOutQuad',
-          loop: true
-        });
-      }
-    }
-    
-    // Store the timeline reference
-    animationRef.current = timeline;
-  };
+
+    return () => { unsubscribe(); };
+  }, [flow.id, setRunStatus, setCompletedNodes]);
   
   // Handle drop event for new nodes
   const onDrop = useCallback(
@@ -766,6 +709,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow: propFlow, onFlowC
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
           nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
           onInit={setReactFlowInstance}
           onDrop={onDrop}
           onDragOver={onDragOver}
@@ -811,7 +755,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow: propFlow, onFlowC
             <div 
               className="progress-fill" 
               style={{ 
-                width: `${(runStatus.progress / runStatus.total_steps) * 100}%` 
+                width: `${runStatus.total_steps > 0 ? (runStatus.progress / runStatus.total_steps) * 100 : 0}%` 
               }}
             />
           </div>

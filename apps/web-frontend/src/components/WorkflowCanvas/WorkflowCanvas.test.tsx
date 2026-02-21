@@ -68,19 +68,6 @@ const { mockSubscribe } = vi.hoisted(() => ({
   mockSubscribe: vi.fn(),
 }));
 
-const { mockTimeline, mockTimelineAdd, mockTimelinePause } = vi.hoisted(() => {
-  const add = vi.fn();
-  const pause = vi.fn();
-  const timeline = vi.fn(() => ({
-    add,
-    pause,
-  }));
-  return {
-    mockTimeline: timeline,
-    mockTimelineAdd: add,
-    mockTimelinePause: pause,
-  };
-});
 
 vi.mock('@xyflow/react', async () => {
   const actual = await vi.importActual<typeof import('@xyflow/react')>('@xyflow/react');
@@ -129,12 +116,6 @@ vi.mock('../../services/WebSocketService', () => ({
   },
 }));
 
-vi.mock('animejs', () => ({
-  __esModule: true,
-  default: {
-    timeline: mockTimeline,
-  },
-}));
 
 vi.mock('./NodeContextMenu', () => ({
   __esModule: true,
@@ -463,8 +444,10 @@ describe('WorkflowCanvas', () => {
 
     expect(screen.getByText('Status: running')).toBeInTheDocument();
     expect(screen.getByText('1 / 3 steps')).toBeInTheDocument();
-    expect(mockTimeline).toHaveBeenCalled();
-    expect(mockTimelineAdd).toHaveBeenCalled();
+
+    // Verify node status is updated via CSS classes (anime.js removed — CSS-driven animations)
+    const writerNode = screen.getByTestId('rf-node-writer-1');
+    expect(writerNode).toHaveAttribute('data-status', 'running');
 
     act(() => {
       statusSubscriber?.({
@@ -483,7 +466,6 @@ describe('WorkflowCanvas', () => {
     });
 
     expect(screen.getByText('Error: node failed')).toBeInTheDocument();
-    expect(mockTimelinePause).toHaveBeenCalled();
   });
 
   it('prevents mutating actions in readonly mode', async () => {
