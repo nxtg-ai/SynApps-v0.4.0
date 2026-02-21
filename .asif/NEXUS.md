@@ -340,7 +340,15 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 > - `actions/setup-python@v5` — backend-lint, backend-test
 > - `actions/setup-node@v4` — frontend-lint, frontend-type-check, frontend-test, frontend-build
 >
-> **4. Workflow run:** Committed and pushed. Awaiting run URL (will update after push).
+> **4. Workflow run:** **GREEN** — https://github.com/nxtg-ai/SynApps-v0.4.0/actions/runs/22247437540
+> All 8 jobs passed: Backend Lint, Backend Tests, Frontend Lint, Frontend Type Check, Frontend Tests, Frontend Build, Backend Build, Coverage Summary.
+>
+> **Additional fixes required beyond ci.yml:**
+> - `package-lock.json`: Regenerated with npm 10 (CI runner uses npm 10.9.4 even with Node 22; lockfile was npm 11)
+> - `.gitignore`: Changed `lib/` → `/lib/` (root-only) — the broad pattern was ignoring `src/lib/utils.ts` (shadcn/ui utility)
+> - `src/lib/utils.ts`: Committed (was untracked due to gitignore)
+> - `Dockerfile.frontend`: Updated `node:20-alpine` → `node:22-alpine` to match dev env
+> - Backend test env: Added placeholder `OPENAI_API_KEY` and `STABILITY_API_KEY` for applet constructor checks
 >
 > **Compliance checklist:**
 > - [x] No `continue-on-error` anywhere
