@@ -31,6 +31,8 @@ const AppletNode: React.FC<NodeProps<AppletFlowNode>> = ({ data, id, type, selec
   // Get the icon based on applet type
   const getIcon = () => {
     switch (appletType) {
+      case 'llm':
+        return <span role="img" aria-label="LLM">⚡</span>;
       case 'writer':
         return <span role="img" aria-label="Writer">✍️</span>;
       case 'artist':
@@ -51,6 +53,8 @@ const AppletNode: React.FC<NodeProps<AppletFlowNode>> = ({ data, id, type, selec
   // Get the color based on applet type
   const getColor = () => {
     switch (appletType) {
+      case 'llm':
+        return '#ecfdf5';
       case 'writer':
         return '#eff6ff';
       case 'artist':
@@ -71,6 +75,8 @@ const AppletNode: React.FC<NodeProps<AppletFlowNode>> = ({ data, id, type, selec
   // Get the accent color based on applet type
   const getAccentColor = () => {
     switch (appletType) {
+      case 'llm':
+        return '#10b981';
       case 'writer':
         return '#3b82f6';
       case 'artist':
@@ -131,13 +137,14 @@ const AppletNode: React.FC<NodeProps<AppletFlowNode>> = ({ data, id, type, selec
         )}
         {!data.description && (
           <div className="applet-description">
+            {appletType === 'llm' && `Universal LLM — ${(data as any).provider || 'openai'}/${(data as any).model || 'gpt-4o'}`}
             {appletType === 'writer' && 'Generates text content using AI'}
             {appletType === 'artist' && 'Creates images using AI models'}
             {appletType === 'memory' && 'Stores and retrieves context'}
             {appletType === 'researcher' && 'Searches for information'}
             {appletType === 'analyzer' && 'Analyzes data and provides insights'}
             {appletType === 'summarizer' && 'Creates concise summaries'}
-            {!['writer', 'artist', 'memory', 'researcher', 'analyzer', 'summarizer'].includes(appletType) && 'Custom applet module'}
+            {!['llm', 'writer', 'artist', 'memory', 'researcher', 'analyzer', 'summarizer'].includes(appletType) && 'Custom applet module'}
           </div>
         )}
       </div>

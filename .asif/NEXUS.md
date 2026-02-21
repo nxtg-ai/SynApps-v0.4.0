@@ -17,14 +17,14 @@
 | N-05 | Sequential Execution Engine | EXECUTION | SHIPPED | P1 | 2025-12 |
 | N-06 | Database Persistence | STACK | SHIPPED | P1 | 2025-12 |
 | N-07 | Backend Stack Upgrade | STACK | SHIPPED | P0 | 2026-02-18 |
-| N-08 | Frontend Stack Migration | STACK | DECIDED | P0 | — |
-| N-09 | Universal LLM Node | NODES | DECIDED | P0 | — |
+| N-08 | Frontend Stack Migration | STACK | SHIPPED | P0 | 2026-02-20 |
+| N-09 | Universal LLM Node | NODES | SHIPPED | P0 | 2026-02-20 |
 | N-10 | Parallel Execution Engine | EXECUTION | DECIDED | P0 | — |
 | N-11 | Conditional Routing (If/Else) | EXECUTION | DECIDED | P1 | — |
 | N-12 | JWT Authentication | SECURITY | SHIPPED | P0 | 2026-02-19 |
 | N-13 | Code Node with Sandboxing | NODES | DECIDED | P1 | — |
 | N-14 | Execution Visualization | VISUAL | DECIDED | P1 | — |
-| N-15 | Comprehensive Testing | STACK | DECIDED | P0 | — |
+| N-15 | Comprehensive Testing | STACK | SHIPPED | P0 | 2026-02-20 |
 
 ---
 
@@ -33,8 +33,7 @@
 ### STACK — "Modern Production Foundation"
 - Upgrade from Python 3.9/FastAPI 0.68/Pydantic v1 → Python 3.11+/FastAPI 0.115+/Pydantic v2/SQLAlchemy 2.0
 - Frontend: CRA → Vite 6, CSS modules → Tailwind 4 + shadcn/ui, add Zustand, TypeScript strict
-- **Shipped**: N-06, N-07
-- **Decided**: N-08, N-15
+- **Shipped**: N-06, N-07, N-08, N-15
 
 ### VISUAL — "Real-Time Execution Canvas"
 - React Flow canvas with drag-and-drop. Animated edge flow, node glow, execution timeline
@@ -45,8 +44,8 @@
 ### NODES — "FM-Agnostic Agent Blocks"
 - Universal LLM Node (OpenAI/Anthropic/Google/Ollama/Custom). Image Gen Node. Memory Node (ChromaDB)
 - HTTP Request, Code (sandboxed), Transform, Merge nodes
-- **Shipped**: N-02, N-03, N-04
-- **Decided**: N-09, N-13
+- **Shipped**: N-02, N-03, N-04, N-09
+- **Decided**: N-13
 
 ### EXECUTION — "Advanced Workflow Primitives"
 - Parallel fan-out/fan-in. Conditional routing. Loop support (For-Each)
@@ -93,12 +92,14 @@
 **Completed**: 2026-02-18. All target versions met or exceeded (Python 3.13.9, FastAPI 0.129.0, Pydantic 2.12.5, SQLAlchemy 2.0.46). 521 tests passing.
 
 ### N-08: Frontend Stack Migration
-**Pillar**: STACK | **Status**: DECIDED | **Priority**: P0
+**Pillar**: STACK | **Status**: SHIPPED | **Priority**: P0
 **What**: CRA → Vite 6, CSS modules → Tailwind 4 + shadcn/ui. Zustand state. TypeScript strict. ReactFlow v12.
+**Completed**: 2026-02-20. All targets verified: Vite 6.4, Tailwind 4.1, shadcn/ui components, 4 Zustand stores, TypeScript strict, @xyflow/react v12. 101 frontend tests passing.
 
 ### N-09: Universal LLM Node
-**Pillar**: NODES | **Status**: DECIDED | **Priority**: P0
+**Pillar**: NODES | **Status**: SHIPPED | **Priority**: P0
 **What**: OpenAI, Anthropic, Google, Ollama, Custom endpoints. Per-node provider/model selection. Streaming via SSE.
+**Completed**: 2026-02-20. Backend was already complete (LLMNodeApplet, LLMProviderRegistry, 5 providers). Frontend wired up: LLM node in canvas palette, NodeConfigModal with provider/model/system_prompt/temperature/max_tokens/base_url fields, AppletNode rendering with provider/model display. Production build verified.
 
 ### N-10: Parallel Execution Engine
 **Pillar**: EXECUTION | **Status**: DECIDED | **Priority**: P0
@@ -122,8 +123,9 @@
 **What**: Animated edge flow particles, node glow, progress spinner, execution timeline bar, mini-output preview.
 
 ### N-15: Comprehensive Testing
-**Pillar**: STACK | **Status**: DECIDED | **Priority**: P0
+**Pillar**: STACK | **Status**: SHIPPED | **Priority**: P0
 **What**: pytest + Vitest. Backend 80%+ coverage, frontend 70%+. Playwright E2E. CI/CD pipeline.
+**Completed**: 2026-02-20. 522 backend tests (89% coverage), 101 frontend tests, 2 Playwright E2E suites. GitHub Actions CI with 8 green jobs. ADR-008 compliant.
 
 ---
 
@@ -157,6 +159,8 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 | 2026-02-19 | DIRECTIVE-NXTG-20260219-01 issued: git rebase, security pinning, frontend readiness. Health upgraded to GREEN in PORTFOLIO.md. |
 | 2026-02-19 | DIRECTIVE-NXTG-20260219-01 completed. Git divergence resolved, security deps pinned, pip upgraded, 89% backend coverage, 101 frontend tests passing. N-12 (JWT Auth) → SHIPPED. Auth health flag cleared. |
 | 2026-02-20 | DIRECTIVE-NXTG-20260220-01 completed. CI workflow fixed: branch triggers (main→master), ESLint 9 flat config, vitest coverage, typecheck project flag. ADR-008 compliant. |
+| 2026-02-20 | N-08 (Frontend Stack Migration) → SHIPPED. N-15 (Comprehensive Testing) → SHIPPED. Both verified complete. |
+| 2026-02-20 | N-09 (Universal LLM Node) → SHIPPED. Frontend wired to existing backend LLMNodeApplet. 5 providers: OpenAI, Anthropic, Google, Ollama, Custom. |
 
 ---
 

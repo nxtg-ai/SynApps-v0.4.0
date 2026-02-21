@@ -383,7 +383,21 @@ class ${nodeType.charAt(0).toUpperCase() + nodeType.slice(1)}Applet(BaseApplet):
               <div className="node-panel">
                 <h3>Available Nodes</h3>
                 <div className="node-list">
-                  <div 
+                  <div
+                    className="node-item llm"
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData('application/reactflow', JSON.stringify({
+                        type: 'llm',
+                        data: { label: 'LLM', provider: 'openai', model: 'gpt-4o', temperature: 0.7, max_tokens: 1000 }
+                      }));
+                    }}
+                    onClick={() => handleNodeClick(generateId(), 'llm')}
+                  >
+                    <span className="node-icon">⚡</span>
+                    <span className="node-label">LLM</span>
+                  </div>
+                  <div
                     className="node-item writer"
                     draggable
                     onDragStart={(e) => {

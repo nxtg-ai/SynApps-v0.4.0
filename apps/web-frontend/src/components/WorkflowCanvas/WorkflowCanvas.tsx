@@ -51,6 +51,7 @@ const nodeTypes = {
   applet: AppletNode,
   start: StartNode,
   end: EndNode,
+  llm: AppletNode,
   writer: AppletNode,
   memory: AppletNode,
   artist: AppletNode,
@@ -218,10 +219,10 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow: propFlow, onFlowC
     // Map nodes
     const rfNodes = flow.nodes.map(node => ({
       id: node.id,
-      type: node.type === 'writer' || node.type === 'memory' || node.type === 'artist' 
-        ? node.type 
-        : node.type === 'start' || node.type === 'end' 
-          ? node.type 
+      type: node.type === 'llm' || node.type === 'writer' || node.type === 'memory' || node.type === 'artist'
+        ? node.type
+        : node.type === 'start' || node.type === 'end'
+          ? node.type
           : 'applet',
       position: node.position,
       data: {
@@ -229,6 +230,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow: propFlow, onFlowC
         label: node.data.label || node.type,
         // Initialize node-specific configuration data if not present
         ...(node.type === 'start' && !node.data.inputData && { inputData: '', parsedInputData: {} }),
+        ...(node.type === 'llm' && !node.data.provider && { provider: 'openai', model: 'gpt-4o', system_prompt: '', temperature: 0.7, max_tokens: 1000 }),
         ...(node.type === 'writer' && !node.data.systemPrompt && { systemPrompt: '' }),
         ...(node.type === 'artist' && !node.data.systemPrompt && { systemPrompt: '', generator: 'dall-e' })
       }
