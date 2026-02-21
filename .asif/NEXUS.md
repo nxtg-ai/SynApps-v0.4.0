@@ -25,6 +25,7 @@
 | N-13 | Code Node with Sandboxing | NODES | SHIPPED | P1 | 2026-02-20 |
 | N-14 | Execution Visualization | VISUAL | SHIPPED | P1 | 2026-02-20 |
 | N-15 | Comprehensive Testing | STACK | SHIPPED | P0 | 2026-02-20 |
+| N-16 | 2Brain Dogfood Template | DOGFOOD | SHIPPED | P0 | 2026-02-20 |
 
 ---
 
@@ -54,6 +55,11 @@
 - JWT auth with refresh tokens. Encrypted API keys at rest
 - Rate limiting per-user. Sandboxed Code Node. Input sanitization
 - **Shipped**: N-12
+
+### DOGFOOD — "Prove It Works"
+- Real-world workflow templates that validate SynApps with portfolio use cases
+- 2Brain capture→classify→store pipeline (PI-001)
+- **Shipped**: N-16
 
 ---
 
@@ -128,6 +134,11 @@
 **What**: pytest + Vitest. Backend 80%+ coverage, frontend 70%+. Playwright E2E. CI/CD pipeline.
 **Completed**: 2026-02-20. 522 backend tests (89% coverage), 101 frontend tests, 2 Playwright E2E suites. GitHub Actions CI with 8 green jobs. ADR-008 compliant.
 
+### N-16: 2Brain Dogfood Template
+**Pillar**: DOGFOOD | **Status**: SHIPPED | **Priority**: P0
+**What**: First real-world workflow template — validates SynApps with 2Brain's capture→classify→store pipeline (PI-001).
+**Completed**: 2026-02-20. Created "2Brain Inbox Triage" template: Start (raw text) → LLM (Ollama llama3.1 classifier categorizes into idea/task/reference/note) → Code (Python structurer adds timestamp, validates category, formats JSON) → Memory (stores in 2brain namespace) → End. 5 nodes, 4 edges, showcases 3 distinct node types (LLM, Code, Memory) working together in a real pipeline. Registered in template gallery alongside 3 existing templates. Build verified, 101 frontend tests passing.
+
 ---
 
 ## Health Flags (RED)
@@ -166,6 +177,7 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 | 2026-02-20 | N-11 (Conditional Routing) → SHIPPED. Frontend wired: If/Else node (4 operations) added to palette, nodeTypes, and config modal. Backend IfElseNodeApplet was already complete. |
 | 2026-02-20 | N-14 (Execution Visualization) → SHIPPED. Removed dead anime.js, fixed WebSocket resubscription bug, implemented CSS-driven glow/spinner/badges, SVG animated edge particles, mini-output preview. 14/15 initiatives now shipped. |
 | 2026-02-20 | N-13 (Code Node with Sandboxing) → SHIPPED. Fixed critical PYTHON_CODE_WRAPPER missing imports bug. Frontend wired: Code node in palette, nodeTypes, config modal (language/code/timeout/memory/CPU), AppletNode icon/color. **15/15 initiatives shipped — v1.0 roadmap complete.** |
+| 2026-02-20 | N-16 (2Brain Dogfood Template) → SHIPPED. First real-world workflow: Start → Ollama classifier → Python structurer → Memory store → End. PI-001 dogfood milestone delivered. |
 
 ---
 
