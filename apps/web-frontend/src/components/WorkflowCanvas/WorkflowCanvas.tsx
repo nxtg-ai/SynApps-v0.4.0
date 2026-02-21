@@ -55,6 +55,9 @@ const nodeTypes = {
   writer: AppletNode,
   memory: AppletNode,
   artist: AppletNode,
+  merge: AppletNode,
+  for_each: AppletNode,
+  if_else: AppletNode,
 };
 
 const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow: propFlow, onFlowChange: propOnFlowChange, readonly = false }) => {
@@ -219,7 +222,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow: propFlow, onFlowC
     // Map nodes
     const rfNodes = flow.nodes.map(node => ({
       id: node.id,
-      type: node.type === 'llm' || node.type === 'writer' || node.type === 'memory' || node.type === 'artist'
+      type: node.type === 'llm' || node.type === 'writer' || node.type === 'memory' || node.type === 'artist' || node.type === 'merge' || node.type === 'for_each' || node.type === 'if_else'
         ? node.type
         : node.type === 'start' || node.type === 'end'
           ? node.type
@@ -232,7 +235,10 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow: propFlow, onFlowC
         ...(node.type === 'start' && !node.data.inputData && { inputData: '', parsedInputData: {} }),
         ...(node.type === 'llm' && !node.data.provider && { provider: 'openai', model: 'gpt-4o', system_prompt: '', temperature: 0.7, max_tokens: 1000 }),
         ...(node.type === 'writer' && !node.data.systemPrompt && { systemPrompt: '' }),
-        ...(node.type === 'artist' && !node.data.systemPrompt && { systemPrompt: '', generator: 'dall-e' })
+        ...(node.type === 'artist' && !node.data.systemPrompt && { systemPrompt: '', generator: 'dall-e' }),
+        ...(node.type === 'merge' && !node.data.strategy && { strategy: 'array', delimiter: '\n' }),
+        ...(node.type === 'for_each' && !node.data.array_source && { array_source: '{{input}}', max_iterations: 1000, parallel: false, concurrency_limit: 5 }),
+        ...(node.type === 'if_else' && !node.data.operation && { operation: 'equals', source: '{{content}}', value: '', case_sensitive: false, negate: false })
       }
     }));
     
@@ -783,6 +789,9 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow: propFlow, onFlowC
               if (n.type === 'writer') return '#e6f7ff';
               if (n.type === 'memory') return '#f9f0ff';
               if (n.type === 'artist') return '#fff7e6';
+              if (n.type === 'merge') return '#f0f9ff';
+              if (n.type === 'for_each') return '#fef3c7';
+              if (n.type === 'if_else') return '#fce7f3';
               return '#fff';
             }}
             nodeBorderRadius={2}

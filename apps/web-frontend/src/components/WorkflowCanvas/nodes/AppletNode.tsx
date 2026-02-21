@@ -45,6 +45,12 @@ const AppletNode: React.FC<NodeProps<AppletFlowNode>> = ({ data, id, type, selec
         return <span role="img" aria-label="Analyzer">📊</span>;
       case 'summarizer':
         return <span role="img" aria-label="Summarizer">📝</span>;
+      case 'merge':
+        return <span role="img" aria-label="Merge">🔀</span>;
+      case 'for_each':
+        return <span role="img" aria-label="For-Each">🔄</span>;
+      case 'if_else':
+        return <span role="img" aria-label="If/Else">🔀</span>;
       default:
         return <span role="img" aria-label="Applet">🔌</span>;
     }
@@ -67,6 +73,12 @@ const AppletNode: React.FC<NodeProps<AppletFlowNode>> = ({ data, id, type, selec
         return '#fdf2f8';
       case 'summarizer':
         return '#fefce8';
+      case 'merge':
+        return '#f0f9ff';
+      case 'for_each':
+        return '#fef3c7';
+      case 'if_else':
+        return '#fce7f3';
       default:
         return '#f8fafc';
     }
@@ -89,6 +101,12 @@ const AppletNode: React.FC<NodeProps<AppletFlowNode>> = ({ data, id, type, selec
         return '#ec4899';
       case 'summarizer':
         return '#eab308';
+      case 'merge':
+        return '#0284c7';
+      case 'for_each':
+        return '#d97706';
+      case 'if_else':
+        return '#db2777';
       default:
         return '#64748b';
     }
@@ -144,7 +162,10 @@ const AppletNode: React.FC<NodeProps<AppletFlowNode>> = ({ data, id, type, selec
             {appletType === 'researcher' && 'Searches for information'}
             {appletType === 'analyzer' && 'Analyzes data and provides insights'}
             {appletType === 'summarizer' && 'Creates concise summaries'}
-            {!['llm', 'writer', 'artist', 'memory', 'researcher', 'analyzer', 'summarizer'].includes(appletType) && 'Custom applet module'}
+            {appletType === 'merge' && `Fan-in merge — ${(data as any).strategy || 'array'}`}
+            {appletType === 'for_each' && `Loop — ${(data as any).parallel ? 'parallel' : 'sequential'}, max ${(data as any).max_iterations || 1000}`}
+            {appletType === 'if_else' && `Conditional — ${(data as any).operation || 'equals'}${(data as any).negate ? ' (negated)' : ''}`}
+            {!['llm', 'writer', 'artist', 'memory', 'researcher', 'analyzer', 'summarizer', 'merge', 'for_each', 'if_else'].includes(appletType) && 'Custom applet module'}
           </div>
         )}
       </div>

@@ -19,8 +19,8 @@
 | N-07 | Backend Stack Upgrade | STACK | SHIPPED | P0 | 2026-02-18 |
 | N-08 | Frontend Stack Migration | STACK | SHIPPED | P0 | 2026-02-20 |
 | N-09 | Universal LLM Node | NODES | SHIPPED | P0 | 2026-02-20 |
-| N-10 | Parallel Execution Engine | EXECUTION | DECIDED | P0 | — |
-| N-11 | Conditional Routing (If/Else) | EXECUTION | DECIDED | P1 | — |
+| N-10 | Parallel Execution Engine | EXECUTION | SHIPPED | P0 | 2026-02-20 |
+| N-11 | Conditional Routing (If/Else) | EXECUTION | SHIPPED | P1 | 2026-02-20 |
 | N-12 | JWT Authentication | SECURITY | SHIPPED | P0 | 2026-02-19 |
 | N-13 | Code Node with Sandboxing | NODES | DECIDED | P1 | — |
 | N-14 | Execution Visualization | VISUAL | DECIDED | P1 | — |
@@ -50,8 +50,7 @@
 ### EXECUTION — "Advanced Workflow Primitives"
 - Parallel fan-out/fan-in. Conditional routing. Loop support (For-Each)
 - Per-node error handling (retries, timeouts, fallback paths). Checkpointing
-- **Shipped**: N-05
-- **Decided**: N-10, N-11
+- **Shipped**: N-05, N-10, N-11
 
 ### SECURITY — "Enterprise Readiness"
 - JWT auth with refresh tokens. Encrypted API keys at rest
@@ -102,12 +101,14 @@
 **Completed**: 2026-02-20. Backend was already complete (LLMNodeApplet, LLMProviderRegistry, 5 providers). Frontend wired up: LLM node in canvas palette, NodeConfigModal with provider/model/system_prompt/temperature/max_tokens/base_url fields, AppletNode rendering with provider/model display. Production build verified.
 
 ### N-10: Parallel Execution Engine
-**Pillar**: EXECUTION | **Status**: DECIDED | **Priority**: P0
+**Pillar**: EXECUTION | **Status**: SHIPPED | **Priority**: P0
 **What**: Topological sort with parallel group detection. Fan-out/fan-in. Configurable concurrency limits.
+**Completed**: 2026-02-20. Backend was already complete: BFS engine with `_detect_parallel_groups()` + `asyncio.gather` for concurrent dispatch, `ENGINE_MAX_CONCURRENCY` semaphore (default 10, per-flow override), `MergeNodeApplet` (3 strategies: array, concatenate, first_wins), `ForEachNodeApplet` (sequential/parallel modes with configurable concurrency). Frontend wired: Merge and ForEach nodes added to canvas palette, nodeTypes registry, NodeConfigModal with strategy/delimiter/array_source/max_iterations/parallel/concurrency_limit fields. Production build verified, 101 frontend tests passing.
 
 ### N-11: Conditional Routing
-**Pillar**: EXECUTION | **Status**: DECIDED | **Priority**: P1
+**Pillar**: EXECUTION | **Status**: SHIPPED | **Priority**: P1
 **What**: If/Else node (contains, equals, regex, JSON path). Switch node (multi-branch).
+**Completed**: 2026-02-20. Backend was already complete: `IfElseNodeApplet` with 4 operations (equals, contains, regex, json_path), negate flag, case sensitivity, template expression evaluation, true/false branch routing. Frontend wired: If/Else node added to canvas palette, nodeTypes registry, NodeConfigModal with operation/source/value/negate/case_sensitive fields. Production build verified.
 
 ### N-12: JWT Authentication
 **Pillar**: SECURITY | **Status**: SHIPPED | **Priority**: P0
@@ -134,8 +135,8 @@
 - ~~**Ancient stack**: Python 3.9, FastAPI 0.68, Pydantic v1, CRA~~ — **RESOLVED** (2026-02-18): Backend now on Python 3.13, FastAPI 0.129, Pydantic v2, SQLAlchemy 2.0. Frontend migrated to Vite 6 + Tailwind 4
 - ~~**Test coverage ~10%**~~ — **IMPROVED** (2026-02-18): 521 backend tests passing. CI pipeline configured (GitHub Actions). Coverage target still needs measurement
 - ~~**No authentication**: Anyone with URL access can see all workflows~~ — **RESOLVED** (2026-02-19): JWT auth with refresh tokens, login/register pages, protected routes, auto-refresh interceptor. N-12 backend shipped; frontend wired up.
-- **Hardcoded models**: Writer=GPT-4o, Artist=StabilityAI. No provider flexibility
-- **Sequential execution only**: No parallel branches, conditionals, or loops
+- ~~**Hardcoded models**: Writer=GPT-4o, Artist=StabilityAI. No provider flexibility~~ — **RESOLVED** (2026-02-20): Universal LLM Node (N-09) supports 5 providers.
+- ~~**Sequential execution only**: No parallel branches, conditionals, or loops~~ — **RESOLVED** (2026-02-20): Parallel engine (N-10) with fan-out/fan-in, conditional routing (N-11), and for-each loops all shipped.
 - **38-task backlog to v1.0**: Estimated 2-3 months full-time
 
 ---
@@ -161,6 +162,8 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 | 2026-02-20 | DIRECTIVE-NXTG-20260220-01 completed. CI workflow fixed: branch triggers (main→master), ESLint 9 flat config, vitest coverage, typecheck project flag. ADR-008 compliant. |
 | 2026-02-20 | N-08 (Frontend Stack Migration) → SHIPPED. N-15 (Comprehensive Testing) → SHIPPED. Both verified complete. |
 | 2026-02-20 | N-09 (Universal LLM Node) → SHIPPED. Frontend wired to existing backend LLMNodeApplet. 5 providers: OpenAI, Anthropic, Google, Ollama, Custom. |
+| 2026-02-20 | N-10 (Parallel Execution Engine) → SHIPPED. Frontend wired: Merge (3 strategies) and ForEach (sequential/parallel) nodes added to palette, nodeTypes, and config modal. Backend engine (BFS + asyncio.gather + concurrency semaphore) was already complete. |
+| 2026-02-20 | N-11 (Conditional Routing) → SHIPPED. Frontend wired: If/Else node (4 operations) added to palette, nodeTypes, and config modal. Backend IfElseNodeApplet was already complete. |
 
 ---
 

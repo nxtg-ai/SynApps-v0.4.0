@@ -425,7 +425,7 @@ class ${nodeType.charAt(0).toUpperCase() + nodeType.slice(1)}Applet(BaseApplet):
                     <span className="node-icon">🎨</span>
                     <span className="node-label">Artist</span>
                   </div>
-                  <div 
+                  <div
                     className="node-item memory"
                     draggable
                     onDragStart={(e) => {
@@ -438,6 +438,48 @@ class ${nodeType.charAt(0).toUpperCase() + nodeType.slice(1)}Applet(BaseApplet):
                   >
                     <span className="node-icon">🧠</span>
                     <span className="node-label">Memory</span>
+                  </div>
+                  <div
+                    className="node-item merge"
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData('application/reactflow', JSON.stringify({
+                        type: 'merge',
+                        data: { label: 'Merge', strategy: 'array', delimiter: '\n' }
+                      }));
+                    }}
+                    onClick={() => handleNodeClick(generateId(), 'merge')}
+                  >
+                    <span className="node-icon">🔀</span>
+                    <span className="node-label">Merge</span>
+                  </div>
+                  <div
+                    className="node-item for_each"
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData('application/reactflow', JSON.stringify({
+                        type: 'for_each',
+                        data: { label: 'For-Each', array_source: '{{input}}', max_iterations: 1000, parallel: false }
+                      }));
+                    }}
+                    onClick={() => handleNodeClick(generateId(), 'for_each')}
+                  >
+                    <span className="node-icon">🔄</span>
+                    <span className="node-label">For-Each</span>
+                  </div>
+                  <div
+                    className="node-item if_else"
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData('application/reactflow', JSON.stringify({
+                        type: 'if_else',
+                        data: { label: 'If/Else', operation: 'equals', source: '{{content}}', value: '' }
+                      }));
+                    }}
+                    onClick={() => handleNodeClick(generateId(), 'if_else')}
+                  >
+                    <span className="node-icon">🔀</span>
+                    <span className="node-label">If/Else</span>
                   </div>
                 </div>
               </div>

@@ -230,7 +230,208 @@ const NodeConfigModal: React.FC<NodeConfigModalProps> = ({
             </div>
           </>
         );
-      
+
+      case 'merge':
+        return (
+          <>
+            <div className="form-group">
+              <label htmlFor="label">Node Label</label>
+              <input
+                type="text"
+                id="label"
+                name="label"
+                value={formData.label || ''}
+                onChange={handleChange}
+                placeholder="Enter node label"
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="strategy">Merge Strategy</label>
+              <select
+                id="strategy"
+                name="strategy"
+                value={formData.strategy || 'array'}
+                onChange={handleChange}
+              >
+                <option value="array">Array (collect all inputs as list)</option>
+                <option value="concatenate">Concatenate (join as text)</option>
+                <option value="first_wins">First Wins (use first result)</option>
+              </select>
+            </div>
+            {formData.strategy === 'concatenate' && (
+              <div className="form-group">
+                <label htmlFor="delimiter">Delimiter</label>
+                <input
+                  type="text"
+                  id="delimiter"
+                  name="delimiter"
+                  value={formData.delimiter || '\\n'}
+                  onChange={handleChange}
+                  placeholder="Separator between merged items"
+                />
+              </div>
+            )}
+          </>
+        );
+
+      case 'for_each':
+        return (
+          <>
+            <div className="form-group">
+              <label htmlFor="label">Node Label</label>
+              <input
+                type="text"
+                id="label"
+                name="label"
+                value={formData.label || ''}
+                onChange={handleChange}
+                placeholder="Enter node label"
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="array_source">Array Source</label>
+              <input
+                type="text"
+                id="array_source"
+                name="array_source"
+                value={formData.array_source || '{{input}}'}
+                onChange={handleChange}
+                placeholder="Template expression for the array to iterate"
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="max_iterations">Max Iterations</label>
+              <input
+                type="number"
+                id="max_iterations"
+                name="max_iterations"
+                value={formData.max_iterations ?? 1000}
+                onChange={handleNumberChange}
+                min={1}
+                max={100000}
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="parallel">
+                <input
+                  type="checkbox"
+                  id="parallel"
+                  name="parallel"
+                  checked={formData.parallel || false}
+                  onChange={(e) => {
+                    setFormData((prev: Record<string, any>) => ({
+                      ...prev,
+                      parallel: e.target.checked
+                    }));
+                  }}
+                />
+                {' '}Execute iterations in parallel
+              </label>
+            </div>
+            {formData.parallel && (
+              <div className="form-group">
+                <label htmlFor="concurrency_limit">Concurrency Limit</label>
+                <input
+                  type="number"
+                  id="concurrency_limit"
+                  name="concurrency_limit"
+                  value={formData.concurrency_limit ?? 5}
+                  onChange={handleNumberChange}
+                  min={1}
+                  max={50}
+                />
+              </div>
+            )}
+          </>
+        );
+
+      case 'if_else':
+        return (
+          <>
+            <div className="form-group">
+              <label htmlFor="label">Node Label</label>
+              <input
+                type="text"
+                id="label"
+                name="label"
+                value={formData.label || ''}
+                onChange={handleChange}
+                placeholder="Enter node label"
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="operation">Condition</label>
+              <select
+                id="operation"
+                name="operation"
+                value={formData.operation || 'equals'}
+                onChange={handleChange}
+              >
+                <option value="equals">Equals</option>
+                <option value="contains">Contains</option>
+                <option value="regex">Regex Match</option>
+                <option value="json_path">JSON Path</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label htmlFor="source">Source Expression</label>
+              <input
+                type="text"
+                id="source"
+                name="source"
+                value={formData.source || '{{content}}'}
+                onChange={handleChange}
+                placeholder="Template expression to evaluate"
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="value">Expected Value</label>
+              <input
+                type="text"
+                id="value"
+                name="value"
+                value={formData.value || ''}
+                onChange={handleChange}
+                placeholder="Value to compare against"
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="negate">
+                <input
+                  type="checkbox"
+                  id="negate"
+                  name="negate"
+                  checked={formData.negate || false}
+                  onChange={(e) => {
+                    setFormData((prev: Record<string, any>) => ({
+                      ...prev,
+                      negate: e.target.checked
+                    }));
+                  }}
+                />
+                {' '}Negate result (invert true/false)
+              </label>
+            </div>
+            <div className="form-group">
+              <label htmlFor="case_sensitive">
+                <input
+                  type="checkbox"
+                  id="case_sensitive"
+                  name="case_sensitive"
+                  checked={formData.case_sensitive || false}
+                  onChange={(e) => {
+                    setFormData((prev: Record<string, any>) => ({
+                      ...prev,
+                      case_sensitive: e.target.checked
+                    }));
+                  }}
+                />
+                {' '}Case sensitive
+              </label>
+            </div>
+          </>
+        );
+
       default:
         return (
           <>
