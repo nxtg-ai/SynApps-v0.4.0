@@ -22,7 +22,7 @@
 | N-10 | Parallel Execution Engine | EXECUTION | SHIPPED | P0 | 2026-02-20 |
 | N-11 | Conditional Routing (If/Else) | EXECUTION | SHIPPED | P1 | 2026-02-20 |
 | N-12 | JWT Authentication | SECURITY | SHIPPED | P0 | 2026-02-19 |
-| N-13 | Code Node with Sandboxing | NODES | DECIDED | P1 | — |
+| N-13 | Code Node with Sandboxing | NODES | SHIPPED | P1 | 2026-02-20 |
 | N-14 | Execution Visualization | VISUAL | SHIPPED | P1 | 2026-02-20 |
 | N-15 | Comprehensive Testing | STACK | SHIPPED | P0 | 2026-02-20 |
 
@@ -43,8 +43,7 @@
 ### NODES — "FM-Agnostic Agent Blocks"
 - Universal LLM Node (OpenAI/Anthropic/Google/Ollama/Custom). Image Gen Node. Memory Node (ChromaDB)
 - HTTP Request, Code (sandboxed), Transform, Merge nodes
-- **Shipped**: N-02, N-03, N-04, N-09
-- **Decided**: N-13
+- **Shipped**: N-02, N-03, N-04, N-09, N-13
 
 ### EXECUTION — "Advanced Workflow Primitives"
 - Parallel fan-out/fan-in. Conditional routing. Loop support (For-Each)
@@ -115,8 +114,9 @@
 **Completed**: 2026-02-19. Backend: JWT access/refresh tokens, bcrypt password hashing, Fernet-encrypted API key storage, rate-limited auth endpoints. Frontend: login/register pages, protected routes, auto-refresh interceptor with retry queue, Zustand auth store with localStorage persistence.
 
 ### N-13: Code Node with Sandboxing
-**Pillar**: NODES | **Status**: DECIDED | **Priority**: P1
+**Pillar**: NODES | **Status**: SHIPPED | **Priority**: P1
 **What**: Python/JavaScript execution in subprocess. Resource limits, filesystem restrictions, timeout enforcement.
+**Completed**: 2026-02-20. Backend was already complete: CodeNodeApplet with subprocess sandboxing (setrlimit for CPU/memory/file/process limits, os.setsid isolation, environment scrubbing, filesystem restriction to /tmp, blocked dangerous imports/modules for both Python and JS, dual timeout enforcement). Fixed critical bug: PYTHON_CODE_WRAPPER template was missing import statements (os, sys, json, builtins, pathlib, traceback) — Python execution was non-functional at runtime (masked by mocked tests). Frontend wired: Code node added to canvas palette, nodeTypes registry, NodeConfigModal with language/code/timeout/memory/CPU fields, AppletNode with icon/color/description. 14 backend tests + 101 frontend tests passing.
 
 ### N-14: Execution Visualization
 **Pillar**: VISUAL | **Status**: SHIPPED | **Priority**: P1
@@ -137,7 +137,7 @@
 - ~~**No authentication**: Anyone with URL access can see all workflows~~ — **RESOLVED** (2026-02-19): JWT auth with refresh tokens, login/register pages, protected routes, auto-refresh interceptor. N-12 backend shipped; frontend wired up.
 - ~~**Hardcoded models**: Writer=GPT-4o, Artist=StabilityAI. No provider flexibility~~ — **RESOLVED** (2026-02-20): Universal LLM Node (N-09) supports 5 providers.
 - ~~**Sequential execution only**: No parallel branches, conditionals, or loops~~ — **RESOLVED** (2026-02-20): Parallel engine (N-10) with fan-out/fan-in, conditional routing (N-11), and for-each loops all shipped.
-- **38-task backlog to v1.0**: Estimated 2-3 months full-time
+- ~~**38-task backlog to v1.0**: Estimated 2-3 months full-time~~ — **RESOLVED** (2026-02-20): All 15/15 NEXUS initiatives shipped. v1.0 roadmap complete.
 
 ---
 
@@ -165,6 +165,7 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 | 2026-02-20 | N-10 (Parallel Execution Engine) → SHIPPED. Frontend wired: Merge (3 strategies) and ForEach (sequential/parallel) nodes added to palette, nodeTypes, and config modal. Backend engine (BFS + asyncio.gather + concurrency semaphore) was already complete. |
 | 2026-02-20 | N-11 (Conditional Routing) → SHIPPED. Frontend wired: If/Else node (4 operations) added to palette, nodeTypes, and config modal. Backend IfElseNodeApplet was already complete. |
 | 2026-02-20 | N-14 (Execution Visualization) → SHIPPED. Removed dead anime.js, fixed WebSocket resubscription bug, implemented CSS-driven glow/spinner/badges, SVG animated edge particles, mini-output preview. 14/15 initiatives now shipped. |
+| 2026-02-20 | N-13 (Code Node with Sandboxing) → SHIPPED. Fixed critical PYTHON_CODE_WRAPPER missing imports bug. Frontend wired: Code node in palette, nodeTypes, config modal (language/code/timeout/memory/CPU), AppletNode icon/color. **15/15 initiatives shipped — v1.0 roadmap complete.** |
 
 ---
 

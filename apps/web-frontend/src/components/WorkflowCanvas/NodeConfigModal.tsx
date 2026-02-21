@@ -432,6 +432,85 @@ const NodeConfigModal: React.FC<NodeConfigModalProps> = ({
           </>
         );
 
+      case 'code':
+        return (
+          <>
+            <div className="form-group">
+              <label htmlFor="label">Node Label</label>
+              <input
+                type="text"
+                id="label"
+                name="label"
+                value={formData.label || ''}
+                onChange={handleChange}
+                placeholder="Enter node label"
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="language">Language</label>
+              <select
+                id="language"
+                name="language"
+                value={formData.language || 'python'}
+                onChange={handleChange}
+              >
+                <option value="python">Python</option>
+                <option value="javascript">JavaScript</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label htmlFor="code">Code</label>
+              <textarea
+                id="code"
+                name="code"
+                value={formData.code || ''}
+                onChange={handleChange}
+                placeholder={formData.language === 'javascript'
+                  ? '// Access input via `data`, set output via `result`\nresult = data.toUpperCase();'
+                  : '# Access input via `data`, set output via `result`\nresult = data.upper()'}
+                rows={12}
+                style={{ fontFamily: 'monospace', fontSize: '13px' }}
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="timeout_seconds">Timeout (seconds)</label>
+              <input
+                type="number"
+                id="timeout_seconds"
+                name="timeout_seconds"
+                value={formData.timeout_seconds ?? 5}
+                onChange={handleNumberChange}
+                min={1}
+                max={120}
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="memory_limit_mb">Memory Limit (MB)</label>
+              <input
+                type="number"
+                id="memory_limit_mb"
+                name="memory_limit_mb"
+                value={formData.memory_limit_mb ?? 256}
+                onChange={handleNumberChange}
+                min={64}
+                max={2048}
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="cpu_time_seconds">CPU Time Limit (seconds)</label>
+              <input
+                type="number"
+                id="cpu_time_seconds"
+                name="cpu_time_seconds"
+                value={formData.cpu_time_seconds ?? 3}
+                onChange={handleNumberChange}
+                min={1}
+                max={60}
+              />
+            </div>
+          </>
+        );
+
       default:
         return (
           <>

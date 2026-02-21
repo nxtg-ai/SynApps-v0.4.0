@@ -60,6 +60,7 @@ const nodeTypes = {
   merge: AppletNode,
   for_each: AppletNode,
   if_else: AppletNode,
+  code: AppletNode,
 };
 
 const edgeTypes = {
@@ -225,7 +226,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow: propFlow, onFlowC
     // Map nodes
     const rfNodes = flow.nodes.map(node => ({
       id: node.id,
-      type: node.type === 'llm' || node.type === 'writer' || node.type === 'memory' || node.type === 'artist' || node.type === 'merge' || node.type === 'for_each' || node.type === 'if_else'
+      type: node.type === 'llm' || node.type === 'writer' || node.type === 'memory' || node.type === 'artist' || node.type === 'merge' || node.type === 'for_each' || node.type === 'if_else' || node.type === 'code'
         ? node.type
         : node.type === 'start' || node.type === 'end'
           ? node.type
@@ -241,7 +242,8 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ flow: propFlow, onFlowC
         ...(node.type === 'artist' && !node.data.systemPrompt && { systemPrompt: '', generator: 'dall-e' }),
         ...(node.type === 'merge' && !node.data.strategy && { strategy: 'array', delimiter: '\n' }),
         ...(node.type === 'for_each' && !node.data.array_source && { array_source: '{{input}}', max_iterations: 1000, parallel: false, concurrency_limit: 5 }),
-        ...(node.type === 'if_else' && !node.data.operation && { operation: 'equals', source: '{{content}}', value: '', case_sensitive: false, negate: false })
+        ...(node.type === 'if_else' && !node.data.operation && { operation: 'equals', source: '{{content}}', value: '', case_sensitive: false, negate: false }),
+        ...(node.type === 'code' && !node.data.language && { language: 'python', code: '', timeout_seconds: 5, memory_limit_mb: 256, cpu_time_seconds: 3 })
       }
     }));
     

@@ -51,11 +51,13 @@ const AppletNode: React.FC<NodeProps<AppletFlowNode>> = ({ data, id, type, selec
         return <span role="img" aria-label="For-Each">🔄</span>;
       case 'if_else':
         return <span role="img" aria-label="If/Else">🔀</span>;
+      case 'code':
+        return <span role="img" aria-label="Code">{'</>'}</span>;
       default:
         return <span role="img" aria-label="Applet">🔌</span>;
     }
   };
-  
+
   // Get the color based on applet type
   const getColor = () => {
     switch (appletType) {
@@ -79,11 +81,13 @@ const AppletNode: React.FC<NodeProps<AppletFlowNode>> = ({ data, id, type, selec
         return '#fef3c7';
       case 'if_else':
         return '#fce7f3';
+      case 'code':
+        return '#f0fdf4';
       default:
         return '#f8fafc';
     }
   };
-  
+
   // Get the accent color based on applet type
   const getAccentColor = () => {
     switch (appletType) {
@@ -107,6 +111,8 @@ const AppletNode: React.FC<NodeProps<AppletFlowNode>> = ({ data, id, type, selec
         return '#d97706';
       case 'if_else':
         return '#db2777';
+      case 'code':
+        return '#16a34a';
       default:
         return '#64748b';
     }
@@ -165,7 +171,8 @@ const AppletNode: React.FC<NodeProps<AppletFlowNode>> = ({ data, id, type, selec
             {appletType === 'merge' && `Fan-in merge — ${(data as any).strategy || 'array'}`}
             {appletType === 'for_each' && `Loop — ${(data as any).parallel ? 'parallel' : 'sequential'}, max ${(data as any).max_iterations || 1000}`}
             {appletType === 'if_else' && `Conditional — ${(data as any).operation || 'equals'}${(data as any).negate ? ' (negated)' : ''}`}
-            {!['llm', 'writer', 'artist', 'memory', 'researcher', 'analyzer', 'summarizer', 'merge', 'for_each', 'if_else'].includes(appletType) && 'Custom applet module'}
+            {appletType === 'code' && `Sandboxed ${(data as any).language || 'python'} — ${(data as any).timeout_seconds || 5}s timeout`}
+            {!['llm', 'writer', 'artist', 'memory', 'researcher', 'analyzer', 'summarizer', 'merge', 'for_each', 'if_else', 'code'].includes(appletType) && 'Custom applet module'}
           </div>
         )}
       </div>

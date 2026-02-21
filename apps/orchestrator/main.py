@@ -1787,6 +1787,13 @@ def _extract_sandbox_result(stdout_text: str) -> tuple[str, Optional[Dict[str, A
 
 
 PYTHON_CODE_WRAPPER = r"""
+import os
+import sys
+import json
+import builtins
+import pathlib
+import traceback
+
 _clean_env = {
     "PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
     "HOME": "/tmp",

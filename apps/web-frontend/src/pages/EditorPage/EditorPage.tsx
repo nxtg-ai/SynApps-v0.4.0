@@ -481,6 +481,20 @@ class ${nodeType.charAt(0).toUpperCase() + nodeType.slice(1)}Applet(BaseApplet):
                     <span className="node-icon">🔀</span>
                     <span className="node-label">If/Else</span>
                   </div>
+                  <div
+                    className="node-item code"
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData('application/reactflow', JSON.stringify({
+                        type: 'code',
+                        data: { label: 'Code', language: 'python', code: '', timeout_seconds: 5, memory_limit_mb: 256 }
+                      }));
+                    }}
+                    onClick={() => handleNodeClick(generateId(), 'code')}
+                  >
+                    <span className="node-icon">{"</>"}</span>
+                    <span className="node-label">Code</span>
+                  </div>
                 </div>
               </div>
               
