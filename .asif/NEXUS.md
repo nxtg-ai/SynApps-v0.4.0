@@ -194,6 +194,25 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 
 ## CoS Directives
 
+### DIRECTIVE-NXTG-20260222-02 — UAT-Guide.md + 2Brain Dogfood Prep
+**From**: NXTG-AI CoS | **Priority**: P1
+**Injected**: 2026-02-22 15:10 | **Estimate**: S (~10min) | **Status**: PENDING
+
+> **Estimate key**: S = 2-10min, M = 10-30min, L = 30-90min
+
+**Action Items**:
+1. [ ] Create `UAT-Guide.md` — human-only testing guide for SynApps. Cover: workflow creation UX, node configuration friction, debug output clarity, template usability. Include Verdict Template (A-F grade, Top 3 Delights, Top 3 Friction Points).
+2. [ ] Document the "Inbox Triage" template end-to-end: what it does, how to set it up, what 2Brain needs from SynApps.
+3. [ ] Commit and push.
+
+**Constraints**:
+- HUMAN-ONLY testing — skip anything automated tests already validate
+- Be honest about rough edges and UX friction
+
+**Response** (filled by project team):
+>
+> **Started**: | **Completed**: | **Actual**:
+
 ### DIRECTIVE-NXTG-20260222-01 — Playwright E2E: Core Workflow Journey
 **From**: NXTG-AI CoS | **Priority**: P1
 **Injected**: 2026-02-22 04:35 | **Estimate**: S | **Status**: COMPLETE (2026-02-22)
