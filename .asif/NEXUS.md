@@ -189,6 +189,7 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 | 2026-02-20 | N-16 (2Brain Dogfood Template) → SHIPPED. First real-world workflow: Start → Ollama classifier → Python structurer → Memory store → End. PI-001 dogfood milestone delivered. |
 | 2026-02-20 | N-17 (Workflow Export/Import + UX Polish) → SHIPPED. Export/import endpoints + UI, run button UX fix, version strings updated to v1.0. 528 backend tests, 101 frontend tests. **17/17 initiatives shipped.** |
 | 2026-02-22 | DIRECTIVE-NXTG-20260222-01 → COMPLETE. 7 Playwright E2E tests: core workflow journey, 2Brain template verification, auth flow. All passing. UAT-GUIDE.md created. |
+| 2026-02-22 | DIRECTIVE-NXTG-20260222-02 → COMPLETE. UAT-GUIDE.md rewritten as human UX evaluation guide with 2Brain dogfood deep-dive, verdict template, and 5 test inputs. |
 
 ---
 
@@ -196,22 +197,23 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 
 ### DIRECTIVE-NXTG-20260222-02 — UAT-Guide.md + 2Brain Dogfood Prep
 **From**: NXTG-AI CoS | **Priority**: P1
-**Injected**: 2026-02-22 15:10 | **Estimate**: S (~10min) | **Status**: PENDING
+**Injected**: 2026-02-22 15:10 | **Estimate**: S (~10min) | **Status**: COMPLETE (2026-02-22)
 
 > **Estimate key**: S = 2-10min, M = 10-30min, L = 30-90min
 
 **Action Items**:
-1. [ ] Create `UAT-Guide.md` — human-only testing guide for SynApps. Cover: workflow creation UX, node configuration friction, debug output clarity, template usability. Include Verdict Template (A-F grade, Top 3 Delights, Top 3 Friction Points).
-2. [ ] Document the "Inbox Triage" template end-to-end: what it does, how to set it up, what 2Brain needs from SynApps.
-3. [ ] Commit and push.
+1. [x] Create `UAT-Guide.md` — human-only testing guide for SynApps. Cover: workflow creation UX, node configuration friction, debug output clarity, template usability. Include Verdict Template (A-F grade, Top 3 Delights, Top 3 Friction Points).
+2. [x] Document the "Inbox Triage" template end-to-end: what it does, how to set it up, what 2Brain needs from SynApps.
+3. [x] Commit and push.
 
 **Constraints**:
 - HUMAN-ONLY testing — skip anything automated tests already validate
 - Be honest about rough edges and UX friction
 
 **Response** (filled by project team):
+> Rewrote `UAT-GUIDE.md` as a human-only UX evaluation guide (not a QA checklist). Five sections: Workflow Creation UX (first impression, template flow, building from scratch, node config friction ratings), Running a Workflow (run button, visualization, output clarity, error recovery), Template Usability, Debug Output Clarity, and a full 2Brain Inbox Triage dogfood section with pipeline diagram, 5 test inputs, setup instructions, what 2Brain needs from SynApps (API triggers, persistent memory, batch capture, custom categories, confidence scoring), and honest rough edges. Includes Verdict Template with A-F grade + Top 3 Delights/Friction.
 >
-> **Started**: | **Completed**: | **Actual**:
+> **Started**: 2026-02-22 15:12 | **Completed**: 2026-02-22 15:18 | **Actual**: S (~6min)
 
 ### DIRECTIVE-NXTG-20260222-01 — Playwright E2E: Core Workflow Journey
 **From**: NXTG-AI CoS | **Priority**: P1
