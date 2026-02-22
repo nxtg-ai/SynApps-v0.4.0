@@ -131,3 +131,6 @@ This project is **P-10** in the ASIF portfolio (Developer Tools vertical). On ev
 2. Execute any **PENDING** directives before other work (unless Asif explicitly overrides)
 3. Write your response inline under each directive's `**Response**` section
 4. Update initiative statuses in NEXUS if your work changes them
+5. If you have questions for the CoS, add them under `## Team Questions` in NEXUS
+
+**Escalation via Team Questions**: When you hit a blocker, need an architecture review, or have a portfolio-level question, add it under `## Team Questions` in your `.asif/NEXUS.md`. Your CoS checks these 3x daily during scheduled enrichment cycles and will respond inline or issue follow-up directives.
