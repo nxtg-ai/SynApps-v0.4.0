@@ -156,11 +156,14 @@ const EditorPage: React.FC = () => {
         }
       }
       
-      // Add image generator preference to context
-      if (!parsedInput.context) {
-        parsedInput.context = {};
+      // Only inject image generator preference when the workflow has an artist node
+      const hasArtistNode = flow.nodes.some(n => n.type === 'artist');
+      if (hasArtistNode) {
+        if (!parsedInput.context) {
+          parsedInput.context = {};
+        }
+        parsedInput.context.image_generator = imageGenerator;
       }
-      parsedInput.context.image_generator = imageGenerator;
       
 
       await apiService.runFlow(flow.id, parsedInput);
@@ -377,6 +380,7 @@ class ${nodeType.charAt(0).toUpperCase() + nodeType.slice(1)}Applet(BaseApplet):
                   rows={8}
                 />
                 
+                {flow.nodes.some(n => n.type === 'artist') && (
                 <div className="generator-selector">
                   <label htmlFor="image-generator">Image Generator:</label>
                   <select
@@ -396,6 +400,7 @@ class ${nodeType.charAt(0).toUpperCase() + nodeType.slice(1)}Applet(BaseApplet):
                     )}
                   </div>
                 </div>
+                )}
               </div>
               
               {/* Output Data Panel */}
