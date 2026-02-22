@@ -193,6 +193,31 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 
 ## CoS Directives
 
+### DIRECTIVE-NXTG-20260222-01 — Playwright E2E: Core Workflow Journey
+**From**: NXTG-AI CoS | **Priority**: P1
+**Injected**: 2026-02-22 04:35 | **Estimate**: S | **Status**: PENDING
+
+> **Estimate key**: S = hours (same session), M = 1-2 days, L = 3+ days
+
+**Context**: SynApps has 17/17 initiatives SHIPPED, 528 backend + 101 frontend tests. Playwright E2E config exists at `apps/web-frontend/e2e/` but coverage is minimal. The dogfood template (N-16) proves the workflow works. Now validate it end-to-end in a browser.
+
+**Action Items**:
+1. [ ] Write a Playwright E2E test for the core workflow journey: login → create new flow → add 3 nodes (Start, LLM, End) → connect them → save → verify appears in dashboard
+2. [ ] Write a second E2E test: open the 2Brain dogfood template → verify all 5 nodes render on canvas → verify node connections are correct
+3. [ ] Run with `npx playwright test` — report results
+4. [ ] If Playwright isn't installed, install it: `npx playwright install chromium`
+5. [ ] Report: E2E test count, any flaky tests or issues
+
+**Constraints**:
+- E2E tests must work against the dev server (backend + frontend both running)
+- Use Playwright's locators (getByRole, getByText) — not CSS selectors
+- Do NOT modify application code to make tests pass — fix the tests
+
+**Response** (filled by project team):
+>
+
+---
+
 ### DIRECTIVE-NXTG-20260216-01 — Modernization Progress Check
 **From**: NXTG-AI CoS | **Date**: 2026-02-16 | **Status**: COMPLETE (2026-02-18)
 **Priority**: P0
