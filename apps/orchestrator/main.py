@@ -143,6 +143,81 @@ ENGINE_MAX_CONCURRENCY = int(os.environ.get("ENGINE_MAX_CONCURRENCY", "10"))
 TRACE_RESULTS_KEY = "__trace__"
 TRACE_SCHEMA_VERSION = 1
 MAX_DIFF_CHANGES = 250
+# ============================================================
+# In-Memory Metrics Collector
+# ============================================================
+
+class _MetricsCollector:
+    """Thread-safe in-memory request/response metrics.
+
+    Tracks request counts, error counts, response times, and provider usage.
+    No external dependencies — designed for /metrics endpoint consumption.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self.total_requests: int = 0
+        self.total_errors: int = 0
+        self._response_times: List[float] = []  # recent response times (capped)
+        self._provider_usage: Dict[str, int] = {}
+        self._template_runs: Dict[str, int] = {}
+        self._last_template_run_time: Optional[float] = None
+        self._max_samples: int = 1000
+
+    def record_request(self, duration_ms: float, status_code: int, path: str) -> None:
+        with self._lock:
+            self.total_requests += 1
+            if status_code >= 400:
+                self.total_errors += 1
+            if len(self._response_times) >= self._max_samples:
+                self._response_times = self._response_times[self._max_samples // 2:]
+            self._response_times.append(duration_ms)
+
+    def record_provider_call(self, provider: str) -> None:
+        with self._lock:
+            self._provider_usage[provider] = self._provider_usage.get(provider, 0) + 1
+
+    def record_template_run(self, template_name: str) -> None:
+        with self._lock:
+            self._template_runs[template_name] = self._template_runs.get(template_name, 0) + 1
+            self._last_template_run_time = time.time()
+
+    def snapshot(self) -> Dict[str, Any]:
+        with self._lock:
+            avg_ms = (
+                sum(self._response_times) / len(self._response_times)
+                if self._response_times
+                else 0.0
+            )
+            error_rate = (
+                (self.total_errors / self.total_requests * 100)
+                if self.total_requests > 0
+                else 0.0
+            )
+            return {
+                "requests": {
+                    "total": self.total_requests,
+                    "errors": self.total_errors,
+                    "error_rate_pct": round(error_rate, 2),
+                    "avg_response_ms": round(avg_ms, 2),
+                },
+                "provider_usage": dict(self._provider_usage),
+                "template_runs": dict(self._template_runs),
+                "last_template_run_at": self._last_template_run_time,
+            }
+
+    def reset(self) -> None:
+        with self._lock:
+            self.total_requests = 0
+            self.total_errors = 0
+            self._response_times.clear()
+            self._provider_usage.clear()
+            self._template_runs.clear()
+            self._last_template_run_time = None
+
+
+metrics = _MetricsCollector()
+
 DEFAULT_MEMORY_BACKEND = os.environ.get("MEMORY_BACKEND", "sqlite_fts").strip().lower()
 DEFAULT_MEMORY_NAMESPACE = os.environ.get("MEMORY_NAMESPACE", "default").strip() or "default"
 DEFAULT_MEMORY_SQLITE_PATH = str(
@@ -387,6 +462,17 @@ async def attach_rate_limit_identity(request: Request, call_next):
         principal = _anonymous_rate_limit_principal(request)
     request.state.user = principal
     return await call_next(request)
+
+
+@app.middleware("http")
+async def collect_metrics(request: Request, call_next):
+    """Record request count, duration, and status for /metrics."""
+    start = time.monotonic()
+    response = await call_next(request)
+    duration_ms = (time.monotonic() - start) * 1000
+    metrics.record_request(duration_ms, response.status_code, request.url.path)
+    return response
+
 
 # ============================================================
 # Error Handling - Consistent Error Format
@@ -3522,6 +3608,7 @@ class LLMNodeApplet(BaseApplet):
     async def on_message(self, message: AppletMessage) -> AppletMessage:
         config = self._resolve_config(message)
         provider = LLMProviderRegistry.get(config.provider, config)
+        metrics.record_provider_call(config.provider)
         is_valid, reason = provider.validate_config()
         if not is_valid:
             return AppletMessage(
@@ -6165,6 +6252,10 @@ class Orchestrator:
 
         status_dict = status.copy()
 
+        flow_name = flow.get("name", "")
+        if flow_name:
+            metrics.record_template_run(flow_name)
+
         workflow_run_repo = WorkflowRunRepository()
         logger.info(f"Starting workflow execution with run ID: {run_id}")
         await workflow_run_repo.save(status_dict)
@@ -7486,6 +7577,64 @@ async def portfolio_dashboard(
             "version": API_VERSION,
         },
     }
+
+
+# ============================================================
+# Health Detailed + Metrics
+# ============================================================
+
+
+@v1.get("/health/detailed", tags=["Health"])
+async def health_detailed(
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
+    """Detailed health check with database, providers, and last template run."""
+    uptime_seconds = max(0, int(time.time() - APP_START_TIME))
+
+    # Database
+    db_ok = True
+    try:
+        async with get_db_session() as session:
+            await session.execute(select(1))
+    except Exception:
+        db_ok = False
+
+    # Providers
+    provider_checks = []
+    for info in LLMProviderRegistry.list_providers():
+        d = info.model_dump()
+        provider_checks.append({
+            "name": d["name"],
+            "connected": d["configured"],
+            "reason": d.get("reason", ""),
+        })
+
+    # Last template execution
+    snap = metrics.snapshot()
+    last_run_at = snap["last_template_run_at"]
+
+    overall = "ok"
+    if not db_ok:
+        overall = "down"
+    elif not any(p["connected"] for p in provider_checks):
+        overall = "degraded"
+
+    return {
+        "status": overall,
+        "uptime_seconds": uptime_seconds,
+        "version": API_VERSION,
+        "database": {"reachable": db_ok},
+        "providers": provider_checks,
+        "last_template_run_at": last_run_at,
+    }
+
+
+@v1.get("/metrics", tags=["Health"])
+async def get_metrics(
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
+    """In-memory request metrics: counts, error rate, response time, provider usage."""
+    return metrics.snapshot()
 
 
 # Include versioned router

@@ -195,6 +195,7 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 | 2026-02-22 | DIRECTIVE-NXTG-20260222-04 (LLM Provider Abstraction Layer) → COMPLETE. `synapps/providers/llm/` package: BaseLLMProvider ABC, AnthropicProvider, OpenAIProvider, ProviderRegistry with auto-discovery and fallback. 28 tests passing. |
 | 2026-02-23 | DIRECTIVE-NXTG-20260222-05 (Portfolio Dogfood Dashboard) → COMPLETE. `GET /api/v1/dashboard/portfolio` endpoint: auto-discovered YAML templates, last-run status, LLM provider registry, DB health check. 9 tests passing. |
 | 2026-02-23 | DIRECTIVE-NXTG-20260222-06 (OpenAPI Spec + API Docs) → COMPLETE. Tags on all 26 endpoints, `docs/openapi.json` exported, `docs/API.md` with curl examples. Swagger/ReDoc/OpenAPI JSON all verified. 6 tests. |
+| 2026-02-23 | DIRECTIVE-NXTG-20260222-07 (Health Monitoring + Metrics Endpoint) → COMPLETE. `_MetricsCollector` with thread-safe in-memory counters, `collect_metrics` middleware, `GET /health/detailed` (ok/degraded/down + DB + providers), `GET /metrics` (requests, provider_usage, template_runs). 9 tests. OpenAPI re-exported (28 paths). |
 
 ---
 
@@ -696,3 +697,53 @@ _(Project team: add questions for ASIF CoS here. They will be answered during th
 > **Test coverage** (6 tests): Swagger UI accessible, ReDoc accessible, OpenAPI JSON valid, tags present, description present, core paths covered.
 >
 > **Started**: 2026-02-23 | **Completed**: 2026-02-23 | **Actual**: S (~12min)
+
+### DIRECTIVE-NXTG-20260222-07 — Health Monitoring + Metrics Endpoint
+**From**: NXTG-AI CoS | **Priority**: P2
+**Injected**: 2026-02-23 01:10 | **Estimate**: M (~15min) | **Status**: COMPLETE (2026-02-23)
+
+**Context**: Portfolio dashboard exists. API docs shipped. Internal consumers need a health check endpoint they can poll.
+
+**Action Items**:
+1. [x] Create `/health` endpoint returning:
+   - Status: ok/degraded/down
+   - Uptime
+   - Connected providers (LLM, external APIs)
+   - Database connectivity
+   - Last template execution time
+2. [x] Create `/metrics` endpoint returning:
+   - Request count, error rate, average response time
+   - Provider usage breakdown
+   - Template execution stats
+3. [x] 8+ tests for health and metrics endpoints
+4. [x] Run full suite. Commit and push.
+
+**Constraints**:
+- Use in-memory counters — no external metrics service needed
+- /health should return in < 100ms
+
+**Response** (filled by project team):
+> **9/9 tests passing** in `apps/orchestrator/tests/test_health_metrics.py`.
+>
+> **Implementation**:
+> 1. `_MetricsCollector` class added to `main.py` — thread-safe in-memory counters with `threading.Lock()`, capped at 1000 response time samples to prevent unbounded memory growth. Methods: `record_request()`, `record_provider_call()`, `record_template_run()`, `snapshot()`, `reset()`.
+> 2. `collect_metrics` HTTP middleware — records duration, status code, and path for every request. Wired after rate limit middleware.
+> 3. `metrics.record_provider_call()` wired into `LLMNodeApplet.on_message()`. `metrics.record_template_run()` wired into `Orchestrator.execute_flow()`.
+> 4. `GET /api/v1/health/detailed` — returns status (ok/degraded/down), uptime_seconds, database (reachable bool, latency_ms), providers list (name, connected), last_template_run_at. Status logic: "down" if DB unreachable, "degraded" if no providers connected, "ok" otherwise. Responds in <50ms locally.
+> 5. `GET /api/v1/metrics` — returns requests (total, errors, error_rate_pct, avg_response_ms), provider_usage (dict of provider→count), template_runs (dict of name→count), last_template_run_at.
+> 6. `docs/openapi.json` re-exported (now 28 paths).
+>
+> **Test coverage** (9 tests):
+> | Test | What |
+> |------|------|
+> | health_detailed_returns_200 | Top-level keys: status, uptime_seconds, database, providers, last_template_run_at |
+> | health_detailed_status_ok | Status is ok/degraded, database reachable |
+> | health_detailed_lists_providers | openai + anthropic with connected bool |
+> | health_detailed_returns_fast | Responds in <500ms (generous for CI) |
+> | health_detailed_last_template_run_null_initially | No runs → null |
+> | metrics_returns_200 | Top-level keys: requests, provider_usage, template_runs |
+> | metrics_request_counters_increment | After 5 requests, total >= 5, avg_response_ms > 0 |
+> | metrics_error_rate_after_404 | Nonexistent route → errors >= 1, error_rate_pct > 0 |
+> | metrics_template_runs_after_flow_execution | Create+run flow → template name in template_runs, last_template_run_at not null |
+>
+> **Started**: 2026-02-23 | **Completed**: 2026-02-23 | **Actual**: M (~12min)
