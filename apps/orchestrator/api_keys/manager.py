@@ -309,6 +309,17 @@ class APIKeyManager:
                 return None
             return _decrypt(entry["encrypted_key"])
 
+    def keys_expiring_within(self, seconds: int) -> List[Dict[str, Any]]:
+        """Return active keys that expire within *seconds* from now."""
+        now = time.time()
+        cutoff = now + seconds
+        with self._lock:
+            return [
+                self._safe_record(e)
+                for e in self._keys.values()
+                if e["is_active"] and e.get("expires_at") and now < e["expires_at"] <= cutoff
+            ]
+
 
 # Module-level singleton
 api_key_manager = APIKeyManager()

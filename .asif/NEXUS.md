@@ -1319,3 +1319,36 @@ _(Project team: add questions for ASIF CoS here. They will be answered during th
 > **4. Tests** — 47 new tests in `test_health_dashboard_d12.py` covering: ConnectorStatus.DOWN enum, latency/error windowed metrics, dashboard_status derivation thresholds, all_dashboard_statuses(), probe latency, cache TTL, endpoint response structure, aggregate health transitions, rate-limit exemptions, status transition scenarios. **1128 tests total, 0 regressions.**
 >
 > **Constraints met:** Health endpoints (`/api/v1/health`, `/api/v1/health/detailed`, `/api/v1/connectors/health`) added to `EXEMPT_PATHS` in rate_limiter.py. Probe timeout is 5s. Results cached for 30s via `_health_cache`.
+
+### DIRECTIVE-NXTG-20260223-13 — Webhook Notification System
+**From**: NXTG-AI CoS | **Priority**: P1
+**Injected**: 2026-02-23 10:30 | **Estimate**: M | **Status**: SHIPPED
+
+> **Context**: Stream B: "API fabric needs event-driven capabilities." Consumers (2Brain, content-engine, Polymath) need to know when upstream data changes without polling. Webhooks push events in near-real-time.
+
+**Action Items**:
+1. [x] Create `webhooks/manager.py` — webhook registration CRUD (url, events, secret, active/inactive)
+2. [x] Event types: `connector.status_changed`, `request.failed`, `key.rotated`, `key.expiring_soon`
+3. [x] Delivery: async HTTP POST with HMAC-SHA256 signature header (`X-Webhook-Signature`), 3 retries with exponential backoff
+4. [x] REST endpoints: `POST /api/v1/webhooks` (register), `GET /api/v1/webhooks` (list), `DELETE /api/v1/webhooks/{id}`
+5. [x] Tests: registration, delivery, signature verification, retry logic, event filtering — 1150+ tests, zero regressions. Commit and push.
+
+**Constraints**:
+- Webhook secrets stored encrypted (reuse Fernet from API key manager)
+- Delivery timeout: 10 seconds per attempt
+- Max 3 retries: 1s, 5s, 30s backoff
+
+**Response** (filled by project team):
+> **Shipped 2026-02-23.** All five action items implemented:
+>
+> **1. `webhooks/manager.py` created** — `WebhookManager` class with full CRUD (register, get, list, delete, update_active), `hooks_for_event()` filtering, `record_delivery()` with status code tracking, and `_safe_view()` that strips encrypted secrets from API responses. Accepts injectable `encrypt_fn`/`decrypt_fn` callables for Fernet integration.
+>
+> **2. New event types added** — `WEBHOOK_EVENTS` now contains 9 events: the original 5 (`template_started/completed/failed`, `step_completed/failed`) plus the 4 new operational events (`connector.status_changed`, `request.failed`, `key.rotated`, `key.expiring_soon`). All validated at registration.
+>
+> **3. Delivery with HMAC-SHA256 + fixed backoff** — `deliver_webhook()` sends async HTTP POST with `X-Webhook-Signature: sha256=<hex>` header. Retries use fixed delays (1s, 5s, 30s) not exponential. 10s timeout per attempt. Tracks `last_status_code` and `last_delivery_at`.
+>
+> **4. REST endpoints unchanged** — `POST/GET/DELETE /api/v1/webhooks` continue to work, now backed by `WebhookManager`. New event types accepted in registration. Event emission wired: `connector.status_changed` fires on dashboard status transitions in `probe_connector()`; `key.rotated` fires from `rotate_managed_key` endpoint; `request.failed` fires from metrics middleware on 5xx responses; `key.expiring_soon` fires from background `_key_expiry_watcher` loop (hourly check, 24h warning window). `keys_expiring_within()` added to `api_keys/manager.py`.
+>
+> **5. Tests** — 48 new tests in `test_webhook_d13.py` covering: constants, new event types, WebhookManager CRUD, Fernet encrypt/decrypt round-trip, HMAC signing, fixed retry delays, status code tracking, REST endpoints with new events, connector status change emission, key rotation emission, `keys_expiring_within()`, signature verification round-trip, `emit_webhook_event`. **1176 tests total, 0 regressions.**
+>
+> **Constraints met:** Secrets stored Fernet-encrypted via shared `FERNET_CIPHER`. Delivery timeout 10s. Retry schedule 1s/5s/30s.

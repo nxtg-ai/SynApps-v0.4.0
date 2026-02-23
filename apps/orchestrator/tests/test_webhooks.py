@@ -14,9 +14,11 @@ from apps.orchestrator.main import (
     app,
     emit_event,
     webhook_registry,
-    _sign_payload,
-    _deliver_webhook,
     WEBHOOK_EVENTS,
+)
+from apps.orchestrator.webhooks.manager import (
+    deliver_webhook as _deliver_webhook,
+    sign_payload as _sign_payload,
 )
 
 
@@ -138,7 +140,7 @@ async def test_deliver_webhook_success():
     mock_client.__aenter__ = AsyncMock(return_value=mock_client)
     mock_client.__aexit__ = AsyncMock(return_value=False)
     with patch("httpx.AsyncClient", return_value=mock_client):
-        result = await _deliver_webhook(hook, {"event": "template_started"})
+        result = await _deliver_webhook(hook, {"event": "template_started"}, webhook_registry)
     assert result is True
     updated = webhook_registry.get(hook_data["id"])
     assert updated["delivery_count"] == 1
@@ -157,7 +159,7 @@ async def test_deliver_webhook_with_hmac_header():
     mock_client.__aenter__ = AsyncMock(return_value=mock_client)
     mock_client.__aexit__ = AsyncMock(return_value=False)
     with patch("httpx.AsyncClient", return_value=mock_client):
-        await _deliver_webhook(hook, {"event": "step_completed"})
+        await _deliver_webhook(hook, {"event": "step_completed"}, webhook_registry)
     call_kwargs = mock_client.post.call_args
     headers = call_kwargs.kwargs.get("headers", {})
     assert "X-Webhook-Signature" in headers
@@ -175,7 +177,7 @@ async def test_deliver_webhook_retry_on_failure():
     mock_client.__aexit__ = AsyncMock(return_value=False)
     with patch("httpx.AsyncClient", return_value=mock_client):
         with patch("asyncio.sleep", new_callable=AsyncMock):
-            result = await _deliver_webhook(hook, {"event": "template_failed"})
+            result = await _deliver_webhook(hook, {"event": "template_failed"}, webhook_registry)
     assert result is False
     assert mock_client.post.call_count == 3  # 3 retry attempts
     updated = webhook_registry.get(hook_data["id"])
@@ -198,7 +200,7 @@ async def test_emit_event_no_hooks():
 async def test_emit_event_triggers_delivery():
     """emit_event creates delivery tasks for matching hooks."""
     webhook_registry.register("https://mock.com/hook", ["template_completed"])
-    with patch("apps.orchestrator.main._deliver_webhook", new_callable=AsyncMock) as mock_deliver:
+    with patch("apps.orchestrator.webhooks.manager.deliver_webhook", new_callable=AsyncMock) as mock_deliver:
         mock_deliver.return_value = True
         await emit_event("template_completed", {"run_id": "r1"})
         # Give the task a chance to run
@@ -284,5 +286,10 @@ def test_delete_webhook_not_found(client):
 
 def test_webhook_events_constant():
     """WEBHOOK_EVENTS contains all expected event types."""
-    expected = {"template_started", "template_completed", "template_failed", "step_completed", "step_failed"}
+    expected = {
+        "template_started", "template_completed", "template_failed",
+        "step_completed", "step_failed",
+        "connector.status_changed", "request.failed",
+        "key.rotated", "key.expiring_soon",
+    }
     assert WEBHOOK_EVENTS == expected

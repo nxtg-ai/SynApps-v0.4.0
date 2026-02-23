@@ -864,18 +864,25 @@ async def probe_connector(connector_name: str) -> Dict[str, Any]:
     Uses a HEAD/GET ping against the provider's base URL when possible,
     falling back to ``validate_config()`` for providers without an HTTP
     endpoint. Respects ``HEALTH_PROBE_TIMEOUT_SECONDS``.
+
+    Emits ``connector.status_changed`` when the dashboard status transitions.
     """
+    # Capture status before probe
+    old_ds = connector_health.get_dashboard_status(connector_name).get("dashboard_status")
+
     start = time.time()
     try:
         provider_cls = LLMProviderRegistry._providers.get(connector_name)
         if provider_cls is None:
             connector_health.record_failure(connector_name, f"Unknown connector: {connector_name}")
-            return {
+            result = {
                 "connector": connector_name,
                 "reachable": False,
                 "latency_ms": 0.0,
                 "detail": f"Unknown connector: {connector_name}",
             }
+            await _maybe_emit_status_change(connector_name, old_ds)
+            return result
 
         default_cfg = LLMNodeConfigModel(provider=connector_name)
         adapter = provider_cls(default_cfg)
@@ -885,12 +892,14 @@ async def probe_connector(connector_name: str) -> Dict[str, Any]:
         if not is_valid:
             elapsed = (time.time() - start) * 1000
             connector_health.record_failure(connector_name, reason, latency_ms=elapsed)
-            return {
+            result = {
                 "connector": connector_name,
                 "reachable": False,
                 "latency_ms": round(elapsed, 2),
                 "detail": reason,
             }
+            await _maybe_emit_status_change(connector_name, old_ds)
+            return result
 
         # Attempt lightweight HTTP ping if adapter has a base_url
         base_url = getattr(adapter, "base_url", None)
@@ -900,42 +909,61 @@ async def probe_connector(connector_name: str) -> Dict[str, Any]:
                     resp = await client.head(base_url)
                 elapsed = (time.time() - start) * 1000
                 connector_health.record_success(connector_name, latency_ms=elapsed)
-                return {
+                result = {
                     "connector": connector_name,
                     "reachable": True,
                     "latency_ms": round(elapsed, 2),
                     "detail": "",
                 }
+                await _maybe_emit_status_change(connector_name, old_ds)
+                return result
             except Exception as ping_exc:
                 elapsed = (time.time() - start) * 1000
                 connector_health.record_failure(
                     connector_name, f"Ping failed: {ping_exc}", latency_ms=elapsed,
                 )
-                return {
+                result = {
                     "connector": connector_name,
                     "reachable": False,
                     "latency_ms": round(elapsed, 2),
                     "detail": f"Ping failed: {ping_exc}",
                 }
+                await _maybe_emit_status_change(connector_name, old_ds)
+                return result
 
         # No base_url — treat validated config as reachable
         elapsed = (time.time() - start) * 1000
         connector_health.record_success(connector_name, latency_ms=elapsed)
-        return {
+        result = {
             "connector": connector_name,
             "reachable": True,
             "latency_ms": round(elapsed, 2),
             "detail": "",
         }
+        await _maybe_emit_status_change(connector_name, old_ds)
+        return result
     except Exception as exc:
         elapsed = (time.time() - start) * 1000
         connector_health.record_failure(connector_name, str(exc), latency_ms=elapsed)
-        return {
+        result = {
             "connector": connector_name,
             "reachable": False,
             "latency_ms": round(elapsed, 2),
             "detail": str(exc),
         }
+        await _maybe_emit_status_change(connector_name, old_ds)
+        return result
+
+
+async def _maybe_emit_status_change(connector_name: str, old_status: Optional[str]) -> None:
+    """Emit ``connector.status_changed`` if dashboard status transitioned."""
+    new_ds = connector_health.get_dashboard_status(connector_name).get("dashboard_status")
+    if new_ds != old_status:
+        await emit_event("connector.status_changed", {
+            "connector": connector_name,
+            "old_status": old_status,
+            "new_status": new_ds,
+        })
 
 
 async def probe_all_connectors() -> List[Dict[str, Any]]:
@@ -973,121 +1001,53 @@ async def probe_all_connectors() -> List[Dict[str, Any]]:
 
 
 # ============================================================
-# Webhook / Event System
+# Webhook / Event System  (DIRECTIVE-13: Webhook Notification System)
 # ============================================================
 
-WEBHOOK_EVENTS = frozenset({
-    "template_started",
-    "template_completed",
-    "template_failed",
-    "step_completed",
-    "step_failed",
-})
+from apps.orchestrator.webhooks.manager import (
+    WEBHOOK_DELIVERY_TIMEOUT,
+    WEBHOOK_EVENTS,
+    WEBHOOK_MAX_RETRIES,
+    WEBHOOK_RETRY_DELAYS,
+    WebhookManager,
+    deliver_webhook as _deliver_webhook,
+    emit_webhook_event,
+    sign_payload as _sign_payload,
+)
 
-WEBHOOK_MAX_RETRIES = 3
-WEBHOOK_RETRY_BASE_SECONDS = 1.0  # exponential backoff base
-
-
-class WebhookRegistry:
-    """In-memory webhook registration and delivery."""
-
-    def __init__(self) -> None:
-        self._lock = threading.Lock()
-        self._hooks: Dict[str, Dict[str, Any]] = {}  # id -> hook data
-
-    def register(self, url: str, events: List[str], secret: Optional[str] = None) -> Dict[str, Any]:
-        hook_id = str(uuid.uuid4())
-        hook = {
-            "id": hook_id,
-            "url": url,
-            "events": sorted(set(events)),
-            "secret": secret,
-            "active": True,
-            "created_at": time.time(),
-            "delivery_count": 0,
-            "failure_count": 0,
-        }
-        with self._lock:
-            self._hooks[hook_id] = hook
-        return {k: v for k, v in hook.items() if k != "secret"}
-
-    def list_hooks(self) -> List[Dict[str, Any]]:
-        with self._lock:
-            return [
-                {k: v for k, v in h.items() if k != "secret"}
-                for h in self._hooks.values()
-            ]
-
-    def get(self, hook_id: str) -> Optional[Dict[str, Any]]:
-        with self._lock:
-            h = self._hooks.get(hook_id)
-            return dict(h) if h else None
-
-    def delete(self, hook_id: str) -> bool:
-        with self._lock:
-            return self._hooks.pop(hook_id, None) is not None
-
-    def hooks_for_event(self, event: str) -> List[Dict[str, Any]]:
-        with self._lock:
-            return [
-                dict(h)
-                for h in self._hooks.values()
-                if h["active"] and event in h["events"]
-            ]
-
-    def record_delivery(self, hook_id: str, success: bool) -> None:
-        with self._lock:
-            h = self._hooks.get(hook_id)
-            if h:
-                h["delivery_count"] += 1
-                if not success:
-                    h["failure_count"] += 1
-
-    def reset(self) -> None:
-        with self._lock:
-            self._hooks.clear()
+# Legacy alias kept for backwards-compat in existing tests
+WEBHOOK_RETRY_BASE_SECONDS = 1.0
 
 
-webhook_registry = WebhookRegistry()
+def _get_fernet_encrypt():
+    """Return encrypt/decrypt helpers bound to FERNET_CIPHER (lazy)."""
+    def _enc(plain: str) -> str:
+        return FERNET_CIPHER.encrypt(plain.encode("utf-8")).decode("utf-8")
 
-
-def _sign_payload(payload_bytes: bytes, secret: str) -> str:
-    return hmac.new(secret.encode(), payload_bytes, hashlib.sha256).hexdigest()
-
-
-async def _deliver_webhook(hook: Dict[str, Any], payload: Dict[str, Any]) -> bool:
-    """Deliver a webhook with retry + exponential backoff. Returns True on success."""
-    import httpx
-
-    payload_bytes = json.dumps(payload, default=str).encode()
-    headers: Dict[str, str] = {"Content-Type": "application/json"}
-    if hook.get("secret"):
-        headers["X-Webhook-Signature"] = f"sha256={_sign_payload(payload_bytes, hook['secret'])}"
-
-    for attempt in range(WEBHOOK_MAX_RETRIES):
+    def _dec(cipher: str) -> Optional[str]:
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.post(hook["url"], content=payload_bytes, headers=headers)
-                if resp.status_code < 400:
-                    webhook_registry.record_delivery(hook["id"], success=True)
-                    return True
+            return FERNET_CIPHER.decrypt(cipher.encode("utf-8")).decode("utf-8")
         except Exception:
-            pass
-        if attempt < WEBHOOK_MAX_RETRIES - 1:
-            await asyncio.sleep(WEBHOOK_RETRY_BASE_SECONDS * (2 ** attempt))
+            return None
 
-    webhook_registry.record_delivery(hook["id"], success=False)
-    return False
+    return _enc, _dec
+
+
+# Instantiated after FERNET_CIPHER is defined (see post-init below).
+# For now create with identity encrypt/decrypt — replaced in _init_webhook_manager().
+webhook_registry = WebhookManager()
+
+
+def _init_webhook_manager() -> None:
+    """Re-initialise webhook_registry with Fernet encryption. Called after FERNET_CIPHER is ready."""
+    global webhook_registry
+    enc, dec = _get_fernet_encrypt()
+    webhook_registry = WebhookManager(encrypt_fn=enc, decrypt_fn=dec)
 
 
 async def emit_event(event: str, data: Dict[str, Any]) -> None:
     """Fire-and-forget delivery to all webhooks registered for *event*."""
-    hooks = webhook_registry.hooks_for_event(event)
-    if not hooks:
-        return
-    payload = {"event": event, "timestamp": time.time(), "data": data}
-    for hook in hooks:
-        asyncio.create_task(_deliver_webhook(hook, payload))
+    await emit_webhook_event(event, data, webhook_registry)
 
 # ============================================================
 # Async Task Queue
@@ -1317,6 +1277,30 @@ _FALSE_BRANCH_HINTS = {
 # Application Setup
 # ============================================================
 
+# Interval between key-expiry checks (seconds).
+KEY_EXPIRY_CHECK_INTERVAL = 3600
+# Warn about keys expiring within this window (seconds) — 24 hours.
+KEY_EXPIRY_WARNING_WINDOW = 86400
+
+
+async def _key_expiry_watcher() -> None:
+    """Background loop that emits ``key.expiring_soon`` for nearly-expired keys."""
+    while True:
+        try:
+            await asyncio.sleep(KEY_EXPIRY_CHECK_INTERVAL)
+            expiring = api_key_manager.keys_expiring_within(KEY_EXPIRY_WARNING_WINDOW)
+            for key_rec in expiring:
+                await emit_event("key.expiring_soon", {
+                    "key_id": key_rec["id"],
+                    "name": key_rec.get("name"),
+                    "expires_at": key_rec.get("expires_at"),
+                })
+        except asyncio.CancelledError:
+            break
+        except Exception:
+            logger.exception("key_expiry_watcher error")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for database initialization and cleanup."""
@@ -1338,7 +1322,10 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing database...")
     await init_db()
     logger.info("Database initialization complete")
+    # Start background key-expiry watcher
+    expiry_task = asyncio.create_task(_key_expiry_watcher())
     yield
+    expiry_task.cancel()
     logger.info("Closing database connections...")
     await close_db_connections()
     logger.info("Database connections closed")
@@ -1543,6 +1530,14 @@ async def collect_metrics(request: Request, call_next):
     response = await call_next(request)
     duration_ms = (time.monotonic() - start) * 1000
     metrics.record_request(duration_ms, response.status_code, request.url.path)
+    # Emit request.failed webhook for server errors (5xx)
+    if response.status_code >= 500:
+        await emit_event("request.failed", {
+            "path": request.url.path,
+            "method": request.method,
+            "status_code": response.status_code,
+            "duration_ms": round(duration_ms, 2),
+        })
     return response
 
 
@@ -2123,6 +2118,9 @@ def _derive_fernet_key() -> bytes:
 
 
 FERNET_CIPHER = Fernet(_derive_fernet_key())
+
+# Now that FERNET_CIPHER is ready, re-init the webhook manager with encryption.
+_init_webhook_manager()
 
 
 def _encrypt_api_key(plain_value: str) -> str:
@@ -9252,6 +9250,10 @@ async def rotate_managed_key(
     result = api_key_manager.rotate(key_id, grace_period=body.grace_period)
     if not result:
         raise HTTPException(status_code=404, detail=f"Managed key '{key_id}' not found or inactive")
+    await emit_event("key.rotated", {
+        "key_id": key_id,
+        "grace_period": body.grace_period,
+    })
     return result
 
 
