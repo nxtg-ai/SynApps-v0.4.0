@@ -38,7 +38,10 @@ TOKEN_BUCKET_GLOBAL_BURST = int(os.environ.get("TOKEN_BUCKET_GLOBAL_BURST", "50"
 # Paths that are exempt from rate limiting (health checks, docs)
 EXEMPT_PATHS = frozenset({
     "/",
+    "/health",
     "/api/v1/health",
+    "/api/v1/health/detailed",
+    "/api/v1/connectors/health",
     "/api/v1/docs",
     "/api/v1/redoc",
     "/api/v1/openapi.json",

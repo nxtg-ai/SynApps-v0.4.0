@@ -692,8 +692,17 @@ class ConnectorStatus(str, Enum):
     """Health status for a connector."""
 
     HEALTHY = "healthy"
-    DEGRADED = "degraded"      # 1–2 consecutive failures
+    DEGRADED = "degraded"      # < 2000ms avg or < 5 errors in 5min
+    DOWN = "down"              # timeout or > 5 errors in 5min
     DISABLED = "disabled"      # ≥ disable_threshold consecutive failures
+
+
+# Window size for dashboard health metrics (seconds).
+HEALTH_WINDOW_SECONDS = 300  # 5 minutes
+# Cache TTL for aggregated health results.
+HEALTH_CACHE_TTL_SECONDS = 30
+# Timeout for individual connector ping.
+HEALTH_PROBE_TIMEOUT_SECONDS = 5
 
 
 class ConnectorHealthTracker:
@@ -701,6 +710,10 @@ class ConnectorHealthTracker:
 
     After ``disable_threshold`` consecutive probe failures, a connector is
     marked DISABLED.  A single successful probe re-enables it immediately.
+
+    Dashboard-oriented metrics (latency samples + errors) are kept in a
+    rolling 5-minute window so callers can derive
+    ``healthy / degraded / down`` status per the directive thresholds.
     """
 
     def __init__(self, disable_threshold: int = 3) -> None:
@@ -718,28 +731,50 @@ class ConnectorHealthTracker:
                 "total_failures": 0,
                 "last_check": None,
                 "last_failure_reason": None,
+                "last_success": None,
+                # Rolling window data
+                "latency_samples": [],   # list of (timestamp, ms)
+                "error_samples": [],     # list of timestamps
             }
         return self._state[connector]
 
-    def record_success(self, connector: str) -> None:
+    def _prune_window(self, s: Dict[str, Any], now: float) -> None:
+        """Drop samples older than HEALTH_WINDOW_SECONDS."""
+        cutoff = now - HEALTH_WINDOW_SECONDS
+        s["latency_samples"] = [
+            (ts, ms) for ts, ms in s["latency_samples"] if ts >= cutoff
+        ]
+        s["error_samples"] = [ts for ts in s["error_samples"] if ts >= cutoff]
+
+    def record_success(self, connector: str, latency_ms: float = 0.0) -> None:
         """Record a successful probe — resets failure count and re-enables."""
         with self._lock:
             s = self._ensure(connector)
+            now = time.time()
             s["consecutive_failures"] = 0
             s["status"] = ConnectorStatus.HEALTHY
             s["total_probes"] += 1
-            s["last_check"] = time.time()
+            s["last_check"] = now
             s["last_failure_reason"] = None
+            s["last_success"] = now
+            if latency_ms > 0:
+                s["latency_samples"].append((now, latency_ms))
+            self._prune_window(s, now)
 
-    def record_failure(self, connector: str, reason: str = "") -> None:
+    def record_failure(self, connector: str, reason: str = "", latency_ms: float = 0.0) -> None:
         """Record a failed probe — increments failure count, may disable."""
         with self._lock:
             s = self._ensure(connector)
+            now = time.time()
             s["consecutive_failures"] += 1
             s["total_probes"] += 1
             s["total_failures"] += 1
-            s["last_check"] = time.time()
+            s["last_check"] = now
             s["last_failure_reason"] = reason
+            s["error_samples"].append(now)
+            if latency_ms > 0:
+                s["latency_samples"].append((now, latency_ms))
+            self._prune_window(s, now)
             if s["consecutive_failures"] >= self._disable_threshold:
                 s["status"] = ConnectorStatus.DISABLED
             elif s["consecutive_failures"] >= 1:
@@ -751,6 +786,47 @@ class ConnectorHealthTracker:
             s = self._ensure(connector)
             return dict(s)
 
+    def get_dashboard_status(self, connector: str) -> Dict[str, Any]:
+        """Return dashboard-oriented status with windowed metrics.
+
+        Derives a ``dashboard_status`` according to the directive thresholds:
+        - *healthy*:  avg latency < 500ms AND 0 errors in last 5min
+        - *degraded*: avg latency < 2000ms OR < 5 errors in last 5min
+        - *down*:     timeout OR ≥ 5 errors in last 5min
+        """
+        with self._lock:
+            s = self._ensure(connector)
+            now = time.time()
+            self._prune_window(s, now)
+
+            latencies = [ms for _, ms in s["latency_samples"]]
+            avg_latency = (sum(latencies) / len(latencies)) if latencies else 0.0
+            error_count = len(s["error_samples"])
+
+            # Determine dashboard status
+            if s["status"] == ConnectorStatus.DISABLED:
+                dashboard_status = ConnectorStatus.DOWN
+            elif error_count >= 5 or avg_latency >= 2000:
+                dashboard_status = ConnectorStatus.DOWN
+            elif error_count >= 1 or avg_latency >= 500:
+                dashboard_status = ConnectorStatus.DEGRADED
+            else:
+                dashboard_status = ConnectorStatus.HEALTHY
+
+            return {
+                "status": s["status"],
+                "dashboard_status": dashboard_status,
+                "consecutive_failures": s["consecutive_failures"],
+                "total_probes": s["total_probes"],
+                "total_failures": s["total_failures"],
+                "last_check": s["last_check"],
+                "last_success": s["last_success"],
+                "last_failure_reason": s["last_failure_reason"],
+                "avg_latency_ms": round(avg_latency, 2),
+                "error_count_5m": error_count,
+                "sample_count_5m": len(latencies),
+            }
+
     def is_disabled(self, connector: str) -> bool:
         with self._lock:
             s = self._ensure(connector)
@@ -759,6 +835,13 @@ class ConnectorHealthTracker:
     def all_statuses(self) -> Dict[str, Dict[str, Any]]:
         with self._lock:
             return {name: dict(s) for name, s in self._state.items()}
+
+    def all_dashboard_statuses(self) -> Dict[str, Dict[str, Any]]:
+        """Return dashboard-oriented statuses for every tracked connector."""
+        result: Dict[str, Dict[str, Any]] = {}
+        for name in list(self._state.keys()):
+            result[name] = self.get_dashboard_status(name)
+        return result
 
     def reset(self) -> None:
         with self._lock:
@@ -771,13 +854,18 @@ class ConnectorHealthTracker:
 
 connector_health = ConnectorHealthTracker(disable_threshold=3)
 
+# Cache for probe_all_connectors results
+_health_cache: Dict[str, Any] = {"results": None, "timestamp": 0.0}
+
 
 async def probe_connector(connector_name: str) -> Dict[str, Any]:
     """Run a lightweight health probe for a connector.
 
-    Uses ``validate_config()`` on the LLM provider adapter as the probe.
-    Returns ``{"connector": name, "status": ..., "detail": ...}``.
+    Uses a HEAD/GET ping against the provider's base URL when possible,
+    falling back to ``validate_config()`` for providers without an HTTP
+    endpoint. Respects ``HEALTH_PROBE_TIMEOUT_SECONDS``.
     """
+    start = time.time()
     try:
         provider_cls = LLMProviderRegistry._providers.get(connector_name)
         if provider_cls is None:
@@ -785,38 +873,102 @@ async def probe_connector(connector_name: str) -> Dict[str, Any]:
             return {
                 "connector": connector_name,
                 "reachable": False,
+                "latency_ms": 0.0,
                 "detail": f"Unknown connector: {connector_name}",
             }
 
         default_cfg = LLMNodeConfigModel(provider=connector_name)
         adapter = provider_cls(default_cfg)
-        is_valid, reason = adapter.validate_config()
 
-        if is_valid:
-            connector_health.record_success(connector_name)
-            return {"connector": connector_name, "reachable": True, "detail": ""}
-        else:
-            connector_health.record_failure(connector_name, reason)
-            return {"connector": connector_name, "reachable": False, "detail": reason}
+        # First validate config (API key present?)
+        is_valid, reason = adapter.validate_config()
+        if not is_valid:
+            elapsed = (time.time() - start) * 1000
+            connector_health.record_failure(connector_name, reason, latency_ms=elapsed)
+            return {
+                "connector": connector_name,
+                "reachable": False,
+                "latency_ms": round(elapsed, 2),
+                "detail": reason,
+            }
+
+        # Attempt lightweight HTTP ping if adapter has a base_url
+        base_url = getattr(adapter, "base_url", None)
+        if base_url:
+            try:
+                async with httpx.AsyncClient(timeout=HEALTH_PROBE_TIMEOUT_SECONDS) as client:
+                    resp = await client.head(base_url)
+                elapsed = (time.time() - start) * 1000
+                connector_health.record_success(connector_name, latency_ms=elapsed)
+                return {
+                    "connector": connector_name,
+                    "reachable": True,
+                    "latency_ms": round(elapsed, 2),
+                    "detail": "",
+                }
+            except Exception as ping_exc:
+                elapsed = (time.time() - start) * 1000
+                connector_health.record_failure(
+                    connector_name, f"Ping failed: {ping_exc}", latency_ms=elapsed,
+                )
+                return {
+                    "connector": connector_name,
+                    "reachable": False,
+                    "latency_ms": round(elapsed, 2),
+                    "detail": f"Ping failed: {ping_exc}",
+                }
+
+        # No base_url — treat validated config as reachable
+        elapsed = (time.time() - start) * 1000
+        connector_health.record_success(connector_name, latency_ms=elapsed)
+        return {
+            "connector": connector_name,
+            "reachable": True,
+            "latency_ms": round(elapsed, 2),
+            "detail": "",
+        }
     except Exception as exc:
-        connector_health.record_failure(connector_name, str(exc))
-        return {"connector": connector_name, "reachable": False, "detail": str(exc)}
+        elapsed = (time.time() - start) * 1000
+        connector_health.record_failure(connector_name, str(exc), latency_ms=elapsed)
+        return {
+            "connector": connector_name,
+            "reachable": False,
+            "latency_ms": round(elapsed, 2),
+            "detail": str(exc),
+        }
 
 
 async def probe_all_connectors() -> List[Dict[str, Any]]:
-    """Probe all known connectors and return their statuses."""
+    """Probe all known connectors and return their statuses.
+
+    Results are cached for ``HEALTH_CACHE_TTL_SECONDS`` seconds to avoid
+    hammering upstream providers on every dashboard refresh.
+    """
+    now = time.time()
+    if (
+        _health_cache["results"] is not None
+        and (now - _health_cache["timestamp"]) < HEALTH_CACHE_TTL_SECONDS
+    ):
+        return _health_cache["results"]
+
     results: List[Dict[str, Any]] = []
     for name in LLMProviderRegistry._providers:
         probe_result = await probe_connector(name)
-        state = connector_health.get_status(name)
+        state = connector_health.get_dashboard_status(name)
         results.append({
             **probe_result,
             "status": state["status"],
+            "dashboard_status": state["dashboard_status"],
             "consecutive_failures": state["consecutive_failures"],
             "total_probes": state["total_probes"],
             "total_failures": state["total_failures"],
             "last_check": state["last_check"],
+            "last_success": state["last_success"],
+            "avg_latency_ms": state["avg_latency_ms"],
+            "error_count_5m": state["error_count_5m"],
         })
+    _health_cache["results"] = results
+    _health_cache["timestamp"] = now
     return results
 
 
@@ -8220,15 +8372,28 @@ async def connectors_health(
 ):
     """Run health probes on all connectors and return per-connector status.
 
-    Each connector is probed with a lightweight ``validate_config()`` call.
-    After 3 consecutive failures a connector is auto-disabled; a single
-    success re-enables it.
+    Each connector is probed with a lightweight HTTP HEAD ping (5 s timeout).
+    Results are cached for 30 s to avoid hammering upstream on every request.
+
+    Dashboard statuses follow these thresholds:
+    - *healthy*:  avg latency < 500 ms AND 0 errors in last 5 min
+    - *degraded*: avg latency < 2000 ms OR < 5 errors in last 5 min
+    - *down*:     timeout OR ≥ 5 errors in last 5 min
     """
     results = await probe_all_connectors()
     summary = {
-        "healthy": sum(1 for r in results if r["status"] == ConnectorStatus.HEALTHY),
-        "degraded": sum(1 for r in results if r["status"] == ConnectorStatus.DEGRADED),
-        "disabled": sum(1 for r in results if r["status"] == ConnectorStatus.DISABLED),
+        "healthy": sum(
+            1 for r in results if r["dashboard_status"] == ConnectorStatus.HEALTHY
+        ),
+        "degraded": sum(
+            1 for r in results if r["dashboard_status"] == ConnectorStatus.DEGRADED
+        ),
+        "down": sum(
+            1 for r in results if r["dashboard_status"] == ConnectorStatus.DOWN
+        ),
+        "disabled": sum(
+            1 for r in results if r["status"] == ConnectorStatus.DISABLED
+        ),
     }
     return {
         "connectors": results,
@@ -8245,13 +8410,17 @@ async def probe_single_connector(
 ):
     """Probe a single connector and return its health state."""
     probe_result = await probe_connector(connector_name)
-    state = connector_health.get_status(connector_name)
+    state = connector_health.get_dashboard_status(connector_name)
     return {
         **probe_result,
         "status": state["status"],
+        "dashboard_status": state["dashboard_status"],
         "consecutive_failures": state["consecutive_failures"],
         "total_probes": state["total_probes"],
         "last_check": state["last_check"],
+        "last_success": state["last_success"],
+        "avg_latency_ms": state["avg_latency_ms"],
+        "error_count_5m": state["error_count_5m"],
     }
 
 
@@ -9738,8 +9907,25 @@ def _health_payload() -> Dict[str, Any]:
     active_connectors = sum(
         1 for p in LLMProviderRegistry.list_providers() if p.configured
     )
+
+    # Derive aggregate status from connector dashboard statuses.
+    # - healthy: all connectors healthy (or none tracked yet)
+    # - degraded: any connector degraded
+    # - down: any connector down or disabled
+    dashboard = connector_health.all_dashboard_statuses()
+    if dashboard:
+        statuses = {v["dashboard_status"] for v in dashboard.values()}
+        if ConnectorStatus.DOWN in statuses:
+            aggregate = "down"
+        elif ConnectorStatus.DEGRADED in statuses:
+            aggregate = "degraded"
+        else:
+            aggregate = "healthy"
+    else:
+        aggregate = "healthy"
+
     return {
-        "status": "healthy",
+        "status": aggregate,
         "service": "SynApps Orchestrator API",
         "version": API_VERSION,
         "uptime": uptime_seconds,

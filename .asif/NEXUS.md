@@ -1287,3 +1287,35 @@ _(Project team: add questions for ASIF CoS here. They will be answered during th
 > **26 new tests** in `test_token_bucket.py`: bucket unit (8), registry unit (8), defaults (3), middleware integration (7). **1022 total tests passing**, zero regressions.
 >
 > **Started**: 2026-02-23 07:05 | **Completed**: 2026-02-23 07:15 | **Actual**: M (~10min)
+
+### DIRECTIVE-NXTG-20260223-12 — Connector Health Dashboard
+**From**: NXTG-AI CoS | **Priority**: P1
+**Injected**: 2026-02-23 10:15 | **Estimate**: M | **Status**: SHIPPED
+
+> **Context**: Stream B: SynApps aggregates multiple upstream APIs. Operators need at-a-glance health visibility. Which connectors are up? Which are degraded? What's the latency? This is the operational dashboard.
+
+**Action Items**:
+1. [x] Add `GET /api/v1/connectors/health` — returns health status for all registered connectors:
+   - Status: `healthy` (< 500ms, 0 errors last 5min), `degraded` (< 2000ms or < 5 errors), `down` (timeout or > 5 errors)
+   - Metrics: avg latency (last 5min), error count, last successful request timestamp
+2. [x] Health check implementation: each connector gets a lightweight ping endpoint test (HEAD request or minimal GET)
+3. [x] Aggregate health: `GET /api/v1/health` — overall system status (healthy if all connectors healthy, degraded if any degraded, down if any down)
+4. [x] Tests: connector health check, status transitions, aggregate logic, endpoint responses — 1100+ tests, zero regressions. Commit and push.
+
+**Constraints**:
+- Health checks must not count toward rate limits
+- Timeout per connector health check: 5 seconds max
+- Cache health results for 30 seconds (don't hammer upstream on every request)
+
+**Response** (filled by project team):
+> **Shipped 2026-02-23.** All four action items implemented:
+>
+> **1. Enhanced `GET /api/v1/connectors/health`** — Each connector now returns `dashboard_status` (healthy/degraded/down) derived from rolling 5-min window metrics. Fields include `avg_latency_ms`, `error_count_5m`, `last_success`, `latency_ms` (per-probe). Summary includes `healthy`, `degraded`, `down`, and `disabled` counts.
+>
+> **2. Lightweight HTTP HEAD ping** — `probe_connector()` now issues an async `httpx.AsyncClient.head()` against each provider's `base_url` with `HEALTH_PROBE_TIMEOUT_SECONDS=5`. Falls back to `validate_config()` for providers without an HTTP endpoint. Latency is measured and recorded in the tracker.
+>
+> **3. Aggregate health on `GET /api/v1/health`** — `_health_payload()` now derives overall `status` from `connector_health.all_dashboard_statuses()`: healthy (all healthy or none tracked), degraded (any degraded), down (any down/disabled).
+>
+> **4. Tests** — 47 new tests in `test_health_dashboard_d12.py` covering: ConnectorStatus.DOWN enum, latency/error windowed metrics, dashboard_status derivation thresholds, all_dashboard_statuses(), probe latency, cache TTL, endpoint response structure, aggregate health transitions, rate-limit exemptions, status transition scenarios. **1128 tests total, 0 regressions.**
+>
+> **Constraints met:** Health endpoints (`/api/v1/health`, `/api/v1/health/detailed`, `/api/v1/connectors/health`) added to `EXEMPT_PATHS` in rate_limiter.py. Probe timeout is 5s. Results cached for 30s via `_health_cache`.
