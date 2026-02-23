@@ -191,6 +191,7 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 | 2026-02-22 | DIRECTIVE-NXTG-20260222-01 → COMPLETE. 7 Playwright E2E tests: core workflow journey, 2Brain template verification, auth flow. All passing. UAT-GUIDE.md created. |
 | 2026-02-22 | DIRECTIVE-NXTG-20260222-02 → COMPLETE. UAT-GUIDE.md rewritten as human UX evaluation guide with 2Brain dogfood deep-dive, verdict template, and 5 test inputs. |
 | 2026-02-22 | DIRECTIVE-NXTG-20260222-02 (2Brain Integration Validation) → COMPLETE. 8 integration tests validating full pipeline: Start → LLM → Code → Memory → End. All 4 categories + unknown fallback + API roundtrip passing. No issues found. 538 total backend tests. |
+| 2026-02-22 | DIRECTIVE-NXTG-20260222-03 (Content-Engine Workflow Template) → COMPLETE. YAML + TypeScript templates, 9 integration tests, README Portfolio Templates section. Second dogfood template after 2Brain. |
 
 ---
 
@@ -520,3 +521,51 @@ _(Project team: add questions for ASIF CoS here. They will be answered during th
 > **Pre-existing issue noted**: 5 tests in `test_main.py` fail with 429 when run as part of the full suite (rate limiter accumulation). All pass in isolation. Not related to this directive.
 >
 > **Started**: 2026-02-22 22:05 | **Completed**: 2026-02-22 22:20 | **Actual**: M (~15min)
+
+### PI-004 — Stream B Market Intelligence (2026-02-22)
+**Source**: NXTG-AI CoS Enrichment Cycle | **Confidence**: HIGH
+
+**Market Assessment**: API aggregation market $16.29B (2026), ~17% CAGR — MATURE AND SATURATED. 7+ funded unified API players (Composio 500+ integrations, Merge enterprise, Apideck, Nango open-source, Paragon) + Zapier/Make/n8n.
+
+**VERDICT: STAY INTERNAL**. External PMF is 3/10 — cannot compete with zero connectors, Python 3.9, single developer. Internal PMF is 7/10 — strong fit as NXTG.AI portfolio API fabric (2Brain, content-engine, Polymath).
+
+**Modernization Prerequisite**: Python 3.12+, Pydantic v2 migration before any expansion. AI API aggregation niche (unify LLM providers) is less crowded than general API aggregation — potential pivot path if resources allow.
+
+**Cross-Project Synergy**: SynApps → 2Brain (first consumer, replacing n8n). SynApps → content-engine (API orchestration for multi-source content). SynApps → Polymath (monitoring API unification).
+
+**Action**: 2Brain validation COMPLETE this round. Focus on portfolio dogfooding — prove value through internal consumers before considering external positioning.
+
+### DIRECTIVE-NXTG-20260222-03 — Content-Engine Workflow Template
+**From**: NXTG-AI CoS | **Priority**: P2
+**Injected**: 2026-02-22 23:30 | **Estimate**: M (~15min) | **Status**: COMPLETE (2026-02-22)
+
+> **Estimate key**: S = 2-10min, M = 10-30min, L = 30-90min
+
+**Context**: Stream B confirms SynApps stays internal. Next consumer after 2Brain: nxtg-content-engine (P-14). Content-engine needs to orchestrate multi-source research → article generation → publishing. SynApps is the API fabric that connects these.
+
+**Action Items**:
+1. [x] Create `templates/content_engine.yaml` — workflow template for content-engine integration:
+   - Step 1: Research (fetch from web sources via API)
+   - Step 2: Enrich (pass through LLM summarization)
+   - Step 3: Format (structure as markdown article)
+   - Step 4: Store (save to output directory)
+2. [x] Create `tests/test_content_engine_template.py` — validate template structure loads and validates
+3. [x] Document the template in README under "Portfolio Templates" section
+4. [x] Run full test suite. Commit and push.
+
+**Constraints**:
+- Template only — do NOT implement the actual API calls
+- Follow the same pattern as the 2Brain template (N-16)
+
+**Response** (filled by project team):
+> **9/9 integration tests passing** in `apps/orchestrator/tests/test_content_engine_integration.py` (1.74s).
+>
+> **Deliverables**:
+> 1. `templates/content_engine.yaml` — YAML workflow definition: Start → HTTP (Research) → LLM (Enrich) → Code (Format) → Memory (Store) → End. 6 nodes, 5 edges.
+> 2. `apps/web-frontend/src/templates/ContentEngine.ts` — Frontend TypeScript template (registered in gallery alongside 4 existing templates). Added `http_request` to frontend nodeTypes registry.
+> 3. `apps/orchestrator/tests/test_content_engine_integration.py` — 9 tests: 6 structural (node count, edge count, required types, edge validity, linear chain order, YAML-loads-and-matches) + 3 integration (full pipeline success, empty summary fallback, API endpoint roundtrip). HTTP and LLM mocked per constraint; Code and Memory execute for real.
+> 4. README.md updated with "Portfolio Templates" section documenting both 2Brain and Content Engine templates.
+>
+> **Frontend**: Production build verified, 101 tests passing. New template appears in gallery.
+>
+> **Started**: 2026-02-22 23:35 | **Completed**: 2026-02-22 23:50 | **Actual**: M (~15min)

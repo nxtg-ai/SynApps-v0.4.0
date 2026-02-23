@@ -107,6 +107,17 @@ SynApps follows a microkernel architecture:
 | CI/CD | GitHub Actions, Codecov, Docker |
 | Deploy | Fly.io (backend), Vercel (frontend) |
 
+## Portfolio Templates
+
+SynApps ships with workflow templates that validate the platform against real NXTG.AI portfolio use cases.
+
+| Template | Consumer | Pipeline | Nodes |
+|----------|----------|----------|-------|
+| **2Brain Inbox Triage** | 2Brain (P-13) | Capture → Classify → Structure → Store | Start → LLM → Code → Memory → End |
+| **Content Engine Pipeline** | nxtg-content-engine (P-14) | Research → Summarize → Format → Store | Start → HTTP → LLM → Code → Memory → End |
+
+Templates are available in the frontend gallery (`apps/web-frontend/src/templates/`) and as standalone YAML definitions (`templates/`).
+
 ## Deployment
 
 - **Frontend:** Vercel

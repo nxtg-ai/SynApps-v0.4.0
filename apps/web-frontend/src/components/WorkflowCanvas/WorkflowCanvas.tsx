@@ -61,6 +61,7 @@ const nodeTypes = {
   for_each: AppletNode,
   if_else: AppletNode,
   code: AppletNode,
+  http_request: AppletNode,
 };
 
 const edgeTypes = {

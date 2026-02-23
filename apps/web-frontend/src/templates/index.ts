@@ -6,13 +6,15 @@ import { blogPostWriterTemplate } from './BlogPostWriter';
 import { illustratedStoryTemplate } from './IllustratedStory';
 import { chatbotWithMemoryTemplate } from './ChatbotWithMemory';
 import { twoBrainInboxTemplate } from './TwoBrainInbox';
+import { contentEngineTemplate } from './ContentEngine';
 
 // Export all templates
 export const templates: FlowTemplate[] = [
   blogPostWriterTemplate,
   illustratedStoryTemplate,
   chatbotWithMemoryTemplate,
-  twoBrainInboxTemplate
+  twoBrainInboxTemplate,
+  contentEngineTemplate
 ];
 
 // Helper function to get a template by ID
