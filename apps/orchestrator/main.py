@@ -8202,6 +8202,139 @@ async def ai_suggest(
     )
 
 
+# ---------------------------------------------------------------------------
+# Workflow History + Audit Trail endpoints
+# ---------------------------------------------------------------------------
+
+HISTORY_VALID_STATUSES = frozenset({"idle", "running", "success", "error"})
+
+
+async def _build_history_entry(run: Dict[str, Any]) -> Dict[str, Any]:
+    """Build a history entry from a run dict, enriched with flow name."""
+    flow_id = run.get("flow_id")
+    flow_name = None
+    node_count = 0
+    if flow_id:
+        flow = await FlowRepository.get_by_id(flow_id)
+        if flow:
+            flow_name = flow.get("name")
+            node_count = len(flow.get("nodes", []))
+
+    trace = _extract_trace_from_run(run)
+    step_count = len(trace.get("nodes", []))
+    steps_succeeded = sum(1 for n in trace.get("nodes", []) if n.get("status") == "success")
+    steps_failed = sum(1 for n in trace.get("nodes", []) if n.get("status") == "error")
+
+    input_data = run.get("input_data")
+    input_summary = None
+    if isinstance(input_data, dict):
+        input_summary = {k: (str(v)[:100] if isinstance(v, str) and len(v) > 100 else v)
+                         for k, v in list(input_data.items())[:10]}
+
+    output_summary = None
+    results = run.get("results")
+    if isinstance(results, dict):
+        output_keys = [k for k in results.keys() if k != TRACE_RESULTS_KEY]
+        output_summary = {"keys": output_keys[:10], "total_keys": len(output_keys)}
+
+    return {
+        "run_id": run.get("run_id") or run.get("id"),
+        "flow_id": flow_id,
+        "flow_name": flow_name,
+        "status": run.get("status"),
+        "start_time": run.get("start_time"),
+        "end_time": run.get("end_time"),
+        "duration_ms": trace.get("duration_ms"),
+        "node_count": node_count,
+        "step_count": step_count,
+        "steps_succeeded": steps_succeeded,
+        "steps_failed": steps_failed,
+        "error": run.get("error"),
+        "input_summary": input_summary,
+        "output_summary": output_summary,
+    }
+
+
+@v1.get("/history", tags=["History"])
+async def list_execution_history(
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(20, ge=1, le=100, description="Items per page"),
+    status: Optional[str] = Query(None, description="Filter by status: idle, running, success, error"),
+    template: Optional[str] = Query(None, description="Filter by flow/template name (substring match)"),
+    start_after: Optional[float] = Query(None, description="Filter runs started after this Unix timestamp"),
+    start_before: Optional[float] = Query(None, description="Filter runs started before this Unix timestamp"),
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
+    """List past workflow executions with filtering by status, date range, and template name."""
+    if status and status not in HISTORY_VALID_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid status. Valid: {sorted(HISTORY_VALID_STATUSES)}",
+        )
+
+    all_runs = await WorkflowRunRepository.get_all()
+
+    # Sort by start_time descending (most recent first)
+    all_runs.sort(key=lambda r: r.get("start_time", 0), reverse=True)
+
+    # Apply filters
+    if status:
+        all_runs = [r for r in all_runs if r.get("status") == status]
+
+    if start_after is not None:
+        all_runs = [r for r in all_runs if (r.get("start_time") or 0) >= start_after]
+
+    if start_before is not None:
+        all_runs = [r for r in all_runs if (r.get("start_time") or 0) <= start_before]
+
+    # Template/flow name filter requires flow lookup
+    if template:
+        template_lower = template.lower()
+        filtered = []
+        for r in all_runs:
+            fid = r.get("flow_id")
+            if fid:
+                flow = await FlowRepository.get_by_id(fid)
+                if flow and template_lower in (flow.get("name", "").lower()):
+                    filtered.append(r)
+        all_runs = filtered
+
+    total = len(all_runs)
+
+    # Paginate
+    start = (page - 1) * page_size
+    page_runs = all_runs[start: start + page_size]
+
+    entries = [await _build_history_entry(r) for r in page_runs]
+
+    return {
+        "history": entries,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }
+
+
+@v1.get("/history/{run_id}", tags=["History"])
+async def get_execution_detail(
+    run_id: str,
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
+    """Get full execution detail for a past run, including step-by-step trace."""
+    run = await WorkflowRunRepository.get_by_run_id(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+
+    entry = await _build_history_entry(run)
+    trace = _extract_trace_from_run(run)
+
+    return {
+        **entry,
+        "input_data": run.get("input_data"),
+        "trace": trace,
+    }
+
+
 @v1.get("/health", tags=["Health"])
 async def health_v1():
     """Service health check — returns status, version, and uptime."""

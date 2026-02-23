@@ -201,6 +201,7 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 | 2026-02-23 | DIRECTIVE-NXTG-20260222-10 (Webhook Support + Event System) → COMPLETE. `WebhookRegistry`, 5 event types, HMAC-SHA256 signing, 3-retry exponential backoff delivery, CRUD endpoints. 20 tests. OpenAPI re-exported (33 paths). |
 | 2026-02-23 | DIRECTIVE-NXTG-20260222-11 (Async Task Queue + Background Execution) → COMPLETE. `TaskQueue` with status/progress tracking, `POST /templates/{id}/run-async`, `GET /tasks/{id}`, `GET /tasks?status=`. 16 tests. OpenAPI re-exported (36 paths). |
 | 2026-02-23 | DIRECTIVE-NXTG-20260222-12 (API Key Authentication) → COMPLETE. `AdminKeyRegistry` + `require_master_key` dependency, 3 admin endpoints, auth enforced on 9 previously-open endpoints. 31 tests. OpenAPI re-exported (38 paths). |
+| 2026-02-23 | DIRECTIVE-NXTG-20260222-13 (Workflow History + Audit Trail) → COMPLETE. `GET /history` with status/template/date filtering + pagination, `GET /history/{id}` with step traces. 16 tests. OpenAPI re-exported (40 paths). |
 
 ---
 
@@ -914,3 +915,35 @@ _(Project team: add questions for ASIF CoS here. They will be answered during th
 > **OpenAPI spec** re-exported: now 38 paths (was 36).
 >
 > **Started**: 2026-02-23 | **Completed**: 2026-02-23 | **Actual**: M (~12min)
+
+### DIRECTIVE-NXTG-20260222-13 — Workflow History + Audit Trail
+**From**: NXTG-AI CoS | **Priority**: P1
+**Injected**: 2026-02-23 00:05 | **Estimate**: M | **Status**: COMPLETE (2026-02-23)
+
+**Action Items**:
+1. [x] Store execution history: template name, start/end time, status, step-by-step log, input/output summary
+2. [x] Add `GET /api/v1/history` — list past executions with filtering (status, date range, template)
+3. [x] Add `GET /api/v1/history/{id}` — full execution detail with step traces
+4. [x] Tests for history storage, retrieval, filtering — zero regressions
+
+**Response** (filled by project team):
+> **16/16 tests passing** in `apps/orchestrator/tests/test_execution_history.py` (0.70s).
+>
+> **Implementation**:
+> 1. **`_build_history_entry()`** — enriches a `WorkflowRun` record with flow name (from `FlowRepository`), step counts (from execution trace), input summary (truncated to 100 chars per value, max 10 keys), output summary (key list), and duration_ms.
+> 2. **`GET /api/v1/history`** — lists past executions sorted newest-first with pagination. Filters: `status` (idle/running/success/error), `template` (flow name substring match, case-insensitive), `start_after`/`start_before` (Unix timestamp range). Auth-protected.
+> 3. **`GET /api/v1/history/{run_id}`** — full execution detail including complete `input_data`, step-by-step `trace` (via `_extract_trace_from_run`), enriched metadata. Auth-protected.
+> 4. Builds on existing infrastructure: `WorkflowRunRepository`, `FlowRepository`, `_extract_trace_from_run()`. No new models or migrations needed.
+>
+> **Test coverage** (16 tests in 5 categories):
+> | Category | Count | What |
+> |----------|-------|------|
+> | List basics | 5 | returns 200, empty list, lists runs, newest-first sorting, entry shape |
+> | Filtering | 5 | status=success, status=error, invalid status 400, template substring, date range |
+> | Pagination | 1 | page/page_size respected, last page partial |
+> | Detail endpoint | 4 | returns 200, has trace, not found 404, error run has error field |
+> | Constants | 1 | HISTORY_VALID_STATUSES |
+>
+> **OpenAPI spec** re-exported: now 40 paths (was 38).
+>
+> **Started**: 2026-02-23 | **Completed**: 2026-02-23 | **Actual**: S (~10min)
