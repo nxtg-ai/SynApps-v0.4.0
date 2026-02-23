@@ -205,6 +205,7 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 | 2026-02-23 | DIRECTIVE-NXTG-20260222-14 (Rate Limiting + Request Throttling) → COMPLETE. Per-API-key configurable rate limits via `AdminKeyRegistry.create(rate_limit=N)`. Admin keys recognised in `get_authenticated_user()` + `_resolve_rate_limit_user()`. 14 new tests. Conftest rate limiter reset. 700 total tests passing. |
 | 2026-02-23 | DIRECTIVE-NXTG-20260223-01 (Template Marketplace + Import/Export) → COMPLETE. `TemplateRegistry` with versioning, 4 new endpoints (import, export, versions, list). Export falls back to YAML on disk. 30 tests. OpenAPI re-exported (44 paths). 730 total tests passing. |
 | 2026-02-23 | DIRECTIVE-NXTG-20260223-02 (Environment Configuration + .env Support) → COMPLETE. `AppConfig` class centralises all env vars with `validate()` and `to_dict(redact_secrets=True)`. Startup validation fails fast in production. `GET /config` endpoint. 23 tests. OpenAPI re-exported (45 paths). 753 total tests passing. |
+| 2026-02-23 | DIRECTIVE-NXTG-20260223-03 (Logging Framework + Request Tracing) → COMPLETE. `_JSONFormatter` structured JSON logs, `_current_request_id` contextvar, `request_id_tracing` middleware with `X-Request-ID` header. CORS updated. 16 tests. 769 total tests passing. |
 
 ---
 
@@ -1089,3 +1090,46 @@ _(Project team: add questions for ASIF CoS here. They will be answered during th
 > **Full suite**: 753 tests passing, zero regressions.
 >
 > **Started**: 2026-02-23 | **Completed**: 2026-02-23 | **Actual**: M (~10min)
+
+### DIRECTIVE-NXTG-20260223-03 — Logging Framework + Request Tracing
+**From**: NXTG-AI CoS | **Priority**: P1
+**Injected**: 2026-02-23 02:25 | **Estimate**: M | **Status**: COMPLETE
+
+**Action Items**:
+1. [x] Add structured logging with request ID tracing — each request gets unique ID, logged in all operations
+2. [x] Log format: JSON with timestamp, level, request_id, endpoint, duration, status
+3. [x] Add `X-Request-ID` response header — clients can use for debugging
+4. [x] Tests for request ID generation, propagation, logging — zero regressions
+
+**Response** (filled by project team):
+> **Shipped.** Structured JSON logging with per-request ID tracing is live.
+>
+> **`_JSONFormatter`** — structured JSON log formatter:
+> - Fields: `timestamp`, `level`, `logger`, `message`, `request_id`
+> - Extra structured fields on request logs: `endpoint`, `method`, `status`, `duration_ms`, `client_ip`
+> - Exception info included when present
+>
+> **`_current_request_id`** — `contextvars.ContextVar` propagated through entire request lifecycle. Default: `"-"` outside request context.
+>
+> **`request_id_tracing` middleware** (registered outermost):
+> - Generates `uuid4().hex[:16]` per request, or accepts client-provided `X-Request-ID`
+> - Sets `request.state.request_id` for downstream access
+> - Sets contextvar so all `logger.*()` calls include the request ID
+> - Sets `X-Request-ID` response header on every response (success and error)
+> - Logs structured JSON: `GET /api/v1/flows 200 3.2ms`
+>
+> **CORS**: `X-Request-ID` added to `expose_headers` for frontend access.
+>
+> **16 tests** in `test_request_tracing.py`:
+>
+> | Category | Count | Coverage |
+> |----------|-------|------|
+> | _JSONFormatter | 6 | valid JSON, request_id from contextvar, extra fields, exception, default ID, timestamp |
+> | X-Request-ID header | 6 | present on response, auto-generated 16 chars, unique per request, client-provided echo, on errors, on POST |
+> | Contextvar | 2 | default value, set/reset |
+> | Structured logging | 1 | captured JSON output with request_id, method, endpoint, status, duration_ms |
+> | CORS | 1 | X-Request-ID in expose_headers |
+>
+> **Full suite**: 769 tests passing, zero regressions.
+>
+> **Started**: 2026-02-23 | **Completed**: 2026-02-23 | **Actual**: S (~10min)

@@ -102,12 +102,53 @@ try:
 except Exception:  # pragma: no cover - non-Unix fallback
     resource = None  # type: ignore[assignment]
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+# ============================================================
+# Structured JSON Logging with Request-ID tracing
+# ============================================================
+import contextvars
+
+_current_request_id: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "request_id", default="-"
 )
-logger = logging.getLogger("orchestrator")
+
+
+class _JSONFormatter(logging.Formatter):
+    """Structured JSON log formatter with request_id tracing."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        entry = {
+            "timestamp": self.formatTime(record, self.datefmt),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+            "request_id": _current_request_id.get("-"),
+        }
+        if record.exc_info and record.exc_info[0] is not None:
+            entry["exception"] = self.formatException(record.exc_info)
+        # Include extra structured fields if set by middleware
+        for key in ("endpoint", "method", "status", "duration_ms", "client_ip"):
+            val = getattr(record, key, None)
+            if val is not None:
+                entry[key] = val
+        return json.dumps(entry, default=str)
+
+
+def _setup_logging() -> logging.Logger:
+    """Configure the root orchestrator logger with JSON structured output."""
+    _logger = logging.getLogger("orchestrator")
+    _logger.setLevel(logging.INFO)
+
+    # Only add our handler if none exist (avoid duplicate handlers on reload)
+    if not _logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(_JSONFormatter())
+        _logger.addHandler(handler)
+        _logger.propagate = False
+
+    return _logger
+
+
+logger = _setup_logging()
 
 # ============================================================
 # Constants
@@ -828,6 +869,7 @@ app.add_middleware(
         "X-RateLimit-Remaining",
         "X-RateLimit-Reset",
         "Retry-After",
+        "X-Request-ID",
     ],
     max_age=600 if _is_production else 0,
 )
@@ -909,6 +951,42 @@ async def collect_metrics(request: Request, call_next):
     duration_ms = (time.monotonic() - start) * 1000
     metrics.record_request(duration_ms, response.status_code, request.url.path)
     return response
+
+
+@app.middleware("http")
+async def request_id_tracing(request: Request, call_next):
+    """Assign a unique request ID, propagate it via contextvar, and log the request."""
+    # Accept client-provided request ID or generate one
+    request_id = request.headers.get("X-Request-ID", "").strip() or uuid.uuid4().hex[:16]
+    request.state.request_id = request_id
+
+    # Set contextvar so all log calls during this request include the ID
+    token = _current_request_id.set(request_id)
+    start = time.monotonic()
+    try:
+        response = await call_next(request)
+        duration_ms = round((time.monotonic() - start) * 1000, 2)
+
+        response.headers["X-Request-ID"] = request_id
+
+        # Structured request log (while contextvar is still set)
+        logger.info(
+            "%s %s %s %.1fms",
+            request.method,
+            request.url.path,
+            response.status_code,
+            duration_ms,
+            extra={
+                "endpoint": request.url.path,
+                "method": request.method,
+                "status": response.status_code,
+                "duration_ms": duration_ms,
+                "client_ip": request.client.host if request.client else "unknown",
+            },
+        )
+        return response
+    finally:
+        _current_request_id.reset(token)
 
 
 # ============================================================
