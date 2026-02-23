@@ -200,6 +200,7 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 | 2026-02-23 | DIRECTIVE-NXTG-20260222-09 (Template Validation + Error Reporting) → COMPLETE. `validate_template()` with DFS circular dependency detection, `POST /templates/validate` dry-run endpoint. 18 tests. OpenAPI re-exported (31 paths). |
 | 2026-02-23 | DIRECTIVE-NXTG-20260222-10 (Webhook Support + Event System) → COMPLETE. `WebhookRegistry`, 5 event types, HMAC-SHA256 signing, 3-retry exponential backoff delivery, CRUD endpoints. 20 tests. OpenAPI re-exported (33 paths). |
 | 2026-02-23 | DIRECTIVE-NXTG-20260222-11 (Async Task Queue + Background Execution) → COMPLETE. `TaskQueue` with status/progress tracking, `POST /templates/{id}/run-async`, `GET /tasks/{id}`, `GET /tasks?status=`. 16 tests. OpenAPI re-exported (36 paths). |
+| 2026-02-23 | DIRECTIVE-NXTG-20260222-12 (API Key Authentication) → COMPLETE. `AdminKeyRegistry` + `require_master_key` dependency, 3 admin endpoints, auth enforced on 9 previously-open endpoints. 31 tests. OpenAPI re-exported (38 paths). |
 
 ---
 
@@ -881,3 +882,35 @@ _(Project team: add questions for ASIF CoS here. They will be answered during th
 > **OpenAPI spec** re-exported: now 36 paths (was 33).
 >
 > **Started**: 2026-02-23 | **Completed**: 2026-02-23 | **Actual**: S (~10min)
+
+### DIRECTIVE-NXTG-20260222-12 — API Key Authentication
+**From**: NXTG-AI CoS | **Priority**: P1
+**Injected**: 2026-02-22 23:45 | **Estimate**: M | **Status**: COMPLETE (2026-02-23)
+
+**Action Items**:
+1. [x] Add API key authentication middleware — require `X-API-Key` header on all /api/v1/ endpoints
+2. [x] Key management: `POST /api/v1/admin/keys` (create), `DELETE /api/v1/admin/keys/{id}` (revoke), `GET /api/v1/admin/keys` (list)
+3. [x] Admin endpoints protected by master key (from environment variable)
+4. [x] Tests for auth enforcement, key CRUD, master key — zero regressions
+
+**Response** (filled by project team):
+> **31/31 tests passing** in `apps/orchestrator/tests/test_admin_keys.py` (0.54s).
+>
+> **Implementation**:
+> 1. **Auth enforcement on all endpoints** — Added `Depends(get_authenticated_user)` to 9 previously unprotected endpoints: `GET /providers`, `GET /providers/{name}/health`, `POST /templates/validate`, `POST /webhooks`, `GET /webhooks`, `DELETE /webhooks/{id}`, `POST /templates/{id}/run-async`, `GET /tasks/{id}`, `GET /tasks`. Health endpoints (`/health`, `/health/detailed`, `/metrics`) remain public by design.
+> 2. **`AdminKeyRegistry`** — in-memory admin key store with `create()`, `get()`, `list_keys()`, `revoke()`, `delete()`, `validate_key()`, `reset()`. Keys prefixed `sk-` with 32-hex-char random value. Scopes: read, write, admin.
+> 3. **`require_master_key` dependency** — reads `SYNAPPS_MASTER_KEY` env var, accepts via `X-API-Key` header or `Authorization: Bearer` header. Uses `hmac.compare_digest` for timing-safe comparison. Returns 503 if env var not set, 403 for invalid/missing key.
+> 4. **3 admin endpoints**: `POST /admin/keys` (201, create with name/scopes), `GET /admin/keys` (list, no plain keys exposed), `DELETE /admin/keys/{key_id}` (remove). All require master key.
+>
+> **Test coverage** (31 tests in 5 categories):
+> | Category | Count | What |
+> |----------|-------|------|
+> | Registry unit | 14 | create, custom scopes, list, get, get-nonexistent, revoke, revoke-nonexistent, delete, delete-nonexistent, validate, validate-revoked, validate-invalid, reset, scopes constant |
+> | Master key dependency | 4 | no env (503), wrong key (403), no header (403), bearer header (201) |
+> | POST /admin/keys | 4 | create, custom scopes, invalid scope (422), empty name (422) |
+> | GET/DELETE /admin/keys | 4 | list, list-empty, delete, delete-404 |
+> | Auth enforcement | 5 | providers, provider-health, templates/validate, webhooks, tasks — all wired |
+>
+> **OpenAPI spec** re-exported: now 38 paths (was 36).
+>
+> **Started**: 2026-02-23 | **Completed**: 2026-02-23 | **Actual**: M (~12min)

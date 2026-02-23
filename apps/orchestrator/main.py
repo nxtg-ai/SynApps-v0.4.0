@@ -394,6 +394,108 @@ class TaskQueue:
 task_queue = TaskQueue()
 
 
+# ============================================================
+# Admin API Key Registry (master-key-protected)
+# ============================================================
+
+SYNAPPS_MASTER_KEY = os.environ.get("SYNAPPS_MASTER_KEY", "")
+
+ADMIN_KEY_SCOPES = frozenset({"read", "write", "admin"})
+
+
+class AdminKeyRegistry:
+    """In-memory admin API key store, protected by master key."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._keys: Dict[str, Dict[str, Any]] = {}  # id -> key data
+
+    def create(self, name: str, scopes: Optional[List[str]] = None) -> Dict[str, Any]:
+        key_id = str(uuid.uuid4())
+        plain_key = f"sk-{uuid.uuid4().hex}"
+        key_prefix = plain_key[:12]
+        entry = {
+            "id": key_id,
+            "name": name,
+            "key_prefix": key_prefix,
+            "scopes": sorted(set(scopes or ["read", "write"])),
+            "is_active": True,
+            "created_at": time.time(),
+            "last_used_at": None,
+        }
+        with self._lock:
+            self._keys[key_id] = {**entry, "_plain_key": plain_key}
+        return {**entry, "api_key": plain_key}
+
+    def get(self, key_id: str) -> Optional[Dict[str, Any]]:
+        with self._lock:
+            k = self._keys.get(key_id)
+            if not k:
+                return None
+            return {kk: vv for kk, vv in k.items() if kk != "_plain_key"}
+
+    def list_keys(self) -> List[Dict[str, Any]]:
+        with self._lock:
+            return [
+                {kk: vv for kk, vv in k.items() if kk != "_plain_key"}
+                for k in self._keys.values()
+            ]
+
+    def revoke(self, key_id: str) -> bool:
+        with self._lock:
+            k = self._keys.get(key_id)
+            if not k:
+                return False
+            k["is_active"] = False
+            return True
+
+    def delete(self, key_id: str) -> bool:
+        with self._lock:
+            return self._keys.pop(key_id, None) is not None
+
+    def validate_key(self, plain_key: str) -> Optional[Dict[str, Any]]:
+        """Validate a plain API key and return its data if active."""
+        with self._lock:
+            for k in self._keys.values():
+                if k.get("_plain_key") == plain_key and k.get("is_active"):
+                    k["last_used_at"] = time.time()
+                    return {kk: vv for kk, vv in k.items() if kk != "_plain_key"}
+        return None
+
+    def reset(self) -> None:
+        with self._lock:
+            self._keys.clear()
+
+
+admin_key_registry = AdminKeyRegistry()
+
+
+def require_master_key(
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+    authorization: Optional[str] = Header(None, alias="Authorization"),
+) -> str:
+    """Dependency that requires the SYNAPPS_MASTER_KEY for admin operations."""
+    master = SYNAPPS_MASTER_KEY
+    if not master:
+        raise HTTPException(
+            status_code=503,
+            detail="Admin API not configured — SYNAPPS_MASTER_KEY environment variable not set",
+        )
+
+    provided = None
+    if x_api_key:
+        provided = x_api_key.strip()
+    elif authorization:
+        auth_text = authorization.strip()
+        if auth_text.lower().startswith("bearer "):
+            provided = auth_text[7:].strip()
+
+    if not provided or not hmac.compare_digest(provided, master):
+        raise HTTPException(status_code=403, detail="Invalid or missing master key")
+
+    return provided
+
+
 DEFAULT_MEMORY_BACKEND = os.environ.get("MEMORY_BACKEND", "sqlite_fts").strip().lower()
 DEFAULT_MEMORY_NAMESPACE = os.environ.get("MEMORY_NAMESPACE", "default").strip() or "default"
 DEFAULT_MEMORY_SQLITE_PATH = str(
@@ -7380,7 +7482,9 @@ for _pname in SynappsProviderRegistry.list_global():
 
 
 @v1.get("/providers", tags=["Providers"])
-async def list_discovered_providers():
+async def list_discovered_providers(
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
     """List all auto-discovered LLM providers with capabilities and status."""
     providers = _synapps_registry.all_providers_info()
     return {
@@ -7391,7 +7495,10 @@ async def list_discovered_providers():
 
 
 @v1.get("/providers/{name}/health", tags=["Providers"])
-async def provider_health_check(name: str):
+async def provider_health_check(
+    name: str,
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
     """Run a health check on a specific discovered provider."""
     try:
         health = _synapps_registry.provider_health(name)
@@ -7552,7 +7659,10 @@ class ValidateTemplateRequest(BaseModel):
 
 
 @v1.post("/templates/validate", tags=["Dashboard"])
-async def validate_template_endpoint(payload: ValidateTemplateRequest):
+async def validate_template_endpoint(
+    payload: ValidateTemplateRequest,
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
     """Dry-run validation of a template/flow definition without execution."""
     data = payload.model_dump()
     result = validate_template(data)
@@ -7579,7 +7689,10 @@ class RegisterWebhookRequest(StrictRequestModel):
 
 
 @v1.post("/webhooks", status_code=201, tags=["Dashboard"])
-async def register_webhook(payload: RegisterWebhookRequest):
+async def register_webhook(
+    payload: RegisterWebhookRequest,
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
     """Register a new webhook for event delivery."""
     hook = webhook_registry.register(
         url=payload.url,
@@ -7590,14 +7703,19 @@ async def register_webhook(payload: RegisterWebhookRequest):
 
 
 @v1.get("/webhooks", tags=["Dashboard"])
-async def list_webhooks():
+async def list_webhooks(
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
     """List all registered webhooks (secrets are not returned)."""
     hooks = webhook_registry.list_hooks()
     return {"webhooks": hooks, "total": len(hooks)}
 
 
 @v1.delete("/webhooks/{hook_id}", tags=["Dashboard"])
-async def delete_webhook(hook_id: str):
+async def delete_webhook(
+    hook_id: str,
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
     """Delete a webhook by ID."""
     if not webhook_registry.delete(hook_id):
         raise HTTPException(status_code=404, detail=f"Webhook '{hook_id}' not found")
@@ -7689,7 +7807,11 @@ class RunAsyncRequest(BaseModel):
 
 
 @v1.post("/templates/{template_id}/run-async", status_code=202, tags=["Runs"])
-async def run_template_async(template_id: str, body: RunAsyncRequest):
+async def run_template_async(
+    template_id: str,
+    body: RunAsyncRequest,
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
     """Run a YAML template asynchronously. Returns a task ID for polling."""
     template_data = _load_yaml_template(template_id)
     if not template_data:
@@ -7701,7 +7823,10 @@ async def run_template_async(template_id: str, body: RunAsyncRequest):
 
 
 @v1.get("/tasks/{task_id}", tags=["Runs"])
-async def get_task(task_id: str):
+async def get_task(
+    task_id: str,
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
     """Get the status and result of an async task."""
     task = task_queue.get(task_id)
     if not task:
@@ -7712,12 +7837,64 @@ async def get_task(task_id: str):
 @v1.get("/tasks", tags=["Runs"])
 async def list_tasks(
     status: Optional[str] = Query(None, description="Filter by status: pending, running, completed, failed"),
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
 ):
     """List all async tasks, optionally filtered by status."""
     if status and status not in TASK_STATUSES:
         raise HTTPException(status_code=400, detail=f"Invalid status. Valid: {TASK_STATUSES}")
     tasks = task_queue.list_tasks(status=status)
     return {"tasks": tasks, "total": len(tasks)}
+
+
+# ---------------------------------------------------------------------------
+# Admin API Key Management endpoints (master-key-protected)
+# ---------------------------------------------------------------------------
+
+
+class AdminKeyCreateRequest(BaseModel):
+    """Request body for creating an admin API key."""
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(..., min_length=1, max_length=128, description="Key name/label")
+    scopes: Optional[List[str]] = Field(None, description="Scopes: read, write, admin")
+
+    @field_validator("scopes")
+    @classmethod
+    def scopes_valid(cls, v):
+        if v is not None:
+            invalid = [s for s in v if s not in ADMIN_KEY_SCOPES]
+            if invalid:
+                raise ValueError(f"Invalid scopes: {invalid}. Valid: {sorted(ADMIN_KEY_SCOPES)}")
+        return v
+
+
+@v1.post("/admin/keys", status_code=201, tags=["Admin"])
+async def create_admin_key(
+    body: AdminKeyCreateRequest,
+    _master: str = Depends(require_master_key),
+):
+    """Create an admin API key (requires master key)."""
+    result = admin_key_registry.create(name=body.name, scopes=body.scopes)
+    return result
+
+
+@v1.get("/admin/keys", tags=["Admin"])
+async def list_admin_keys(
+    _master: str = Depends(require_master_key),
+):
+    """List all admin API keys (requires master key). Plain keys are never returned."""
+    keys = admin_key_registry.list_keys()
+    return {"keys": keys, "total": len(keys)}
+
+
+@v1.delete("/admin/keys/{key_id}", tags=["Admin"])
+async def delete_admin_key(
+    key_id: str,
+    _master: str = Depends(require_master_key),
+):
+    """Delete (revoke) an admin API key by ID (requires master key)."""
+    if not admin_key_registry.delete(key_id):
+        raise HTTPException(status_code=404, detail=f"Admin key '{key_id}' not found")
+    return {"message": "Admin key deleted", "id": key_id}
 
 
 @v1.post("/flows", status_code=201, tags=["Flows"])
