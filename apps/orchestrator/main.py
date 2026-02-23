@@ -7200,6 +7200,165 @@ async def provider_health_check(name: str):
     return health
 
 
+# ---------------------------------------------------------------------------
+# Template validation
+# ---------------------------------------------------------------------------
+
+KNOWN_NODE_TYPES = frozenset({
+    "start", "end", "llm", "image", "image_gen", "memory", "http_request",
+    "code", "transform", "if_else", "merge", "for_each", "custom",
+})
+
+
+def validate_template(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate a template/flow definition and return a structured report.
+
+    Returns ``{"valid": True/False, "errors": [...], "warnings": [...], "summary": {...}}``.
+    """
+    errors: List[str] = []
+    warnings: List[str] = []
+
+    # --- Required top-level fields ---
+    if not isinstance(data.get("name"), str) or not data["name"].strip():
+        errors.append("Missing or empty required field: 'name'")
+    if not isinstance(data.get("nodes"), list):
+        errors.append("Missing or invalid required field: 'nodes' (must be a list)")
+        # Can't continue structural checks without nodes
+        return {
+            "valid": False,
+            "errors": errors,
+            "warnings": warnings,
+            "summary": {"node_count": 0, "edge_count": 0},
+        }
+
+    nodes = data["nodes"]
+    edges = data.get("edges", [])
+    if not isinstance(edges, list):
+        errors.append("Invalid field: 'edges' (must be a list)")
+        edges = []
+
+    # --- Node validation ---
+    node_ids: set[str] = set()
+    has_start = False
+    has_end = False
+    for i, node in enumerate(nodes):
+        if not isinstance(node, dict):
+            errors.append(f"nodes[{i}]: must be an object")
+            continue
+        nid = node.get("id")
+        if not nid or not isinstance(nid, str):
+            errors.append(f"nodes[{i}]: missing or empty 'id'")
+            continue
+        if nid in node_ids:
+            errors.append(f"nodes[{i}]: duplicate node id '{nid}'")
+        node_ids.add(nid)
+
+        ntype = node.get("type", "")
+        if not ntype:
+            errors.append(f"node '{nid}': missing 'type'")
+        elif ntype not in KNOWN_NODE_TYPES:
+            warnings.append(f"node '{nid}': unknown type '{ntype}'")
+
+        if ntype == "start":
+            has_start = True
+        if ntype == "end":
+            has_end = True
+
+        pos = node.get("position")
+        if not isinstance(pos, dict) or "x" not in pos or "y" not in pos:
+            warnings.append(f"node '{nid}': missing or invalid 'position'")
+
+    if not has_start:
+        errors.append("Template must contain at least one 'start' node")
+    if not has_end:
+        errors.append("Template must contain at least one 'end' node")
+
+    # --- Edge validation ---
+    edge_ids: set[str] = set()
+    adjacency: Dict[str, List[str]] = {nid: [] for nid in node_ids}
+    for i, edge in enumerate(edges):
+        if not isinstance(edge, dict):
+            errors.append(f"edges[{i}]: must be an object")
+            continue
+        eid = edge.get("id", f"edge-{i}")
+        if eid in edge_ids:
+            errors.append(f"edges[{i}]: duplicate edge id '{eid}'")
+        edge_ids.add(eid)
+
+        src = edge.get("source", "")
+        tgt = edge.get("target", "")
+        if not src:
+            errors.append(f"edge '{eid}': missing 'source'")
+        elif src not in node_ids:
+            errors.append(f"edge '{eid}': source '{src}' references unknown node")
+        if not tgt:
+            errors.append(f"edge '{eid}': missing 'target'")
+        elif tgt not in node_ids:
+            errors.append(f"edge '{eid}': target '{tgt}' references unknown node")
+
+        if src and tgt and src == tgt:
+            errors.append(f"edge '{eid}': self-loop (source == target: '{src}')")
+
+        if src in node_ids and tgt in node_ids:
+            adjacency.setdefault(src, []).append(tgt)
+
+    # --- Circular dependency detection (DFS) ---
+    WHITE, GRAY, BLACK = 0, 1, 2
+    color: Dict[str, int] = {nid: WHITE for nid in node_ids}
+    cycle_path: List[str] = []
+
+    def _dfs(node: str) -> bool:
+        color[node] = GRAY
+        cycle_path.append(node)
+        for neighbor in adjacency.get(node, []):
+            if color[neighbor] == GRAY:
+                # Found cycle — extract the cycle portion
+                idx = cycle_path.index(neighbor)
+                cycle = cycle_path[idx:] + [neighbor]
+                errors.append(f"Circular dependency detected: {' -> '.join(cycle)}")
+                return True
+            if color[neighbor] == WHITE:
+                if _dfs(neighbor):
+                    return True
+        cycle_path.pop()
+        color[node] = BLACK
+        return False
+
+    for nid in node_ids:
+        if color[nid] == WHITE:
+            if _dfs(nid):
+                break  # Report first cycle found
+
+    return {
+        "valid": len(errors) == 0,
+        "errors": errors,
+        "warnings": warnings,
+        "summary": {
+            "node_count": len(nodes),
+            "edge_count": len(edges),
+            "node_types": sorted({n.get("type", "") for n in nodes if isinstance(n, dict)}),
+            "has_start": has_start,
+            "has_end": has_end,
+        },
+    }
+
+
+class ValidateTemplateRequest(BaseModel):
+    """Request body for template validation."""
+    model_config = ConfigDict(extra="allow")
+    name: Optional[str] = None
+    nodes: Optional[List[Dict[str, Any]]] = None
+    edges: Optional[List[Dict[str, Any]]] = None
+
+
+@v1.post("/templates/validate", tags=["Dashboard"])
+async def validate_template_endpoint(payload: ValidateTemplateRequest):
+    """Dry-run validation of a template/flow definition without execution."""
+    data = payload.model_dump()
+    result = validate_template(data)
+    return result
+
+
 @v1.post("/flows", status_code=201, tags=["Flows"])
 async def create_flow(
     flow: CreateFlowRequest,

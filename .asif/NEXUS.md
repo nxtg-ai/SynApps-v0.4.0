@@ -197,6 +197,7 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 | 2026-02-23 | DIRECTIVE-NXTG-20260222-06 (OpenAPI Spec + API Docs) → COMPLETE. Tags on all 26 endpoints, `docs/openapi.json` exported, `docs/API.md` with curl examples. Swagger/ReDoc/OpenAPI JSON all verified. 6 tests. |
 | 2026-02-23 | DIRECTIVE-NXTG-20260222-07 (Health Monitoring + Metrics Endpoint) → COMPLETE. `_MetricsCollector` with thread-safe in-memory counters, `collect_metrics` middleware, `GET /health/detailed` (ok/degraded/down + DB + providers), `GET /metrics` (requests, provider_usage, template_runs). 9 tests. OpenAPI re-exported (28 paths). |
 | 2026-02-23 | DIRECTIVE-NXTG-20260222-08 (Provider Auto-Discovery + Registry) → COMPLETE. Filesystem scanning via `importlib` + `inspect`, `GET /providers` (all discovered with models), `GET /providers/{name}/health` (per-provider health). 17 tests. OpenAPI re-exported (30 paths). |
+| 2026-02-23 | DIRECTIVE-NXTG-20260222-09 (Template Validation + Error Reporting) → COMPLETE. `validate_template()` with DFS circular dependency detection, `POST /templates/validate` dry-run endpoint. 18 tests. OpenAPI re-exported (31 paths). |
 
 ---
 
@@ -776,5 +777,40 @@ _(Project team: add questions for ASIF CoS here. They will be answered during th
 > | API endpoints | 7 | /providers 200, lists discovered, has models, has connected flag, /health openai, /health anthropic, /health unknown 404 |
 >
 > **OpenAPI spec** re-exported: now 30 paths (was 28).
+>
+> **Started**: 2026-02-23 | **Completed**: 2026-02-23 | **Actual**: S (~10min)
+
+### DIRECTIVE-NXTG-20260222-09 — Template Validation + Error Reporting
+**From**: NXTG-AI CoS | **Priority**: P1
+**Injected**: 2026-02-22 22:45 | **Estimate**: M | **Status**: COMPLETE (2026-02-23)
+
+**Action Items**:
+1. [x] Add template schema validation on load — reject templates with missing required fields, invalid step references, circular dependencies
+2. [x] Implement structured error reporting: when template execution fails, return step-by-step trace showing which step failed and why
+3. [x] Add `POST /api/v1/templates/validate` endpoint for dry-run validation without execution
+4. [x] Tests for malformed templates, circular deps, execution traces — zero regressions
+
+**Response** (filled by project team):
+> **18/18 tests passing** in `apps/orchestrator/tests/test_template_validation.py` (0.36s).
+>
+> **Implementation**:
+> 1. **`validate_template()` function** — reusable validation for any template/flow definition. Checks:
+>    - Required fields: `name` (non-empty string), `nodes` (list)
+>    - Node validation: unique IDs, non-empty type, position with x/y
+>    - Start/end node presence required
+>    - Edge validation: source/target reference valid node IDs, no self-loops, no duplicate edge IDs
+>    - **Circular dependency detection**: DFS graph coloring (white/gray/black). Reports the exact cycle path.
+>    - Unknown node types produce warnings (not errors) for extensibility
+> 2. **Structured error reporting**: Returns `{"valid": bool, "errors": [...], "warnings": [...], "summary": {node_count, edge_count, node_types, has_start, has_end}}`. Execution traces already existed (`_new_execution_trace`, `/runs/{id}/trace`) — per-node status/timing/errors tracked in execution trace.
+> 3. **`POST /api/v1/templates/validate`** — dry-run validation endpoint. Accepts a template body, returns validation report without executing.
+> 4. `KNOWN_NODE_TYPES` constant (13 types) for type checking.
+>
+> **Test coverage** (18 tests in 2 categories):
+> | Category | Count | What |
+> |----------|-------|------|
+> | Unit (validate_template) | 13 | valid passes, missing name, missing nodes, missing start, missing end, duplicate IDs, unknown source/target, self-loop, circular deps, unknown type warns, node_types in summary, real YAML template |
+> | API endpoint | 5 | valid template, invalid template, circular deps, summary, warnings |
+>
+> **OpenAPI spec** re-exported: now 31 paths (was 30).
 >
 > **Started**: 2026-02-23 | **Completed**: 2026-02-23 | **Actual**: S (~10min)
