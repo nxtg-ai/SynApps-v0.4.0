@@ -1317,6 +1317,12 @@ from apps.orchestrator.middleware.rate_limiter import add_rate_limiter  # noqa: 
 add_rate_limiter(app)
 
 
+# ============================================================
+# API Key Manager (Fernet-encrypted, scoped, rotation)
+# ============================================================
+from apps.orchestrator.api_keys.manager import api_key_manager  # noqa: E402
+
+
 async def _resolve_rate_limit_user(request: Request) -> Optional[Dict[str, Any]]:
     """Best-effort auth parsing for per-user rate-limit keys."""
     x_api_key = request.headers.get("X-API-Key")
@@ -2188,6 +2194,18 @@ async def get_authenticated_user(
                     "is_active": True,
                     "scopes": admin_key.get("scopes", []),
                     "created_at": admin_key.get("created_at"),
+                }
+            # Try managed key registry (Fernet-encrypted)
+            managed_key = api_key_manager.validate(stripped)
+            if managed_key:
+                return {
+                    "id": f"managed-key:{managed_key['id']}",
+                    "email": f"managed-key@{managed_key['name']}",
+                    "is_active": True,
+                    "scopes": managed_key.get("scopes", []),
+                    "rate_limit": managed_key.get("rate_limit"),
+                    "tier": "enterprise",
+                    "created_at": managed_key.get("created_at"),
                 }
         return await _authenticate_user_by_api_key(stripped)
 
@@ -8977,6 +8995,117 @@ async def delete_admin_key(
     if not admin_key_registry.delete(key_id):
         raise HTTPException(status_code=404, detail=f"Admin key '{key_id}' not found")
     return {"message": "Admin key deleted", "id": key_id}
+
+
+# ---------------------------------------------------------------------------
+# Managed API Keys — Fernet-encrypted, scoped, with rotation
+# ---------------------------------------------------------------------------
+
+
+class ManagedKeyCreateRequest(StrictRequestModel):
+    """Request body for creating a managed API key."""
+    name: str = Field(..., min_length=1, max_length=128)
+    scopes: Optional[List[str]] = Field(None, description="Scopes: read, write, admin")
+    expires_in: Optional[int] = Field(
+        None, ge=60, le=31536000,
+        description="Seconds until expiry (min 60s, max 1 year). Omit for no expiry.",
+    )
+    rate_limit: Optional[int] = Field(
+        None, ge=1, le=10000,
+        description="Custom rate limit (requests/min).",
+    )
+
+    @field_validator("scopes")
+    @classmethod
+    def scopes_valid(cls, v):
+        if v is not None:
+            invalid = [s for s in v if s not in ADMIN_KEY_SCOPES]
+            if invalid:
+                raise ValueError(f"Invalid scopes: {invalid}. Valid: {sorted(ADMIN_KEY_SCOPES)}")
+        return v
+
+
+class RotateKeyRequest(StrictRequestModel):
+    """Request body for rotating a managed API key."""
+    grace_period: int = Field(
+        86400, ge=0, le=604800,
+        description="Seconds the old key stays valid (default 24h, max 7 days).",
+    )
+
+
+@v1.post("/managed-keys", status_code=201, tags=["API Keys"])
+async def create_managed_key(
+    body: ManagedKeyCreateRequest,
+    _master: str = Depends(require_master_key),
+):
+    """Create a Fernet-encrypted managed API key with scoped permissions."""
+    try:
+        result = api_key_manager.create(
+            name=body.name,
+            scopes=body.scopes,
+            expires_in=body.expires_in,
+            rate_limit=body.rate_limit,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return result
+
+
+@v1.get("/managed-keys", tags=["API Keys"])
+async def list_managed_keys(
+    include_inactive: bool = Query(False, description="Include revoked/expired keys"),
+    _master: str = Depends(require_master_key),
+):
+    """List all managed API keys with usage stats."""
+    keys = api_key_manager.list_keys(include_inactive=include_inactive)
+    return {"keys": keys, "total": len(keys)}
+
+
+@v1.get("/managed-keys/{key_id}", tags=["API Keys"])
+async def get_managed_key(
+    key_id: str,
+    _master: str = Depends(require_master_key),
+):
+    """Get a single managed API key by ID."""
+    entry = api_key_manager.get(key_id)
+    if not entry:
+        raise HTTPException(status_code=404, detail=f"Managed key '{key_id}' not found")
+    return entry
+
+
+@v1.post("/managed-keys/{key_id}/rotate", tags=["API Keys"])
+async def rotate_managed_key(
+    key_id: str,
+    body: RotateKeyRequest,
+    _master: str = Depends(require_master_key),
+):
+    """Rotate a managed key. Old key remains valid for the grace period."""
+    result = api_key_manager.rotate(key_id, grace_period=body.grace_period)
+    if not result:
+        raise HTTPException(status_code=404, detail=f"Managed key '{key_id}' not found or inactive")
+    return result
+
+
+@v1.post("/managed-keys/{key_id}/revoke", tags=["API Keys"])
+async def revoke_managed_key(
+    key_id: str,
+    _master: str = Depends(require_master_key),
+):
+    """Revoke (deactivate) a managed key immediately."""
+    if not api_key_manager.revoke(key_id):
+        raise HTTPException(status_code=404, detail=f"Managed key '{key_id}' not found")
+    return {"message": "Key revoked", "id": key_id}
+
+
+@v1.delete("/managed-keys/{key_id}", tags=["API Keys"])
+async def delete_managed_key(
+    key_id: str,
+    _master: str = Depends(require_master_key),
+):
+    """Permanently delete a managed key."""
+    if not api_key_manager.delete(key_id):
+        raise HTTPException(status_code=404, detail=f"Managed key '{key_id}' not found")
+    return {"message": "Key deleted", "id": key_id}
 
 
 @v1.post("/flows", status_code=201, tags=["Flows"])

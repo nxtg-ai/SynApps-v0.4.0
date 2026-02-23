@@ -213,6 +213,7 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 | 2026-02-23 | DIRECTIVE-NXTG-20260223-08 (Connector Health Probes) → COMPLETE. `ConnectorHealthTracker` with auto-disable (3 failures) / auto-re-enable. `GET /connectors/health` + `POST /connectors/{name}/probe`. 32 tests. OpenAPI 47 paths. 953 total tests passing. |
 | 2026-02-23 | DIRECTIVE-NXTG-20260223-09 (Template Versioning) → COMPLETE. Semver field on all template versions (auto-patch-bump or explicit). `GET /templates/{id}/by-semver?version=X.Y.Z` + `PUT /templates/{id}/rollback?version=X.Y.Z`. 43 tests. 996 total tests passing. |
 | 2026-02-23 | DIRECTIVE-NXTG-20260223-10 (Token Bucket Rate Limiting) → COMPLETE. `TokenBucket` + `TokenBucketRegistry` with per-key (60 req/min) and global (300 req/min) limits. Burst allowance. `X-RateLimit-Scope` header. 26 tests. 1022 total tests passing. |
+| 2026-02-23 | DIRECTIVE-NXTG-20260223-11 (API Key Management + Rotation) → COMPLETE. `api_keys/manager.py` with Fernet encryption, CRUD, scoped permissions, rotation with 24h grace period. 6 REST endpoints. Auth integration. 59 tests. 1081 total tests passing. |
 
 ---
 
@@ -1232,6 +1233,37 @@ _(Project team: add questions for ASIF CoS here. They will be answered during th
 > **43 new tests** in `test_template_versioning.py`: semver helpers (9), registry semver (11), rollback (5), fetch-by-semver endpoint (5), rollback endpoint (6), import-with-semver (4), integration (3). **996 total tests passing**, zero regressions.
 >
 > **Started**: 2026-02-23 06:40 | **Completed**: 2026-02-23 06:50 | **Actual**: M (~10min)
+
+### DIRECTIVE-NXTG-20260223-11 — API Key Management + Rotation
+**From**: NXTG-AI CoS | **Priority**: P1
+**Injected**: 2026-02-23 09:30 | **Estimate**: M | **Status**: COMPLETE
+
+> **Context**: Stream B: API aggregation platforms need secure key management. SynApps routes requests to multiple upstream APIs — each consumer (2Brain, content-engine, Polymath) needs isolated API key management with rotation support.
+
+**Action Items**:
+1. [x] Create `api_keys/manager.py` — API key CRUD with scoped permissions per consumer
+   - Create key with name, scopes (read/write/admin), and expiry
+   - Rotate key (generate new, invalidate old with grace period)
+   - List active keys with usage stats
+2. [x] Keys stored encrypted at rest (Fernet symmetric encryption, key from env var)
+3. [x] Add middleware: validate API key on every request, check scopes, track usage
+4. [x] Tests for key CRUD, rotation, scope enforcement, encryption — zero regressions. Commit and push.
+
+**Constraints**:
+- Use cryptography library (already in Python stdlib via Fernet)
+- Grace period on rotation: old key valid for 24 hours after rotation
+- No external key management service — local-first
+
+**Response** (filled by project team):
+> **All 4 items shipped.** Created `api_keys/manager.py` with `APIKeyManager` class — full CRUD, Fernet encryption at rest (`SYNAPPS_KEY_ENCRYPTION_KEY` env var), SHA-256 hash index for fast lookup, scoped permissions (read/write/admin), TTL expiry, and rotation with configurable grace period (default 24h).
+>
+> **6 REST endpoints** under `/api/v1/managed-keys`: `POST /` (create), `GET /` (list), `GET /{id}`, `POST /{id}/rotate`, `POST /{id}/revoke`, `DELETE /{id}`. All require master key.
+>
+> **Auth integration**: Managed keys (`sk-` prefix) validated by `get_authenticated_user` — authenticates API requests with scopes and rate_limit propagated. Usage tracked (count + last_used_at).
+>
+> **59 new tests** in `test_api_key_manager.py`: encryption (4), create (10), read (5), validate (6), scopes (3), rotation (10), revoke/delete (4), decrypt (2), REST endpoints (13), auth integration (2). **1081 total tests passing**, zero regressions.
+>
+> **Started**: 2026-02-23 09:35 | **Completed**: 2026-02-23 09:50 | **Actual**: M (~15min)
 
 ### DIRECTIVE-NXTG-20260223-10 — Request Rate Limiting
 **From**: NXTG-AI CoS | **Priority**: P1
