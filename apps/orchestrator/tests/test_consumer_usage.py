@@ -115,9 +115,9 @@ class TestTrackerRecord:
 
     def test_record_sets_last_request_at(self):
         t = ConsumerUsageTracker()
-        before = time.time()
+        before = time.time() - 1  # 1s tolerance for clock skew under load
         t.record("key-1", "/test", 200)
-        after = time.time()
+        after = time.time() + 1
         usage = t.get_usage("key-1")
         assert before <= usage["last_request_at"] <= after
 

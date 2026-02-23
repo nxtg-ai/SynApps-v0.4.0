@@ -155,6 +155,9 @@ logger = _setup_logging()
 # ============================================================
 
 API_VERSION = "1.0.0"
+API_VERSION_DATE = "2026-02-23"          # date-based API version for X-API-Version header
+API_SUPPORTED_VERSIONS = ["v1"]          # active version prefixes
+API_SUNSET_GRACE_DAYS = 90              # deprecated endpoints stay live 90 days past sunset
 APP_START_TIME = time.time()
 WS_AUTH_TOKEN = os.environ.get("WS_AUTH_TOKEN")
 JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "synapps-dev-jwt-secret-change-me")
@@ -793,6 +796,65 @@ class ConsumerUsageTracker:
 
 
 usage_tracker = ConsumerUsageTracker()
+
+
+# ============================================================
+# API Deprecation Registry
+# ============================================================
+
+
+class DeprecationRegistry:
+    """Registry of deprecated API endpoints with sunset dates.
+
+    Each entry maps a (method, path) to a sunset date string (ISO-8601).
+    The ``Deprecation`` and ``Sunset`` HTTP headers are attached by middleware.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        # (method_upper, path) -> {"sunset": "YYYY-MM-DD", "successor": optional_path}
+        self._entries: Dict[tuple, Dict[str, str]] = {}
+
+    def deprecate(
+        self,
+        method: str,
+        path: str,
+        sunset: str,
+        successor: Optional[str] = None,
+    ) -> None:
+        """Mark an endpoint as deprecated with a sunset date."""
+        with self._lock:
+            entry: Dict[str, str] = {"sunset": sunset}
+            if successor:
+                entry["successor"] = successor
+            self._entries[(method.upper(), path)] = entry
+
+    def lookup(self, method: str, path: str) -> Optional[Dict[str, str]]:
+        """Return deprecation info if (method, path) is deprecated, else None."""
+        with self._lock:
+            return self._entries.get((method.upper(), path))
+
+    def all_deprecated(self) -> List[Dict[str, str]]:
+        """Return all deprecated endpoints."""
+        with self._lock:
+            result = []
+            for (method, path), info in self._entries.items():
+                result.append({"method": method, "path": path, **info})
+            return result
+
+    def clear(self) -> None:
+        with self._lock:
+            self._entries.clear()
+
+
+deprecation_registry = DeprecationRegistry()
+
+# Register known deprecated endpoints
+deprecation_registry.deprecate(
+    "POST", "/api/v1/flows/{flow_id}/run",
+    sunset="2026-05-24",
+    successor="/api/v1/flows/{flow_id}/runs",
+)
 
 
 # ============================================================
@@ -1754,6 +1816,11 @@ app.add_middleware(
         "X-RateLimit-Reset",
         "Retry-After",
         "X-Request-ID",
+        "X-API-Version",
+        "Deprecation",
+        "Sunset",
+        "X-Quota-Warning",
+        "X-Quota-Remaining",
     ],
     max_age=600 if _is_production else 0,
 )
@@ -1937,6 +2004,17 @@ async def request_id_tracing(request: Request, call_next):
         duration_ms = round((time.monotonic() - start) * 1000, 2)
 
         response.headers["X-Request-ID"] = request_id
+        response.headers["X-API-Version"] = API_VERSION_DATE
+
+        # Deprecation headers
+        dep_info = deprecation_registry.lookup(request.method, request.url.path)
+        if dep_info:
+            response.headers["Deprecation"] = "true"
+            response.headers["Sunset"] = dep_info["sunset"]
+            if dep_info.get("successor"):
+                response.headers["Link"] = (
+                    f'<{dep_info["successor"]}>; rel="successor-version"'
+                )
 
         # Structured request log (while contextvar is still set)
         logger.info(
@@ -10515,8 +10593,58 @@ async def set_quota(
     }
 
 
+# ============================================================
+# API Version Info Endpoint
+# ============================================================
+
+
+@v1.get("/version", tags=["Health"])
+async def get_api_version():
+    """Return current API version, supported versions, and deprecated endpoints."""
+    return {
+        "api_version": API_VERSION_DATE,
+        "app_version": API_VERSION,
+        "supported_versions": API_SUPPORTED_VERSIONS,
+        "deprecated_endpoints": deprecation_registry.all_deprecated(),
+        "sunset_grace_days": API_SUNSET_GRACE_DAYS,
+    }
+
+
 # Include versioned router
 app.include_router(v1)
+
+
+# ============================================================
+# v2 Router (placeholder — returns 501 for all routes)
+# ============================================================
+
+v2 = APIRouter(prefix="/api/v2", tags=["v2"])
+
+
+@v2.api_route(
+    "/{path:path}",
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
+    include_in_schema=False,
+)
+async def v2_not_implemented(path: str, request: Request):
+    """Placeholder for API v2 — not yet implemented."""
+    return JSONResponse(
+        status_code=501,
+        content={
+            "error": {
+                "code": "NOT_IMPLEMENTED",
+                "status": 501,
+                "message": (
+                    "API v2 is not yet available. "
+                    f"Use /api/v1/ (current version: {API_VERSION_DATE})."
+                ),
+            }
+        },
+        headers={"X-API-Version": API_VERSION_DATE},
+    )
+
+
+app.include_router(v2)
 
 
 # ============================================================

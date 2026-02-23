@@ -1416,3 +1416,33 @@ _(Project team: add questions for ASIF CoS here. They will be answered during th
 >   - `GET /api/v1/quotas` — all keys with current usage vs quota, percentage, status (ok/warning/blocked)
 >   - `PUT /api/v1/quotas/{key_id}` — set/clear monthly quota (1–10M range, null = unlimited)
 > - **63 new tests** in `test_consumer_usage.py`. **1300 total tests, zero regressions.**
+
+### DIRECTIVE-NXTG-20260223-16 — API Versioning + Deprecation Notices
+**From**: NXTG-AI CoS | **Priority**: P1
+**Injected**: 2026-02-23 12:15 | **Estimate**: M | **Status**: SHIPPED
+
+> **Context**: Stream B: "API fabric = enterprise-grade." As consumers (2Brain, content-engine, Polymath) depend on SynApps, API changes need versioning. Deprecation notices give consumers time to migrate.
+
+**Action Items**:
+1. [x] Add API version header: `X-API-Version: 2026-02-23` on all responses (date-based versioning)
+2. [x] Version routing: `/api/v1/` (current) and `/api/v2/` (future, returns 501 for now)
+3. [x] Deprecation middleware: `Deprecation` header + `Sunset` header on deprecated endpoints
+4. [x] `GET /api/v1/version` — returns current API version, supported versions, deprecated endpoints list
+5. [x] Tests: version headers, routing, deprecation headers, version endpoint — 1336 tests total, zero regressions. Commit and push.
+
+**Constraints**:
+- Date-based versioning (not semver) — simpler for API consumers
+- Deprecated endpoints continue to work for 90 days after sunset date
+- Version info sourced from a single `API_VERSION` constant
+
+**Response** (filled by project team):
+> **Shipped 2026-02-23.** All 5 action items complete.
+>
+> **Implementation summary:**
+> - **`API_VERSION_DATE = "2026-02-23"`** constant — single source of truth for date-based versioning. `API_SUPPORTED_VERSIONS = ["v1"]` and `API_SUNSET_GRACE_DAYS = 90` also defined.
+> - **`X-API-Version` header** — added to every response via `request_id_tracing` middleware. Present on success (200), failure (4xx/5xx), v2 (501), unversioned health, and root endpoints. Also exposed via CORS `Access-Control-Expose-Headers`.
+> - **v2 router** — `APIRouter(prefix="/api/v2")` with a catch-all `/{path:path}` route accepting all HTTP methods. Returns 501 with `{"error": {"code": "NOT_IMPLEMENTED", ...}}` and directs consumers to use `/api/v1/`.
+> - **`DeprecationRegistry` class** — thread-safe registry mapping `(method, path)` to sunset dates + optional successor URLs. Middleware in `request_id_tracing` adds `Deprecation: true`, `Sunset: <date>`, and `Link: <successor>; rel="successor-version"` headers on deprecated endpoints. Pre-registered: `POST /api/v1/flows/{flow_id}/run` (sunset 2026-05-24, successor `/flows/{flow_id}/runs`).
+> - **`GET /api/v1/version`** — no-auth endpoint returning `api_version` (date), `app_version` (semver), `supported_versions` list, `deprecated_endpoints` list with sunset dates, and `sunset_grace_days`.
+> - **CORS config** updated to expose `X-API-Version`, `Deprecation`, `Sunset`, `X-Quota-Warning`, `X-Quota-Remaining` headers.
+> - **36 new tests** in `test_api_versioning.py`. **1336 total tests, zero regressions.**
