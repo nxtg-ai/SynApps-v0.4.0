@@ -485,6 +485,83 @@ class _MetricsCollector:
 
 metrics = _MetricsCollector()
 
+
+# ============================================================
+# Failed Request Store (LRU in-memory ring for replay + debug)
+# ============================================================
+
+_SENSITIVE_HEADERS = frozenset({
+    "authorization", "x-api-key", "cookie", "set-cookie",
+    "x-csrf-token", "proxy-authorization",
+})
+
+_FAILED_REQUEST_CAP = int(os.environ.get("FAILED_REQUEST_CAP", "100"))
+
+
+class FailedRequestStore:
+    """Thread-safe LRU store for failed HTTP requests.
+
+    Stores the last *capacity* failed requests (status >= 400) with full
+    request/response data.  When the store is full the oldest entry is evicted.
+    """
+
+    def __init__(self, capacity: int = 100) -> None:
+        self._capacity = max(1, capacity)
+        self._lock = threading.Lock()
+        self._entries: Dict[str, Dict[str, Any]] = {}
+        self._order: List[str] = []  # oldest first
+
+    @property
+    def capacity(self) -> int:
+        return self._capacity
+
+    def add(self, entry: Dict[str, Any]) -> None:
+        """Add a failed request entry.  Evicts oldest if at capacity."""
+        rid = entry.get("request_id", "")
+        if not rid:
+            return
+        with self._lock:
+            if rid in self._entries:
+                return  # no dupes
+            if len(self._order) >= self._capacity:
+                evict = self._order.pop(0)
+                self._entries.pop(evict, None)
+            self._entries[rid] = entry
+            self._order.append(rid)
+
+    def get(self, request_id: str) -> Optional[Dict[str, Any]]:
+        with self._lock:
+            return self._entries.get(request_id)
+
+    def list_recent(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """Return most-recent failed requests (newest first)."""
+        with self._lock:
+            if limit <= 0:
+                return []
+            ids = self._order[-limit:]
+            return [self._entries[rid] for rid in reversed(ids) if rid in self._entries]
+
+    def clear(self) -> None:
+        with self._lock:
+            self._entries.clear()
+            self._order.clear()
+
+    def __len__(self) -> int:
+        with self._lock:
+            return len(self._order)
+
+    @staticmethod
+    def redact_headers(headers: Dict[str, str]) -> Dict[str, str]:
+        """Return a copy of *headers* with sensitive values replaced by '[REDACTED]'."""
+        return {
+            k: ("[REDACTED]" if k.lower() in _SENSITIVE_HEADERS else v)
+            for k, v in headers.items()
+        }
+
+
+failed_request_store = FailedRequestStore(capacity=_FAILED_REQUEST_CAP)
+
+
 # ============================================================
 # Error Classification + Retry Policies
 # ============================================================
@@ -1543,10 +1620,20 @@ async def collect_metrics(request: Request, call_next):
 
 @app.middleware("http")
 async def request_id_tracing(request: Request, call_next):
-    """Assign a unique request ID, propagate it via contextvar, and log the request."""
+    """Assign a unique request ID, propagate it via contextvar, and log the request.
+
+    Failed requests (status >= 400) are captured in :data:`failed_request_store`
+    for later replay / debug inspection.
+    """
     # Accept client-provided request ID or generate one
     request_id = request.headers.get("X-Request-ID", "").strip() or uuid.uuid4().hex[:16]
     request.state.request_id = request_id
+
+    # Cache the request body so we can store it on failure
+    try:
+        request_body_bytes = await request.body()
+    except Exception:
+        request_body_bytes = b""
 
     # Set contextvar so all log calls during this request include the ID
     token = _current_request_id.set(request_id)
@@ -1572,6 +1659,51 @@ async def request_id_tracing(request: Request, call_next):
                 "client_ip": request.client.host if request.client else "unknown",
             },
         )
+
+        # Capture failed requests for replay/debug
+        if response.status_code >= 400:
+            # Read response body from the streaming response
+            resp_body_parts: List[bytes] = []
+            async for chunk in response.body_iterator:  # type: ignore[union-attr]
+                if isinstance(chunk, str):
+                    resp_body_parts.append(chunk.encode("utf-8"))
+                else:
+                    resp_body_parts.append(chunk)
+            resp_body_bytes = b"".join(resp_body_parts)
+
+            try:
+                resp_body_str = resp_body_bytes.decode("utf-8", errors="replace")
+            except Exception:
+                resp_body_str = "<binary>"
+
+            try:
+                req_body_str = request_body_bytes.decode("utf-8", errors="replace")
+            except Exception:
+                req_body_str = "<binary>"
+
+            failed_request_store.add({
+                "request_id": request_id,
+                "timestamp": time.time(),
+                "method": request.method,
+                "path": str(request.url),
+                "request_headers": dict(request.headers),
+                "request_body": req_body_str,
+                "response_status": response.status_code,
+                "response_headers": dict(response.headers),
+                "response_body": resp_body_str,
+                "duration_ms": duration_ms,
+                "client_ip": request.client.host if request.client else "unknown",
+            })
+
+            # Rebuild the response since we consumed the body iterator
+            from starlette.responses import Response as StarletteResponse
+            return StarletteResponse(
+                content=resp_body_bytes,
+                status_code=response.status_code,
+                headers=dict(response.headers),
+                media_type=response.media_type,
+            )
+
         return response
     finally:
         _current_request_id.reset(token)
@@ -9893,6 +10025,131 @@ async def get_config(
     config["_validation_errors"] = app_config.validate()
     config["_env_file_loaded"] = str(env_path) if env_path.exists() else None
     return config
+
+
+# ============================================================
+# Request Replay + Debug Mode
+# ============================================================
+
+
+class _FailedRequestSummary(BaseModel):
+    request_id: str
+    timestamp: float
+    method: str
+    path: str
+    response_status: int
+    duration_ms: float
+    client_ip: str = "unknown"
+
+
+@v1.get("/requests/failed", tags=["Debug"], response_model=List[_FailedRequestSummary])
+async def list_failed_requests(
+    limit: int = Query(50, ge=1, le=500),
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
+    """List recent failed requests with timestamp, upstream, status code, and error."""
+    entries = failed_request_store.list_recent(limit=limit)
+    return [
+        {
+            "request_id": e["request_id"],
+            "timestamp": e["timestamp"],
+            "method": e["method"],
+            "path": e["path"],
+            "response_status": e["response_status"],
+            "duration_ms": e["duration_ms"],
+            "client_ip": e.get("client_ip", "unknown"),
+        }
+        for e in entries
+    ]
+
+
+@v1.post("/requests/{request_id}/replay", tags=["Debug"])
+async def replay_request(
+    request_id: str,
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
+    """Re-send the original failed request internally.
+
+    The replayed request does **not** count toward the consumer's rate limit
+    (it is an admin/debug action).  Returns the new upstream response.
+    """
+    entry = failed_request_store.get(request_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Failed request not found")
+
+    method = entry["method"]
+    path = entry["path"]
+    req_headers = dict(entry.get("request_headers", {}))
+    req_body = entry.get("request_body", "")
+
+    # Tag replayed requests so middleware can identify them
+    req_headers["X-Replay"] = "true"
+    req_headers["X-Original-Request-ID"] = request_id
+    # Remove hop-by-hop / host headers to avoid confusion
+    for hdr in ("host", "content-length", "transfer-encoding"):
+        req_headers.pop(hdr, None)
+
+    # Replay by making an internal HTTP call to ourselves
+    base_url = f"http://127.0.0.1:{app_config.backend_port}"
+    try:
+        async with httpx.AsyncClient(base_url=base_url, timeout=30.0) as client:
+            resp = await client.request(
+                method=method,
+                url=path if path.startswith("/") else f"/{path}",
+                headers=req_headers,
+                content=req_body.encode("utf-8") if req_body else None,
+            )
+    except (httpx.HTTPError, OSError, Exception) as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Replay failed: {exc}",
+        )
+
+    try:
+        resp_json = resp.json()
+    except Exception:
+        resp_json = resp.text
+
+    return {
+        "original_request_id": request_id,
+        "replay_status": resp.status_code,
+        "replay_headers": dict(resp.headers),
+        "replay_body": resp_json,
+    }
+
+
+@v1.get("/requests/{request_id}/debug", tags=["Debug"])
+async def debug_request(
+    request_id: str,
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
+    """Return the full request chain for a failed request.
+
+    Includes request headers, body, response headers, response body, and
+    timing.  Sensitive headers (Authorization, API keys, cookies) are
+    **redacted** in the output.
+    """
+    entry = failed_request_store.get(request_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Failed request not found")
+
+    return {
+        "request_id": entry["request_id"],
+        "timestamp": entry["timestamp"],
+        "method": entry["method"],
+        "path": entry["path"],
+        "duration_ms": entry["duration_ms"],
+        "client_ip": entry.get("client_ip", "unknown"),
+        "request": {
+            "headers": FailedRequestStore.redact_headers(entry.get("request_headers", {})),
+            "body": entry.get("request_body", ""),
+        },
+        "response": {
+            "status": entry["response_status"],
+            "headers": FailedRequestStore.redact_headers(entry.get("response_headers", {})),
+            "body": entry.get("response_body", ""),
+        },
+    }
 
 
 # Include versioned router

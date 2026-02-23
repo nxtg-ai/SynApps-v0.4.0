@@ -47,6 +47,11 @@ EXEMPT_PATHS = frozenset({
     "/api/v1/openapi.json",
 })
 
+# Prefix-based exemptions (for dynamic path segments like /requests/{id}/replay)
+EXEMPT_PATH_PREFIXES: tuple = (
+    "/api/v1/requests/",
+)
+
 _TIER_LIMITS: Dict[str, int] = {
     "free": RATE_LIMIT_FREE,
     "pro": RATE_LIMIT_PRO,
@@ -258,6 +263,8 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         # Skip rate limiting for exempt paths and WebSocket upgrades
         if request.url.path in EXEMPT_PATHS:
+            return await call_next(request)
+        if any(request.url.path.startswith(p) for p in EXEMPT_PATH_PREFIXES):
             return await call_next(request)
         if request.headers.get("upgrade", "").lower() == "websocket":
             return await call_next(request)

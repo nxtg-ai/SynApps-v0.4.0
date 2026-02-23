@@ -1352,3 +1352,34 @@ _(Project team: add questions for ASIF CoS here. They will be answered during th
 > **5. Tests** — 48 new tests in `test_webhook_d13.py` covering: constants, new event types, WebhookManager CRUD, Fernet encrypt/decrypt round-trip, HMAC signing, fixed retry delays, status code tracking, REST endpoints with new events, connector status change emission, key rotation emission, `keys_expiring_within()`, signature verification round-trip, `emit_webhook_event`. **1176 tests total, 0 regressions.**
 >
 > **Constraints met:** Secrets stored Fernet-encrypted via shared `FERNET_CIPHER`. Delivery timeout 10s. Retry schedule 1s/5s/30s.
+
+### DIRECTIVE-NXTG-20260223-14 — Request Replay + Debug Mode
+**From**: NXTG-AI CoS | **Priority**: P1
+**Injected**: 2026-02-23 11:15 | **Estimate**: M | **Status**: SHIPPED
+
+> **Context**: Stream B: API fabric debugging is critical for adoption. When upstream requests fail, operators need to replay them for debugging without re-triggering the original consumer action.
+
+**Action Items**:
+1. [x] Add request logging: store last N failed requests in memory (configurable, default 100) with full request/response data
+2. [x] `POST /api/v1/requests/{id}/replay` — re-sends the original request to upstream, returns new response
+3. [x] `GET /api/v1/requests/failed` — lists recent failed requests with timestamp, upstream, status code, error
+4. [x] Debug mode: `GET /api/v1/requests/{id}/debug` — returns full request chain (headers, body, upstream request, upstream response, timing)
+5. [x] Tests: request logging, replay, debug output, memory cap — 1237 tests total, zero regressions. Commit and push.
+
+**Constraints**:
+- Replay does NOT count toward consumer's rate limit (it's an admin action)
+- Sensitive headers (Authorization, API keys) are redacted in debug output
+- Memory cap: evict oldest entries when limit reached (LRU)
+
+**Response** (filled by project team):
+> **Shipped 2026-02-23.** All 5 action items complete.
+>
+> **Implementation summary:**
+> - `FailedRequestStore` class (thread-safe LRU, configurable via `FAILED_REQUEST_CAP` env var, default 100) in `main.py` — stores full request/response data for any HTTP response >= 400. Oldest entries evicted when cap reached.
+> - `request_id_tracing` middleware enhanced to capture failed requests (reads streaming response body, rebuilds response) with zero impact on success-path performance.
+> - **3 new endpoints** under `/api/v1/requests/`:
+>   - `GET /requests/failed` — paginated list of recent failures (request_id, timestamp, method, path, status, duration)
+>   - `POST /requests/{id}/replay` — re-sends original request internally via httpx, returns new response. Tags replayed requests with `X-Replay: true`.
+>   - `GET /requests/{id}/debug` — full request chain (headers, body, upstream request/response, timing) with **sensitive headers redacted** (Authorization, X-API-Key, Cookie, Set-Cookie, X-CSRF-Token, Proxy-Authorization)
+> - **Rate limit exemption**: All `/api/v1/requests/` paths added to `EXEMPT_PATH_PREFIXES` in rate_limiter.py — replay does not count toward consumer limits.
+> - **61 new tests** in `test_request_replay.py` covering: store CRUD, LRU eviction, capacity enforcement, header redaction (all 6 sensitive headers), middleware capture/ignore, all 3 endpoints (happy path + error cases), rate limit exemption, thread safety, edge cases. **1237 total tests, zero regressions.**
