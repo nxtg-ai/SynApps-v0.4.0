@@ -192,6 +192,7 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 | 2026-02-22 | DIRECTIVE-NXTG-20260222-02 → COMPLETE. UAT-GUIDE.md rewritten as human UX evaluation guide with 2Brain dogfood deep-dive, verdict template, and 5 test inputs. |
 | 2026-02-22 | DIRECTIVE-NXTG-20260222-02 (2Brain Integration Validation) → COMPLETE. 8 integration tests validating full pipeline: Start → LLM → Code → Memory → End. All 4 categories + unknown fallback + API roundtrip passing. No issues found. 538 total backend tests. |
 | 2026-02-22 | DIRECTIVE-NXTG-20260222-03 (Content-Engine Workflow Template) → COMPLETE. YAML + TypeScript templates, 9 integration tests, README Portfolio Templates section. Second dogfood template after 2Brain. |
+| 2026-02-22 | DIRECTIVE-NXTG-20260222-04 (LLM Provider Abstraction Layer) → COMPLETE. `synapps/providers/llm/` package: BaseLLMProvider ABC, AnthropicProvider, OpenAIProvider, ProviderRegistry with auto-discovery and fallback. 28 tests passing. |
 
 ---
 
@@ -569,3 +570,49 @@ _(Project team: add questions for ASIF CoS here. They will be answered during th
 > **Frontend**: Production build verified, 101 tests passing. New template appears in gallery.
 >
 > **Started**: 2026-02-22 23:35 | **Completed**: 2026-02-22 23:50 | **Actual**: M (~15min)
+
+### DIRECTIVE-NXTG-20260222-04 — LLM Provider Abstraction Layer
+**From**: NXTG-AI CoS | **Priority**: P2
+**Injected**: 2026-02-23 00:00 | **Estimate**: M (~15min) | **Status**: COMPLETE (2026-02-22)
+
+**Context**: Stream B identified AI API aggregation (unify LLM providers) as SynApps' least crowded niche. The content-engine template is done. Now build the foundation for LLM provider unification — this is what differentiates SynApps from Zapier/n8n.
+
+**Action Items**:
+1. [x] Create `synapps/providers/llm/` package:
+   - `base.py` — abstract LLM provider interface: `complete(prompt, model, **kwargs) → Response`
+   - `anthropic_provider.py` — Claude API wrapper (mock implementation, correct interface)
+   - `openai_provider.py` — OpenAI API wrapper (mock implementation, correct interface)
+   - `registry.py` — provider registry with auto-discovery
+2. [x] Create `tests/test_llm_providers.py` — 10+ tests (all mocked):
+   - Provider registration and lookup
+   - Interface compliance for both providers
+   - Fallback behavior when provider unavailable
+3. [x] Run full test suite. Commit and push.
+
+**Constraints**:
+- Mock implementations only — no real API keys needed
+- Follow existing SynApps code patterns (Python 3.9 compatible for now)
+
+**Response** (filled by project team):
+> **28/28 tests passing** in `tests/test_llm_providers.py` (0.07s).
+>
+> **Package**: `synapps/providers/llm/` — 5 files:
+> - `base.py` — `BaseLLMProvider` ABC with `complete()`, `get_models()`, `validate()`. Dataclasses: `LLMResponse`, `ModelInfo`. Exceptions: `ProviderError`, `ProviderNotFoundError`.
+> - `anthropic_provider.py` — `AnthropicProvider` (Claude Sonnet 4, Haiku 4, Opus 4). Mock `complete()`, real `validate()` (checks API key).
+> - `openai_provider.py` — `OpenAIProvider` (GPT-4o, GPT-4o Mini, GPT-4.1). Mock `complete()`, real `validate()`.
+> - `registry.py` — `ProviderRegistry` with instance-level (isolated) and class-level (global) APIs. `register()`, `get()`, `unregister()`, `has()`, `clear()`, `get_with_fallback()`, `auto_discover()`.
+> - `__init__.py` — public API re-exports.
+>
+> **Test coverage** (28 tests in 6 categories):
+> | Category | Count | What |
+> |----------|-------|------|
+> | Registration & lookup | 8 | register, case-insensitive get, unknown raises, empty name, unregister, list, has, clear |
+> | Fallback behaviour | 3 | fallback to alternative, both missing, primary exists |
+> | OpenAI interface | 5 | name, validate (no key / with key), models, complete, complete-without-key raises |
+> | Anthropic interface | 5 | name, validate (no key / with key), models, complete, complete-without-key raises |
+> | Auto-discovery | 3 | auto_discover, global get, global unknown raises |
+> | Dataclass defaults | 2 | LLMResponse defaults, ModelInfo defaults |
+>
+> **Existing suite**: 537 passed, 7 failed (pre-existing rate-limiter 429s in full-suite runs — not related).
+>
+> **Started**: 2026-02-22 | **Completed**: 2026-02-22 | **Actual**: S (~10min)
