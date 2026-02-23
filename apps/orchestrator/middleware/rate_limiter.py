@@ -96,11 +96,14 @@ class _SlidingWindowCounter:
 _counter = _SlidingWindowCounter()
 
 
-def _identify_client(request: Request) -> Tuple[str, str]:
-    """Extract a rate-limit key and tier from the request.
+def _identify_client(request: Request) -> Tuple[str, str, Optional[int]]:
+    """Extract a rate-limit key, tier, and optional per-key limit from the request.
 
     The key is built from the authenticated user ID when available,
     falling back to IP address for unauthenticated requests.
+
+    Returns (key, tier, custom_limit) where custom_limit is None to use
+    tier default or an integer for per-key override.
     """
     # Check for user info set by auth middleware/dependency
     user = getattr(request.state, "user", None)
@@ -108,14 +111,15 @@ def _identify_client(request: Request) -> Tuple[str, str]:
         user_id = user.get("id", "")
         if user_id and user_id != "anonymous":
             tier = user.get("tier", "free")
-            return f"user:{user_id}", tier
+            custom_limit = user.get("rate_limit")  # per-key override
+            return f"user:{user_id}", tier, custom_limit
 
     # Fall back to IP-based limiting
     client_host = request.client.host if request.client else "unknown"
     forwarded = request.headers.get("X-Forwarded-For")
     if forwarded:
         client_host = forwarded.split(",")[0].strip()
-    return f"ip:{client_host}", "anonymous"
+    return f"ip:{client_host}", "anonymous", None
 
 
 class RateLimiterMiddleware(BaseHTTPMiddleware):
@@ -128,8 +132,8 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
         if request.headers.get("upgrade", "").lower() == "websocket":
             return await call_next(request)
 
-        key, tier = _identify_client(request)
-        limit = _get_limit_for_tier(tier)
+        key, tier, custom_limit = _identify_client(request)
+        limit = custom_limit if custom_limit is not None else _get_limit_for_tier(tier)
         window = RATE_LIMIT_WINDOW_SECONDS
 
         allowed, remaining, retry_after = _counter.check_and_record(key, limit, window)

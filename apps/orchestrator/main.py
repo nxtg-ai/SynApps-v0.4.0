@@ -410,7 +410,12 @@ class AdminKeyRegistry:
         self._lock = threading.Lock()
         self._keys: Dict[str, Dict[str, Any]] = {}  # id -> key data
 
-    def create(self, name: str, scopes: Optional[List[str]] = None) -> Dict[str, Any]:
+    def create(
+        self,
+        name: str,
+        scopes: Optional[List[str]] = None,
+        rate_limit: Optional[int] = None,
+    ) -> Dict[str, Any]:
         key_id = str(uuid.uuid4())
         plain_key = f"sk-{uuid.uuid4().hex}"
         key_prefix = plain_key[:12]
@@ -419,6 +424,7 @@ class AdminKeyRegistry:
             "name": name,
             "key_prefix": key_prefix,
             "scopes": sorted(set(scopes or ["read", "write"])),
+            "rate_limit": rate_limit,  # None = use default tier limit
             "is_active": True,
             "created_at": time.time(),
             "last_used_at": None,
@@ -700,7 +706,19 @@ async def _resolve_rate_limit_user(request: Request) -> Optional[Dict[str, Any]]
 
     try:
         if x_api_key and x_api_key.strip():
-            principal = await _authenticate_user_by_api_key(x_api_key.strip())
+            stripped = x_api_key.strip()
+            # Check admin key registry first for sk- prefixed keys
+            if stripped.startswith("sk-"):
+                admin_key = admin_key_registry.validate_key(stripped)
+                if admin_key:
+                    principal = {
+                        "id": f"admin-key:{admin_key['id']}",
+                        "tier": "enterprise",
+                    }
+                    if admin_key.get("rate_limit") is not None:
+                        principal["rate_limit"] = admin_key["rate_limit"]
+                    return principal
+            principal = await _authenticate_user_by_api_key(stripped)
             principal.setdefault("tier", "free")
             return principal
 
@@ -1505,7 +1523,19 @@ async def get_authenticated_user(
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
 ) -> Dict[str, Any]:
     if x_api_key:
-        return await _authenticate_user_by_api_key(x_api_key)
+        stripped = x_api_key.strip()
+        # Recognise admin API keys (sk- prefix) from the in-memory registry
+        if stripped.startswith("sk-"):
+            admin_key = admin_key_registry.validate_key(stripped)
+            if admin_key:
+                return {
+                    "id": f"admin-key:{admin_key['id']}",
+                    "email": f"admin-key@{admin_key['name']}",
+                    "is_active": True,
+                    "scopes": admin_key.get("scopes", []),
+                    "created_at": admin_key.get("created_at"),
+                }
+        return await _authenticate_user_by_api_key(stripped)
 
     if authorization:
         auth_text = authorization.strip()
@@ -7856,6 +7886,12 @@ class AdminKeyCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str = Field(..., min_length=1, max_length=128, description="Key name/label")
     scopes: Optional[List[str]] = Field(None, description="Scopes: read, write, admin")
+    rate_limit: Optional[int] = Field(
+        None,
+        ge=1,
+        le=10000,
+        description="Custom rate limit (requests per minute). Omit to use tier default (60).",
+    )
 
     @field_validator("scopes")
     @classmethod
@@ -7873,7 +7909,9 @@ async def create_admin_key(
     _master: str = Depends(require_master_key),
 ):
     """Create an admin API key (requires master key)."""
-    result = admin_key_registry.create(name=body.name, scopes=body.scopes)
+    result = admin_key_registry.create(
+        name=body.name, scopes=body.scopes, rate_limit=body.rate_limit
+    )
     return result
 
 

@@ -202,6 +202,7 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 | 2026-02-23 | DIRECTIVE-NXTG-20260222-11 (Async Task Queue + Background Execution) → COMPLETE. `TaskQueue` with status/progress tracking, `POST /templates/{id}/run-async`, `GET /tasks/{id}`, `GET /tasks?status=`. 16 tests. OpenAPI re-exported (36 paths). |
 | 2026-02-23 | DIRECTIVE-NXTG-20260222-12 (API Key Authentication) → COMPLETE. `AdminKeyRegistry` + `require_master_key` dependency, 3 admin endpoints, auth enforced on 9 previously-open endpoints. 31 tests. OpenAPI re-exported (38 paths). |
 | 2026-02-23 | DIRECTIVE-NXTG-20260222-13 (Workflow History + Audit Trail) → COMPLETE. `GET /history` with status/template/date filtering + pagination, `GET /history/{id}` with step traces. 16 tests. OpenAPI re-exported (40 paths). |
+| 2026-02-23 | DIRECTIVE-NXTG-20260222-14 (Rate Limiting + Request Throttling) → COMPLETE. Per-API-key configurable rate limits via `AdminKeyRegistry.create(rate_limit=N)`. Admin keys recognised in `get_authenticated_user()` + `_resolve_rate_limit_user()`. 14 new tests. Conftest rate limiter reset. 700 total tests passing. |
 
 ---
 
@@ -947,3 +948,48 @@ _(Project team: add questions for ASIF CoS here. They will be answered during th
 > **OpenAPI spec** re-exported: now 40 paths (was 38).
 >
 > **Started**: 2026-02-23 | **Completed**: 2026-02-23 | **Actual**: S (~10min)
+
+### DIRECTIVE-NXTG-20260222-14 — Rate Limiting + Request Throttling
+**From**: NXTG-AI CoS | **Priority**: P1
+**Injected**: 2026-02-23 00:25 | **Estimate**: M | **Status**: COMPLETE
+
+**Action Items**:
+1. [x] Add configurable rate limiting per API key (default: 60 req/min, configurable per key)
+2. [x] Return standard rate limit headers: X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset
+3. [x] Return 429 Too Many Requests with Retry-After header when limit exceeded
+4. [x] Tests for rate enforcement, headers, 429 responses — zero regressions
+
+**Response** (filled by project team):
+> **Shipped.** Per-API-key configurable rate limiting is live. Changes:
+>
+> **Rate limiter upgrade** (`middleware/rate_limiter.py`):
+> - `_identify_client()` now returns `(key, tier, custom_limit)` tuple — per-key override when set
+> - `RateLimiterMiddleware.dispatch()` uses custom limit when present, falls back to tier default
+>
+> **Admin key integration** (`main.py`):
+> - `AdminKeyRegistry.create()` accepts `rate_limit` param (default None = use tier)
+> - `AdminKeyCreateRequest` model adds `rate_limit: Optional[int]` with ge=1, le=10000 validation
+> - `_resolve_rate_limit_user()` recognises `sk-` prefixed admin keys, sets custom `rate_limit` on principal
+> - `get_authenticated_user()` recognises `sk-` admin keys for endpoint auth (returns admin principal)
+>
+> **Existing capabilities already present** (no changes needed):
+> - Sliding-window counter with `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` headers
+> - 429 `RATE_LIMIT_EXCEEDED` response with `Retry-After` header
+> - Tier-based defaults: free=60, pro=200, enterprise=1000, anonymous=30
+> - Exempt paths: health, docs, OpenAPI
+>
+> **Test coverage**: 14 new tests in `test_rate_limit_per_key.py`:
+>
+> | Category | Count | Coverage |
+> |----------|-------|------|
+> | Key creation | 5 | with/without rate_limit, endpoint with custom, validation (0, >10000) |
+> | Headers | 2 | standard headers present, custom limit reflected |
+> | Enforcement | 3 | per-key limit enforced, independent counters, tier default fallback |
+> | 429 format | 2 | error format + Retry-After, all rate limit headers |
+> | _identify_client | 2 | custom limit returned, None when not set |
+>
+> **Conftest fix**: Added `_reset_rate_limit_counter` autouse fixture to reset sliding window counter between tests — prevents cross-test 429s in full suite run.
+>
+> **Full suite**: 700 tests passing, zero regressions.
+>
+> **Started**: 2026-02-23 | **Completed**: 2026-02-23 | **Actual**: M (~15min)

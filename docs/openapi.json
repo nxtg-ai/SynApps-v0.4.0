@@ -3363,6 +3363,20 @@
             ],
             "title": "Scopes",
             "description": "Scopes: read, write, admin"
+          },
+          "rate_limit": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 10000.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate Limit",
+            "description": "Custom rate limit (requests per minute). Omit to use tier default (60)."
           }
         },
         "additionalProperties": false,
