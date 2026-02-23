@@ -684,6 +684,143 @@ async def execute_with_retry(
 
 
 # ============================================================
+# Connector Health Probes
+# ============================================================
+
+
+class ConnectorStatus(str, Enum):
+    """Health status for a connector."""
+
+    HEALTHY = "healthy"
+    DEGRADED = "degraded"      # 1–2 consecutive failures
+    DISABLED = "disabled"      # ≥ disable_threshold consecutive failures
+
+
+class ConnectorHealthTracker:
+    """Per-connector health state with auto-disable / auto-re-enable.
+
+    After ``disable_threshold`` consecutive probe failures, a connector is
+    marked DISABLED.  A single successful probe re-enables it immediately.
+    """
+
+    def __init__(self, disable_threshold: int = 3) -> None:
+        self._lock = threading.Lock()
+        self._disable_threshold = disable_threshold
+        # connector name → state dict
+        self._state: Dict[str, Dict[str, Any]] = {}
+
+    def _ensure(self, connector: str) -> Dict[str, Any]:
+        if connector not in self._state:
+            self._state[connector] = {
+                "status": ConnectorStatus.HEALTHY,
+                "consecutive_failures": 0,
+                "total_probes": 0,
+                "total_failures": 0,
+                "last_check": None,
+                "last_failure_reason": None,
+            }
+        return self._state[connector]
+
+    def record_success(self, connector: str) -> None:
+        """Record a successful probe — resets failure count and re-enables."""
+        with self._lock:
+            s = self._ensure(connector)
+            s["consecutive_failures"] = 0
+            s["status"] = ConnectorStatus.HEALTHY
+            s["total_probes"] += 1
+            s["last_check"] = time.time()
+            s["last_failure_reason"] = None
+
+    def record_failure(self, connector: str, reason: str = "") -> None:
+        """Record a failed probe — increments failure count, may disable."""
+        with self._lock:
+            s = self._ensure(connector)
+            s["consecutive_failures"] += 1
+            s["total_probes"] += 1
+            s["total_failures"] += 1
+            s["last_check"] = time.time()
+            s["last_failure_reason"] = reason
+            if s["consecutive_failures"] >= self._disable_threshold:
+                s["status"] = ConnectorStatus.DISABLED
+            elif s["consecutive_failures"] >= 1:
+                s["status"] = ConnectorStatus.DEGRADED
+
+    def get_status(self, connector: str) -> Dict[str, Any]:
+        """Get the current health state for a connector."""
+        with self._lock:
+            s = self._ensure(connector)
+            return dict(s)
+
+    def is_disabled(self, connector: str) -> bool:
+        with self._lock:
+            s = self._ensure(connector)
+            return s["status"] == ConnectorStatus.DISABLED
+
+    def all_statuses(self) -> Dict[str, Dict[str, Any]]:
+        with self._lock:
+            return {name: dict(s) for name, s in self._state.items()}
+
+    def reset(self) -> None:
+        with self._lock:
+            self._state.clear()
+
+    @property
+    def disable_threshold(self) -> int:
+        return self._disable_threshold
+
+
+connector_health = ConnectorHealthTracker(disable_threshold=3)
+
+
+async def probe_connector(connector_name: str) -> Dict[str, Any]:
+    """Run a lightweight health probe for a connector.
+
+    Uses ``validate_config()`` on the LLM provider adapter as the probe.
+    Returns ``{"connector": name, "status": ..., "detail": ...}``.
+    """
+    try:
+        provider_cls = LLMProviderRegistry._providers.get(connector_name)
+        if provider_cls is None:
+            connector_health.record_failure(connector_name, f"Unknown connector: {connector_name}")
+            return {
+                "connector": connector_name,
+                "reachable": False,
+                "detail": f"Unknown connector: {connector_name}",
+            }
+
+        default_cfg = LLMNodeConfigModel(provider=connector_name)
+        adapter = provider_cls(default_cfg)
+        is_valid, reason = adapter.validate_config()
+
+        if is_valid:
+            connector_health.record_success(connector_name)
+            return {"connector": connector_name, "reachable": True, "detail": ""}
+        else:
+            connector_health.record_failure(connector_name, reason)
+            return {"connector": connector_name, "reachable": False, "detail": reason}
+    except Exception as exc:
+        connector_health.record_failure(connector_name, str(exc))
+        return {"connector": connector_name, "reachable": False, "detail": str(exc)}
+
+
+async def probe_all_connectors() -> List[Dict[str, Any]]:
+    """Probe all known connectors and return their statuses."""
+    results: List[Dict[str, Any]] = []
+    for name in LLMProviderRegistry._providers:
+        probe_result = await probe_connector(name)
+        state = connector_health.get_status(name)
+        results.append({
+            **probe_result,
+            "status": state["status"],
+            "consecutive_failures": state["consecutive_failures"],
+            "total_probes": state["total_probes"],
+            "total_failures": state["total_failures"],
+            "last_check": state["last_check"],
+        })
+    return results
+
+
+# ============================================================
 # Webhook / Event System
 # ============================================================
 
@@ -8052,6 +8189,52 @@ async def provider_health_check(
     except Exception:
         raise HTTPException(status_code=404, detail=f"Provider '{name}' not found")
     return health
+
+
+# ---------------------------------------------------------------------------
+# Connector Health Probes endpoints
+# ---------------------------------------------------------------------------
+
+
+@v1.get("/connectors/health", tags=["Health"])
+async def connectors_health(
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
+    """Run health probes on all connectors and return per-connector status.
+
+    Each connector is probed with a lightweight ``validate_config()`` call.
+    After 3 consecutive failures a connector is auto-disabled; a single
+    success re-enables it.
+    """
+    results = await probe_all_connectors()
+    summary = {
+        "healthy": sum(1 for r in results if r["status"] == ConnectorStatus.HEALTHY),
+        "degraded": sum(1 for r in results if r["status"] == ConnectorStatus.DEGRADED),
+        "disabled": sum(1 for r in results if r["status"] == ConnectorStatus.DISABLED),
+    }
+    return {
+        "connectors": results,
+        "summary": summary,
+        "total": len(results),
+        "disable_threshold": connector_health.disable_threshold,
+    }
+
+
+@v1.post("/connectors/{connector_name}/probe", tags=["Health"])
+async def probe_single_connector(
+    connector_name: str,
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
+    """Probe a single connector and return its health state."""
+    probe_result = await probe_connector(connector_name)
+    state = connector_health.get_status(connector_name)
+    return {
+        **probe_result,
+        "status": state["status"],
+        "consecutive_failures": state["consecutive_failures"],
+        "total_probes": state["total_probes"],
+        "last_check": state["last_check"],
+    }
 
 
 # ---------------------------------------------------------------------------

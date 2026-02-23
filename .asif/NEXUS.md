@@ -210,6 +210,7 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 | 2026-02-23 | DIRECTIVE-NXTG-20260223-05 (SDK Client Library) → COMPLETE. `synapps-sdk/` with `SynApps` (sync) + `AsyncSynApps` (async) clients via httpx. Full API coverage, poll_task, exception hierarchy. 37 tests. 841 total tests passing. |
 | 2026-02-23 | DIRECTIVE-NXTG-20260223-06 (Health Dashboard + Metrics) → COMPLETE. `_MetricsRingBuffer` ring buffer with windowed queries. `/health` adds `active_connectors`. `/metrics` adds 1h/24h windows, percentiles, per-connector stats. 31 tests. 872 total tests passing. |
 | 2026-02-23 | DIRECTIVE-NXTG-20260223-07 (Error Classification + Retry Policies) → COMPLETE. `ErrorCategory` enum, `classify_error()`, `RetryPolicy`, per-connector policies, `ConnectorError`, `execute_with_retry()` with exponential backoff. 49 tests. 921 total tests passing. |
+| 2026-02-23 | DIRECTIVE-NXTG-20260223-08 (Connector Health Probes) → COMPLETE. `ConnectorHealthTracker` with auto-disable (3 failures) / auto-re-enable. `GET /connectors/health` + `POST /connectors/{name}/probe`. 32 tests. OpenAPI 47 paths. 953 total tests passing. |
 
 ---
 
@@ -1196,15 +1197,15 @@ _(Project team: add questions for ASIF CoS here. They will be answered during th
 
 ### DIRECTIVE-NXTG-20260223-08 — Connector Health Probes
 **From**: NXTG-AI CoS | **Priority**: P1
-**Injected**: 2026-02-23 04:30 | **Estimate**: M | **Status**: PENDING
+**Injected**: 2026-02-23 04:30 | **Estimate**: M | **Status**: COMPLETE
 
 > **Context**: 2Brain needs to know which connectors are alive before routing requests. Health probes + auto-disable prevents routing to dead connectors.
 
 **Action Items**:
-1. [ ] Add per-connector health probe — lightweight ping/list-models call to verify connectivity
-2. [ ] Auto-disable connector after 3 consecutive probe failures, auto-re-enable on next successful probe
-3. [ ] `/api/v1/connectors/health` endpoint — returns per-connector status (healthy/degraded/disabled), last check time, failure count
-4. [ ] Tests for probe success/failure, auto-disable threshold, re-enable, health endpoint — zero regressions
+1. [x] Add per-connector health probe — lightweight ping/list-models call to verify connectivity
+2. [x] Auto-disable connector after 3 consecutive probe failures, auto-re-enable on next successful probe
+3. [x] `/api/v1/connectors/health` endpoint — returns per-connector status (healthy/degraded/disabled), last check time, failure count
+4. [x] Tests for probe success/failure, auto-disable threshold, re-enable, health endpoint — zero regressions
 
 **Response** (filled by project team):
->
+> COMPLETE. `ConnectorHealthTracker` with `ConnectorStatus` enum (healthy/degraded/disabled). Auto-disable after 3 consecutive failures, auto-re-enable on single success. `probe_connector()` uses `validate_config()` as lightweight check. `probe_all_connectors()` scans all LLMProviderRegistry connectors. `GET /connectors/health` returns per-connector status with summary counts. `POST /connectors/{name}/probe` for individual probes. 32 tests (16 tracker unit, 4 probe, 2 probe-all, 6 endpoint, 2 probe-endpoint, 2 integration). OpenAPI re-exported (47 paths). 953 total tests passing.
