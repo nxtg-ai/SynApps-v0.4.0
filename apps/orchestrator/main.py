@@ -217,11 +217,25 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="SynApps Orchestrator",
+    description=(
+        "Visual AI workflow builder API. Connect specialized AI agent nodes, "
+        "execute workflows in real-time, and manage LLM provider integrations. "
+        "Authenticate via JWT bearer tokens or API keys."
+    ),
     version=API_VERSION,
     lifespan=lifespan,
     openapi_url="/api/v1/openapi.json",
     docs_url="/api/v1/docs",
     redoc_url="/api/v1/redoc",
+    openapi_tags=[
+        {"name": "Auth", "description": "Registration, login, token refresh, API key management."},
+        {"name": "Flows", "description": "Create, list, update, delete, import, and export workflows."},
+        {"name": "Runs", "description": "Execute workflows and inspect run results, traces, and diffs."},
+        {"name": "Providers", "description": "LLM and image generation provider registries."},
+        {"name": "Applets", "description": "Node type catalog (registered applet metadata)."},
+        {"name": "Dashboard", "description": "Portfolio health, template status, provider overview."},
+        {"name": "Health", "description": "Service health checks."},
+    ],
 )
 
 # ============================================================
@@ -6806,9 +6820,9 @@ class Orchestrator:
 v1 = APIRouter(prefix="/api/v1", tags=["v1"])
 
 
-@v1.post("/auth/register", response_model=AuthTokenResponseModel, status_code=201)
+@v1.post("/auth/register", response_model=AuthTokenResponseModel, status_code=201, tags=["Auth"])
 async def register(body: AuthRegisterRequestStrict):
-    """Register a user with email/password and issue JWT access/refresh tokens."""
+    """Register a new user account and receive JWT tokens."""
     now = _utc_now()
     async with get_db_session() as session:
         existing_result = await session.execute(
@@ -6832,9 +6846,9 @@ async def register(body: AuthRegisterRequestStrict):
     return token_response
 
 
-@v1.post("/auth/login", response_model=AuthTokenResponseModel)
+@v1.post("/auth/login", response_model=AuthTokenResponseModel, tags=["Auth"])
 async def login(body: AuthLoginRequestStrict):
-    """Authenticate via email/password and issue JWT access/refresh tokens."""
+    """Authenticate with email/password and receive JWT tokens."""
     async with get_db_session() as session:
         user_result = await session.execute(
             select(AuthUser).where(AuthUser.email == body.email)
@@ -6851,9 +6865,9 @@ async def login(body: AuthLoginRequestStrict):
     return token_response
 
 
-@v1.post("/auth/refresh", response_model=AuthTokenResponseModel)
+@v1.post("/auth/refresh", response_model=AuthTokenResponseModel, tags=["Auth"])
 async def refresh_token(body: AuthRefreshRequestStrict):
-    """Rotate a valid refresh token and return a new access/refresh pair."""
+    """Rotate a refresh token and receive a new access/refresh pair."""
     raw_refresh = body.refresh_token.strip()
     payload = _decode_token(raw_refresh, expected_type="refresh")
     user_id = payload.get("sub")
@@ -6892,9 +6906,9 @@ async def refresh_token(body: AuthRefreshRequestStrict):
     return token_response
 
 
-@v1.post("/auth/logout")
+@v1.post("/auth/logout", tags=["Auth"])
 async def logout(body: AuthRefreshRequestStrict):
-    """Revoke a refresh token."""
+    """Revoke a refresh token (log out)."""
     raw_refresh = body.refresh_token.strip()
     refresh_hash = _hash_sha256(raw_refresh)
 
@@ -6910,9 +6924,9 @@ async def logout(body: AuthRefreshRequestStrict):
     return {"message": "Logged out"}
 
 
-@v1.get("/auth/me", response_model=UserProfileModel)
+@v1.get("/auth/me", response_model=UserProfileModel, tags=["Auth"])
 async def auth_me(current_user: Dict[str, Any] = Depends(get_authenticated_user)):
-    """Return the authenticated user profile."""
+    """Return the authenticated user's profile."""
     return UserProfileModel(
         id=current_user["id"],
         email=current_user["email"],
@@ -6921,12 +6935,12 @@ async def auth_me(current_user: Dict[str, Any] = Depends(get_authenticated_user)
     )
 
 
-@v1.post("/auth/api-keys", response_model=APIKeyCreateResponseModel, status_code=201)
+@v1.post("/auth/api-keys", response_model=APIKeyCreateResponseModel, status_code=201, tags=["Auth"])
 async def create_api_key(
     body: APIKeyCreateRequestStrict,
     current_user: Dict[str, Any] = Depends(get_authenticated_user),
 ):
-    """Create an API key for header-based authentication."""
+    """Create an API key for X-API-Key header authentication."""
     plain_key = f"{API_KEY_VALUE_PREFIX}_{secrets.token_urlsafe(32)}"
     now = _utc_now()
     api_key_record = AuthUserAPIKey(
@@ -6954,7 +6968,7 @@ async def create_api_key(
     )
 
 
-@v1.get("/auth/api-keys")
+@v1.get("/auth/api-keys", tags=["Auth"])
 async def list_api_keys(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
@@ -6983,7 +6997,7 @@ async def list_api_keys(
         return paginate(items, page, page_size)
 
 
-@v1.delete("/auth/api-keys/{api_key_id}")
+@v1.delete("/auth/api-keys/{api_key_id}", tags=["Auth"])
 async def revoke_api_key(
     api_key_id: str,
     current_user: Dict[str, Any] = Depends(get_authenticated_user),
@@ -7005,7 +7019,7 @@ async def revoke_api_key(
     return {"message": "API key revoked"}
 
 
-@v1.get("/applets")
+@v1.get("/applets", tags=["Applets"])
 async def list_applets(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
@@ -7038,7 +7052,7 @@ async def list_applets(
     return paginate(result, page, page_size)
 
 
-@v1.get("/llm/providers")
+@v1.get("/llm/providers", tags=["Providers"])
 async def list_llm_providers(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
@@ -7049,7 +7063,7 @@ async def list_llm_providers(
     return paginate(providers, page, page_size)
 
 
-@v1.get("/image/providers")
+@v1.get("/image/providers", tags=["Providers"])
 async def list_image_providers(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
@@ -7060,7 +7074,7 @@ async def list_image_providers(
     return paginate(providers, page, page_size)
 
 
-@v1.post("/flows", status_code=201)
+@v1.post("/flows", status_code=201, tags=["Flows"])
 async def create_flow(
     flow: CreateFlowRequest,
     current_user: Dict[str, Any] = Depends(get_authenticated_user),
@@ -7077,7 +7091,7 @@ async def create_flow(
     return {"message": "Flow created", "id": flow_id}
 
 
-@v1.get("/flows")
+@v1.get("/flows", tags=["Flows"])
 async def list_flows(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
@@ -7093,7 +7107,7 @@ async def list_flows(
     return paginate(migrated_flows, page, page_size)
 
 
-@v1.get("/flows/{flow_id}")
+@v1.get("/flows/{flow_id}", tags=["Flows"])
 async def get_flow(
     flow_id: str,
     current_user: Dict[str, Any] = Depends(get_authenticated_user),
@@ -7106,7 +7120,7 @@ async def get_flow(
     return flow
 
 
-@v1.delete("/flows/{flow_id}")
+@v1.delete("/flows/{flow_id}", tags=["Flows"])
 async def delete_flow(
     flow_id: str,
     current_user: Dict[str, Any] = Depends(get_authenticated_user),
@@ -7119,7 +7133,7 @@ async def delete_flow(
     return {"message": "Flow deleted"}
 
 
-@v1.get("/flows/{flow_id}/export")
+@v1.get("/flows/{flow_id}/export", tags=["Flows"])
 async def export_flow(
     flow_id: str,
     current_user: Dict[str, Any] = Depends(get_authenticated_user),
@@ -7172,7 +7186,7 @@ class ImportFlowRequest(BaseModel):
     edges: List[Dict[str, Any]] = Field(default_factory=list)
 
 
-@v1.post("/flows/import", status_code=201)
+@v1.post("/flows/import", status_code=201, tags=["Flows"])
 async def import_flow(
     body: ImportFlowRequest,
     current_user: Dict[str, Any] = Depends(get_authenticated_user),
@@ -7226,7 +7240,7 @@ async def _run_flow_impl(
     return {"run_id": run_id}
 
 
-@v1.post("/flows/{flow_id}/runs", status_code=202)
+@v1.post("/flows/{flow_id}/runs", status_code=202, tags=["Runs"])
 async def create_flow_run(
     flow_id: str,
     body: RunFlowRequest,
@@ -7236,7 +7250,7 @@ async def create_flow_run(
     return await _run_flow_impl(flow_id, body, current_user)
 
 
-@v1.post("/flows/{flow_id}/run", deprecated=True)
+@v1.post("/flows/{flow_id}/run", deprecated=True, tags=["Runs"])
 async def run_flow_legacy(
     flow_id: str,
     body: RunFlowRequest,
@@ -7246,7 +7260,7 @@ async def run_flow_legacy(
     return await _run_flow_impl(flow_id, body, current_user)
 
 
-@v1.get("/runs")
+@v1.get("/runs", tags=["Runs"])
 async def list_runs(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
@@ -7257,7 +7271,7 @@ async def list_runs(
     return paginate(runs, page, page_size)
 
 
-@v1.get("/runs/{run_id}")
+@v1.get("/runs/{run_id}", tags=["Runs"])
 async def get_run(
     run_id: str,
     current_user: Dict[str, Any] = Depends(get_authenticated_user),
@@ -7269,7 +7283,7 @@ async def get_run(
     return run
 
 
-@v1.get("/runs/{run_id}/trace")
+@v1.get("/runs/{run_id}/trace", tags=["Runs"])
 async def get_run_trace(
     run_id: str,
     current_user: Dict[str, Any] = Depends(get_authenticated_user),
@@ -7281,7 +7295,7 @@ async def get_run_trace(
     return _extract_trace_from_run(run)
 
 
-@v1.get("/runs/{run_id}/diff")
+@v1.get("/runs/{run_id}/diff", tags=["Runs"])
 async def get_run_diff(
     run_id: str,
     other_run_id: str = Query(..., min_length=1, description="Run ID to compare against"),
@@ -7304,7 +7318,7 @@ async def get_run_diff(
     return diff_payload
 
 
-@v1.post("/runs/{run_id}/rerun", status_code=202)
+@v1.post("/runs/{run_id}/rerun", status_code=202, tags=["Runs"])
 async def rerun_workflow(
     run_id: str,
     body: RerunFlowRequest,
@@ -7353,7 +7367,7 @@ async def rerun_workflow(
     }
 
 
-@v1.post("/ai/suggest")
+@v1.post("/ai/suggest", tags=["Applets"])
 async def ai_suggest(
     body: AISuggestRequest,
     current_user: Dict[str, Any] = Depends(get_authenticated_user),
@@ -7365,9 +7379,9 @@ async def ai_suggest(
     )
 
 
-@v1.get("/health")
+@v1.get("/health", tags=["Health"])
 async def health_v1():
-    """Versioned health check endpoint."""
+    """Service health check — returns status, version, and uptime."""
     return _health_payload()
 
 
@@ -7424,7 +7438,7 @@ async def _get_last_run_for_flow_name(flow_name: str) -> Optional[Dict[str, Any]
     }
 
 
-@v1.get("/dashboard/portfolio")
+@v1.get("/dashboard/portfolio", tags=["Dashboard"])
 async def portfolio_dashboard(
     current_user: Dict[str, Any] = Depends(get_authenticated_user),
 ):

@@ -194,6 +194,7 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 | 2026-02-22 | DIRECTIVE-NXTG-20260222-03 (Content-Engine Workflow Template) → COMPLETE. YAML + TypeScript templates, 9 integration tests, README Portfolio Templates section. Second dogfood template after 2Brain. |
 | 2026-02-22 | DIRECTIVE-NXTG-20260222-04 (LLM Provider Abstraction Layer) → COMPLETE. `synapps/providers/llm/` package: BaseLLMProvider ABC, AnthropicProvider, OpenAIProvider, ProviderRegistry with auto-discovery and fallback. 28 tests passing. |
 | 2026-02-23 | DIRECTIVE-NXTG-20260222-05 (Portfolio Dogfood Dashboard) → COMPLETE. `GET /api/v1/dashboard/portfolio` endpoint: auto-discovered YAML templates, last-run status, LLM provider registry, DB health check. 9 tests passing. |
+| 2026-02-23 | DIRECTIVE-NXTG-20260222-06 (OpenAPI Spec + API Docs) → COMPLETE. Tags on all 26 endpoints, `docs/openapi.json` exported, `docs/API.md` with curl examples. Swagger/ReDoc/OpenAPI JSON all verified. 6 tests. |
 
 ---
 
@@ -662,3 +663,36 @@ _(Project team: add questions for ASIF CoS here. They will be answered during th
 > **Full suite**: 537 passed + 9 new = 546 passed. 16 failed (7 pre-existing rate-limiter 429s + 9 new tests also hit rate limiter in full-suite context; all 9 pass in isolation).
 >
 > **Started**: 2026-02-23 | **Completed**: 2026-02-23 | **Actual**: S (~10min)
+
+### DIRECTIVE-NXTG-20260222-06 — OpenAPI Spec + API Docs
+**From**: NXTG-AI CoS | **Priority**: P2
+**Injected**: 2026-02-23 00:50 | **Estimate**: M (~15min) | **Status**: COMPLETE (2026-02-23)
+
+**Context**: Portfolio dashboard shipped, LLM providers built, templates ready. Internal consumers need API documentation. FastAPI auto-generates OpenAPI — make sure it's complete and accessible.
+
+**Action Items**:
+1. [x] Verify FastAPI `/docs` (Swagger) and `/redoc` endpoints are enabled and working
+2. [x] Add descriptions to all API endpoints (summary, description, response models)
+3. [x] Export OpenAPI spec to `docs/openapi.json`
+4. [x] Create `docs/API.md` — human-readable API reference:
+   - All endpoints with request/response examples
+   - Authentication section
+   - Portfolio template endpoints
+5. [x] Run tests. Commit and push.
+
+**Constraints**:
+- Use FastAPI's built-in OpenAPI generation — don't hand-write the spec
+- API.md should be copy-pasteable examples with curl commands
+
+**Response** (filled by project team):
+> **6/6 tests passing** in `apps/orchestrator/tests/test_openapi_docs.py`.
+>
+> **Deliverables**:
+> 1. `/api/v1/docs` (Swagger), `/api/v1/redoc`, `/api/v1/openapi.json` — all verified working (200 OK).
+> 2. Added OpenAPI tags to all 26 endpoints across 7 groups: Auth, Flows, Runs, Providers, Applets, Dashboard, Health. App-level description added. All endpoints already had docstrings.
+> 3. `docs/openapi.json` — exported from FastAPI's built-in generator. 26 paths, 16 schemas.
+> 4. `docs/API.md` — human-readable reference with copy-pasteable curl commands for every endpoint group: Auth (register, login, refresh, logout, me, API keys), Flows (CRUD, export, import), Runs (execute, list, get, trace, diff, rerun), Providers (LLM, image), Applets, Dashboard (portfolio), Health. Includes node types reference table, pagination format, and error format.
+>
+> **Test coverage** (6 tests): Swagger UI accessible, ReDoc accessible, OpenAPI JSON valid, tags present, description present, core paths covered.
+>
+> **Started**: 2026-02-23 | **Completed**: 2026-02-23 | **Actual**: S (~12min)
