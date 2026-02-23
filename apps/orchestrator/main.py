@@ -335,6 +335,64 @@ async def emit_event(event: str, data: Dict[str, Any]) -> None:
     for hook in hooks:
         asyncio.create_task(_deliver_webhook(hook, payload))
 
+# ============================================================
+# Async Task Queue
+# ============================================================
+
+TASK_STATUSES = ("pending", "running", "completed", "failed")
+
+
+class TaskQueue:
+    """In-memory async task tracker for background workflow execution."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._tasks: Dict[str, Dict[str, Any]] = {}
+
+    def create(self, template_id: str, flow_name: str) -> str:
+        task_id = str(uuid.uuid4())
+        with self._lock:
+            self._tasks[task_id] = {
+                "task_id": task_id,
+                "template_id": template_id,
+                "flow_name": flow_name,
+                "status": "pending",
+                "progress_pct": 0,
+                "run_id": None,
+                "result": None,
+                "error": None,
+                "created_at": time.time(),
+                "started_at": None,
+                "completed_at": None,
+            }
+        return task_id
+
+    def get(self, task_id: str) -> Optional[Dict[str, Any]]:
+        with self._lock:
+            t = self._tasks.get(task_id)
+            return dict(t) if t else None
+
+    def list_tasks(self, status: Optional[str] = None) -> List[Dict[str, Any]]:
+        with self._lock:
+            tasks = list(self._tasks.values())
+        if status:
+            tasks = [t for t in tasks if t["status"] == status]
+        tasks.sort(key=lambda t: t["created_at"], reverse=True)
+        return [dict(t) for t in tasks]
+
+    def update(self, task_id: str, **fields: Any) -> None:
+        with self._lock:
+            t = self._tasks.get(task_id)
+            if t:
+                t.update(fields)
+
+    def reset(self) -> None:
+        with self._lock:
+            self._tasks.clear()
+
+
+task_queue = TaskQueue()
+
 
 DEFAULT_MEMORY_BACKEND = os.environ.get("MEMORY_BACKEND", "sqlite_fts").strip().lower()
 DEFAULT_MEMORY_NAMESPACE = os.environ.get("MEMORY_NAMESPACE", "default").strip() or "default"
@@ -7544,6 +7602,122 @@ async def delete_webhook(hook_id: str):
     if not webhook_registry.delete(hook_id):
         raise HTTPException(status_code=404, detail=f"Webhook '{hook_id}' not found")
     return {"message": "Webhook deleted", "id": hook_id}
+
+
+# ---------------------------------------------------------------------------
+# Async Task Queue endpoints
+# ---------------------------------------------------------------------------
+
+def _load_yaml_template(template_id: str) -> Optional[Dict[str, Any]]:
+    """Load a YAML template by its ID (filename stem or 'id' field)."""
+    import yaml
+
+    templates_dir = project_root / "templates"
+    if not templates_dir.is_dir():
+        return None
+    for path in templates_dir.glob("*.yaml"):
+        try:
+            with open(path) as f:
+                data = yaml.safe_load(f)
+            if not isinstance(data, dict):
+                continue
+            tid = data.get("id", path.stem)
+            if tid == template_id:
+                return data
+        except Exception:
+            continue
+    return None
+
+
+async def _run_task_background(task_id: str, template_data: Dict[str, Any], input_data: Dict[str, Any]) -> None:
+    """Background coroutine that runs a template and updates task state."""
+    task_queue.update(task_id, status="running", started_at=time.time(), progress_pct=10)
+    try:
+        flow_dict = {
+            "id": str(uuid.uuid4()),
+            "name": template_data.get("name", ""),
+            "nodes": template_data.get("nodes", []),
+            "edges": template_data.get("edges", []),
+        }
+        await FlowRepository.save(flow_dict)
+        task_queue.update(task_id, progress_pct=30)
+
+        run_id = await Orchestrator.execute_flow(flow_dict, input_data)
+        task_queue.update(task_id, run_id=run_id, progress_pct=50)
+
+        # Poll for completion (up to 60s)
+        for _ in range(120):
+            await asyncio.sleep(0.5)
+            run = await WorkflowRunRepository.get_by_run_id(run_id)
+            if run and run.get("status") in ("success", "error"):
+                break
+
+        run = await WorkflowRunRepository.get_by_run_id(run_id)
+        run_status = run.get("status", "unknown") if run else "unknown"
+
+        if run_status == "success":
+            task_queue.update(
+                task_id,
+                status="completed",
+                progress_pct=100,
+                result={"run_id": run_id, "run_status": run_status},
+                completed_at=time.time(),
+            )
+        else:
+            task_queue.update(
+                task_id,
+                status="failed",
+                progress_pct=100,
+                error=run.get("error", "Execution failed") if run else "Run not found",
+                result={"run_id": run_id, "run_status": run_status},
+                completed_at=time.time(),
+            )
+    except Exception as e:
+        task_queue.update(
+            task_id,
+            status="failed",
+            progress_pct=100,
+            error=str(e),
+            completed_at=time.time(),
+        )
+
+
+class RunAsyncRequest(BaseModel):
+    """Request body for async template execution."""
+    model_config = ConfigDict(extra="forbid")
+    input: Dict[str, Any] = Field(default_factory=dict, description="Input data for the workflow")
+
+
+@v1.post("/templates/{template_id}/run-async", status_code=202, tags=["Runs"])
+async def run_template_async(template_id: str, body: RunAsyncRequest):
+    """Run a YAML template asynchronously. Returns a task ID for polling."""
+    template_data = _load_yaml_template(template_id)
+    if not template_data:
+        raise HTTPException(status_code=404, detail=f"Template '{template_id}' not found")
+
+    task_id = task_queue.create(template_id, template_data.get("name", ""))
+    asyncio.create_task(_run_task_background(task_id, template_data, body.input))
+    return {"task_id": task_id, "status": "pending"}
+
+
+@v1.get("/tasks/{task_id}", tags=["Runs"])
+async def get_task(task_id: str):
+    """Get the status and result of an async task."""
+    task = task_queue.get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
+    return task
+
+
+@v1.get("/tasks", tags=["Runs"])
+async def list_tasks(
+    status: Optional[str] = Query(None, description="Filter by status: pending, running, completed, failed"),
+):
+    """List all async tasks, optionally filtered by status."""
+    if status and status not in TASK_STATUSES:
+        raise HTTPException(status_code=400, detail=f"Invalid status. Valid: {TASK_STATUSES}")
+    tasks = task_queue.list_tasks(status=status)
+    return {"tasks": tasks, "total": len(tasks)}
 
 
 @v1.post("/flows", status_code=201, tags=["Flows"])

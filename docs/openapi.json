@@ -966,6 +966,151 @@
         }
       }
     },
+    "/api/v1/templates/{template_id}/run-async": {
+      "post": {
+        "tags": [
+          "v1",
+          "Runs"
+        ],
+        "summary": "Run Template Async",
+        "description": "Run a YAML template asynchronously. Returns a task ID for polling.",
+        "operationId": "run_template_async_api_v1_templates__template_id__run_async_post",
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Template Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunAsyncRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{task_id}": {
+      "get": {
+        "tags": [
+          "v1",
+          "Runs"
+        ],
+        "summary": "Get Task",
+        "description": "Get the status and result of an async task.",
+        "operationId": "get_task_api_v1_tasks__task_id__get",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tasks": {
+      "get": {
+        "tags": [
+          "v1",
+          "Runs"
+        ],
+        "summary": "List Tasks",
+        "description": "List all async tasks, optionally filtered by status.",
+        "operationId": "list_tasks_api_v1_tasks_get",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by status: pending, running, completed, failed",
+              "title": "Status"
+            },
+            "description": "Filter by status: pending, running, completed, failed"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/flows": {
       "post": {
         "tags": [
@@ -2756,6 +2901,20 @@
         "type": "object",
         "title": "RerunFlowRequest",
         "description": "Request body for re-running a previous flow execution with input overrides."
+      },
+      "RunAsyncRequest": {
+        "properties": {
+          "input": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Input",
+            "description": "Input data for the workflow"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "RunAsyncRequest",
+        "description": "Request body for async template execution."
       },
       "RunFlowRequest": {
         "properties": {

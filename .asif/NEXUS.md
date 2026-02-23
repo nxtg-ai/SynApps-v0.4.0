@@ -199,6 +199,7 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 | 2026-02-23 | DIRECTIVE-NXTG-20260222-08 (Provider Auto-Discovery + Registry) → COMPLETE. Filesystem scanning via `importlib` + `inspect`, `GET /providers` (all discovered with models), `GET /providers/{name}/health` (per-provider health). 17 tests. OpenAPI re-exported (30 paths). |
 | 2026-02-23 | DIRECTIVE-NXTG-20260222-09 (Template Validation + Error Reporting) → COMPLETE. `validate_template()` with DFS circular dependency detection, `POST /templates/validate` dry-run endpoint. 18 tests. OpenAPI re-exported (31 paths). |
 | 2026-02-23 | DIRECTIVE-NXTG-20260222-10 (Webhook Support + Event System) → COMPLETE. `WebhookRegistry`, 5 event types, HMAC-SHA256 signing, 3-retry exponential backoff delivery, CRUD endpoints. 20 tests. OpenAPI re-exported (33 paths). |
+| 2026-02-23 | DIRECTIVE-NXTG-20260222-11 (Async Task Queue + Background Execution) → COMPLETE. `TaskQueue` with status/progress tracking, `POST /templates/{id}/run-async`, `GET /tasks/{id}`, `GET /tasks?status=`. 16 tests. OpenAPI re-exported (36 paths). |
 
 ---
 
@@ -848,3 +849,35 @@ _(Project team: add questions for ASIF CoS here. They will be answered during th
 > **OpenAPI spec** re-exported: now 33 paths (was 31).
 >
 > **Started**: 2026-02-23 | **Completed**: 2026-02-23 | **Actual**: M (~12min)
+
+### DIRECTIVE-NXTG-20260222-11 — Async Task Queue + Background Execution
+**From**: NXTG-AI CoS | **Priority**: P1
+**Injected**: 2026-02-22 23:25 | **Estimate**: M | **Status**: COMPLETE (2026-02-23)
+
+**Action Items**:
+1. [x] Add `POST /api/v1/templates/{id}/run-async` — returns task ID immediately, runs template in background
+2. [x] Add `GET /api/v1/tasks/{id}` — returns task status (pending/running/completed/failed), progress %, result on completion
+3. [x] Add `GET /api/v1/tasks` — list all tasks with status filtering
+4. [x] Tests for async execution, status polling, task listing — zero regressions
+
+**Response** (filled by project team):
+> **16/16 tests passing** in `apps/orchestrator/tests/test_async_tasks.py` (0.44s).
+>
+> **Implementation**:
+> 1. **`TaskQueue`** — in-memory async task tracker with `create()`, `get()`, `list_tasks(status=)`, `update()`, `reset()`. Thread-safe via `threading.Lock`. Tasks track: task_id, template_id, flow_name, status (pending/running/completed/failed), progress_pct, run_id, result, error, timestamps.
+> 2. **`POST /api/v1/templates/{template_id}/run-async`** (202) — loads YAML template by ID, creates task, spawns background coroutine via `asyncio.create_task`. Returns task_id immediately. Background worker: creates flow, executes via `Orchestrator.execute_flow`, polls `WorkflowRunRepository` for completion (up to 60s), updates task status.
+> 3. **`GET /api/v1/tasks/{task_id}`** — returns full task state (status, progress_pct, run_id, result, error, timestamps). 404 for unknown.
+> 4. **`GET /api/v1/tasks`** — lists all tasks sorted by created_at desc. Optional `?status=` filter (400 for invalid status).
+> 5. **`_load_yaml_template()`** — loads YAML template by ID field or filename stem.
+>
+> **Test coverage** (16 tests in 4 categories):
+> | Category | Count | What |
+> |----------|-------|------|
+> | TaskQueue unit | 6 | create, update, get-nonexistent, list-all, list-filter, reset |
+> | Template loader | 2 | found (content-engine), not-found |
+> | run-async endpoint | 2 | returns 202, unknown template 404 |
+> | tasks endpoints | 6 | get task, get-404, list all, list-filter, invalid-status-400, list-empty |
+>
+> **OpenAPI spec** re-exported: now 36 paths (was 33).
+>
+> **Started**: 2026-02-23 | **Completed**: 2026-02-23 | **Actual**: S (~10min)
