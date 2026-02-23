@@ -2,7 +2,10 @@ import pytest
 import os
 import importlib
 import apps.orchestrator.db as db_module
-from apps.orchestrator.middleware.rate_limiter import _SlidingWindowCounter
+from apps.orchestrator.middleware.rate_limiter import (
+    _SlidingWindowCounter,
+    TokenBucketRegistry,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -18,7 +21,7 @@ def setup_default_db_env(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _reset_rate_limit_counter(monkeypatch):
-    """Reset the rate limiter sliding window counter between tests.
+    """Reset the rate limiter sliding window counter and token buckets between tests.
 
     Without this, tests sharing the same anonymous IP key accumulate
     requests across the suite and hit 429 after 30 total requests.
@@ -26,4 +29,8 @@ def _reset_rate_limit_counter(monkeypatch):
     monkeypatch.setattr(
         "apps.orchestrator.middleware.rate_limiter._counter",
         _SlidingWindowCounter(),
+    )
+    monkeypatch.setattr(
+        "apps.orchestrator.middleware.rate_limiter._token_buckets",
+        TokenBucketRegistry(),
     )
