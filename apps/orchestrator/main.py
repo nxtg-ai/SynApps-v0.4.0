@@ -311,64 +311,162 @@ app_config = AppConfig()
 
 
 # ============================================================
-# In-Memory Metrics Collector
+# In-Memory Metrics Collector (Ring-Buffer Backed)
 # ============================================================
+
+class _MetricsRingBuffer:
+    """Fixed-size ring buffer storing timestamped float samples.
+
+    Each entry is ``(timestamp, value)``.  When the buffer is full the
+    oldest entry is silently overwritten — no allocations, no resizing.
+    ``query(window_seconds)`` returns only samples within the window.
+    """
+
+    def __init__(self, capacity: int = 10_000) -> None:
+        self._capacity = capacity
+        self._buf: List[Optional[tuple]] = [None] * capacity
+        self._head: int = 0  # next write position
+        self._count: int = 0
+
+    @property
+    def capacity(self) -> int:
+        return self._capacity
+
+    def push(self, value: float, ts: Optional[float] = None) -> None:
+        ts = ts if ts is not None else time.time()
+        self._buf[self._head] = (ts, value)
+        self._head = (self._head + 1) % self._capacity
+        if self._count < self._capacity:
+            self._count += 1
+
+    def query(self, window_seconds: float) -> List[float]:
+        """Return values recorded within the last *window_seconds*."""
+        cutoff = time.time() - window_seconds
+        result: List[float] = []
+        for i in range(self._count):
+            idx = (self._head - self._count + i) % self._capacity
+            entry = self._buf[idx]
+            if entry is not None and entry[0] >= cutoff:
+                result.append(entry[1])
+        return result
+
+    def all_values(self) -> List[float]:
+        """Return all stored values (oldest first)."""
+        result: List[float] = []
+        for i in range(self._count):
+            idx = (self._head - self._count + i) % self._capacity
+            entry = self._buf[idx]
+            if entry is not None:
+                result.append(entry[1])
+        return result
+
+    def clear(self) -> None:
+        self._buf = [None] * self._capacity
+        self._head = 0
+        self._count = 0
+
+    def __len__(self) -> int:
+        return self._count
+
 
 class _MetricsCollector:
     """Thread-safe in-memory request/response metrics.
 
-    Tracks request counts, error counts, response times, and provider usage.
-    No external dependencies — designed for /metrics endpoint consumption.
+    Uses ring buffers for time-windowed queries (1 h / 24 h) and tracks
+    per-connector (provider) stats.  No external dependencies — designed
+    for ``/metrics`` endpoint consumption.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, ring_capacity: int = 10_000) -> None:
         self._lock = threading.Lock()
         self.total_requests: int = 0
         self.total_errors: int = 0
-        self._response_times: List[float] = []  # recent response times (capped)
+        self._response_times = _MetricsRingBuffer(ring_capacity)
+        self._error_times = _MetricsRingBuffer(ring_capacity)
         self._provider_usage: Dict[str, int] = {}
+        self._provider_times: Dict[str, _MetricsRingBuffer] = {}
         self._template_runs: Dict[str, int] = {}
         self._last_template_run_time: Optional[float] = None
-        self._max_samples: int = 1000
+        self._ring_capacity = ring_capacity
 
     def record_request(self, duration_ms: float, status_code: int, path: str) -> None:
+        now = time.time()
         with self._lock:
             self.total_requests += 1
+            self._response_times.push(duration_ms, now)
             if status_code >= 400:
                 self.total_errors += 1
-            if len(self._response_times) >= self._max_samples:
-                self._response_times = self._response_times[self._max_samples // 2:]
-            self._response_times.append(duration_ms)
+                self._error_times.push(1.0, now)
 
-    def record_provider_call(self, provider: str) -> None:
+    def record_provider_call(self, provider: str, duration_ms: float = 0.0) -> None:
+        now = time.time()
         with self._lock:
             self._provider_usage[provider] = self._provider_usage.get(provider, 0) + 1
+            if provider not in self._provider_times:
+                self._provider_times[provider] = _MetricsRingBuffer(self._ring_capacity)
+            self._provider_times[provider].push(duration_ms, now)
 
     def record_template_run(self, template_name: str) -> None:
         with self._lock:
             self._template_runs[template_name] = self._template_runs.get(template_name, 0) + 1
             self._last_template_run_time = time.time()
 
+    def _window_stats(self, buf: _MetricsRingBuffer, window_seconds: float) -> Dict[str, Any]:
+        """Compute count, avg, p50, p95, p99 for a time window."""
+        values = buf.query(window_seconds)
+        if not values:
+            return {"count": 0, "avg_ms": 0.0, "p50_ms": 0.0, "p95_ms": 0.0, "p99_ms": 0.0}
+        values.sort()
+        n = len(values)
+        return {
+            "count": n,
+            "avg_ms": round(sum(values) / n, 2),
+            "p50_ms": round(values[n // 2], 2),
+            "p95_ms": round(values[int(n * 0.95)], 2),
+            "p99_ms": round(values[min(int(n * 0.99), n - 1)], 2),
+        }
+
     def snapshot(self) -> Dict[str, Any]:
         with self._lock:
-            avg_ms = (
-                sum(self._response_times) / len(self._response_times)
-                if self._response_times
-                else 0.0
-            )
+            all_times = self._response_times.all_values()
+            avg_ms = sum(all_times) / len(all_times) if all_times else 0.0
             error_rate = (
                 (self.total_errors / self.total_requests * 100)
                 if self.total_requests > 0
                 else 0.0
             )
+
+            # Time-windowed request stats
+            request_1h = self._window_stats(self._response_times, 3600)
+            request_24h = self._window_stats(self._response_times, 86400)
+
+            # Error counts in windows
+            errors_1h = len(self._error_times.query(3600))
+            errors_24h = len(self._error_times.query(86400))
+
+            # Per-connector (provider) stats
+            connector_stats: Dict[str, Any] = {}
+            for prov, total in self._provider_usage.items():
+                prov_buf = self._provider_times.get(prov)
+                connector_stats[prov] = {
+                    "total_calls": total,
+                    "last_1h": self._window_stats(prov_buf, 3600) if prov_buf else {},
+                    "last_24h": self._window_stats(prov_buf, 86400) if prov_buf else {},
+                }
+
             return {
                 "requests": {
                     "total": self.total_requests,
                     "errors": self.total_errors,
                     "error_rate_pct": round(error_rate, 2),
                     "avg_response_ms": round(avg_ms, 2),
+                    "last_1h": request_1h,
+                    "last_24h": request_24h,
+                    "errors_last_1h": errors_1h,
+                    "errors_last_24h": errors_24h,
                 },
                 "provider_usage": dict(self._provider_usage),
+                "connector_stats": connector_stats,
                 "template_runs": dict(self._template_runs),
                 "last_template_run_at": self._last_template_run_time,
             }
@@ -378,7 +476,9 @@ class _MetricsCollector:
             self.total_requests = 0
             self.total_errors = 0
             self._response_times.clear()
+            self._error_times.clear()
             self._provider_usage.clear()
+            self._provider_times.clear()
             self._template_runs.clear()
             self._last_template_run_time = None
 
@@ -8951,11 +9051,15 @@ app.include_router(v1)
 
 def _health_payload() -> Dict[str, Any]:
     uptime_seconds = max(0, int(time.time() - APP_START_TIME))
+    active_connectors = sum(
+        1 for p in LLMProviderRegistry.list_providers() if p.configured
+    )
     return {
         "status": "healthy",
         "service": "SynApps Orchestrator API",
         "version": API_VERSION,
         "uptime": uptime_seconds,
+        "active_connectors": active_connectors,
     }
 
 

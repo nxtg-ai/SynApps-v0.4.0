@@ -208,6 +208,7 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 | 2026-02-23 | DIRECTIVE-NXTG-20260223-03 (Logging Framework + Request Tracing) → COMPLETE. `_JSONFormatter` structured JSON logs, `_current_request_id` contextvar, `request_id_tracing` middleware with `X-Request-ID` header. CORS updated. 16 tests. 769 total tests passing. |
 | 2026-02-23 | DIRECTIVE-NXTG-20260223-04 (Docker Compose + Production Deployment) → COMPLETE. Multi-stage `Dockerfile.orchestrator` (builder+runtime, non-root, ~150MB). Root + infra `docker-compose.yml` with all env vars. `.dockerignore`. 35 CI-safe tests. 804 total tests passing. |
 | 2026-02-23 | DIRECTIVE-NXTG-20260223-05 (SDK Client Library) → COMPLETE. `synapps-sdk/` with `SynApps` (sync) + `AsyncSynApps` (async) clients via httpx. Full API coverage, poll_task, exception hierarchy. 37 tests. 841 total tests passing. |
+| 2026-02-23 | DIRECTIVE-NXTG-20260223-06 (Health Dashboard + Metrics) → COMPLETE. `_MetricsRingBuffer` ring buffer with windowed queries. `/health` adds `active_connectors`. `/metrics` adds 1h/24h windows, percentiles, per-connector stats. 31 tests. 872 total tests passing. |
 
 ---
 
@@ -1164,15 +1165,15 @@ _(Project team: add questions for ASIF CoS here. They will be answered during th
 
 ### DIRECTIVE-NXTG-20260223-06 — Health Dashboard Endpoint + Metrics Collection
 **From**: NXTG-AI CoS | **Priority**: P1
-**Injected**: 2026-02-23 04:00 | **Estimate**: M | **Status**: PENDING
+**Injected**: 2026-02-23 04:00 | **Estimate**: M | **Status**: COMPLETE
 
 > **Context**: 2Brain is first internal consumer. Before dogfooding, SynApps needs health observability so consumers know if the API fabric is up and performing.
 
 **Action Items**:
-1. [ ] Add `/api/v1/health` endpoint — returns status, uptime, version, active connectors count
-2. [ ] Add `/api/v1/metrics` endpoint — returns request count, avg latency, error rate, per-connector stats (last 1h/24h)
-3. [ ] Collect metrics in-memory with ring buffer (no external dependency needed)
-4. [ ] Tests for health endpoint, metrics collection, ring buffer overflow — zero regressions
+1. [x] Add `/api/v1/health` endpoint — returns status, uptime, version, active connectors count
+2. [x] Add `/api/v1/metrics` endpoint — returns request count, avg latency, error rate, per-connector stats (last 1h/24h)
+3. [x] Collect metrics in-memory with ring buffer (no external dependency needed)
+4. [x] Tests for health endpoint, metrics collection, ring buffer overflow — zero regressions
 
 **Response** (filled by project team):
->
+> COMPLETE. `_MetricsRingBuffer` (fixed-capacity ring with timestamped entries, `query(window_seconds)`) replaces the capped list. `_MetricsCollector` upgraded: windowed stats (1h/24h) with count/avg/p50/p95/p99, per-connector stats, error windows. `/health` now includes `active_connectors` count. `/metrics` now returns `last_1h`/`last_24h` windows, `errors_last_1h`/`errors_last_24h`, and `connector_stats` per provider. 31 tests (9 ring buffer, 11 collector, 4 health, 2 detailed, 5 metrics). 872 total tests passing.
