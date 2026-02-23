@@ -196,6 +196,7 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 | 2026-02-23 | DIRECTIVE-NXTG-20260222-05 (Portfolio Dogfood Dashboard) → COMPLETE. `GET /api/v1/dashboard/portfolio` endpoint: auto-discovered YAML templates, last-run status, LLM provider registry, DB health check. 9 tests passing. |
 | 2026-02-23 | DIRECTIVE-NXTG-20260222-06 (OpenAPI Spec + API Docs) → COMPLETE. Tags on all 26 endpoints, `docs/openapi.json` exported, `docs/API.md` with curl examples. Swagger/ReDoc/OpenAPI JSON all verified. 6 tests. |
 | 2026-02-23 | DIRECTIVE-NXTG-20260222-07 (Health Monitoring + Metrics Endpoint) → COMPLETE. `_MetricsCollector` with thread-safe in-memory counters, `collect_metrics` middleware, `GET /health/detailed` (ok/degraded/down + DB + providers), `GET /metrics` (requests, provider_usage, template_runs). 9 tests. OpenAPI re-exported (28 paths). |
+| 2026-02-23 | DIRECTIVE-NXTG-20260222-08 (Provider Auto-Discovery + Registry) → COMPLETE. Filesystem scanning via `importlib` + `inspect`, `GET /providers` (all discovered with models), `GET /providers/{name}/health` (per-provider health). 17 tests. OpenAPI re-exported (30 paths). |
 
 ---
 
@@ -747,3 +748,33 @@ _(Project team: add questions for ASIF CoS here. They will be answered during th
 > | metrics_template_runs_after_flow_execution | Create+run flow → template name in template_runs, last_template_run_at not null |
 >
 > **Started**: 2026-02-23 | **Completed**: 2026-02-23 | **Actual**: M (~12min)
+
+### DIRECTIVE-NXTG-20260222-08 — Provider Auto-Discovery + Registry
+**From**: NXTG-AI CoS | **Priority**: P1
+**Injected**: 2026-02-22 22:20 | **Estimate**: M | **Status**: COMPLETE (2026-02-23)
+
+**Action Items**:
+1. [x] Implement provider auto-discovery: scan `providers/` directory on startup, auto-register any Python module that implements the ProviderInterface
+2. [x] Add `GET /api/v1/providers` endpoint listing all discovered providers with their capabilities and status
+3. [x] Add `GET /api/v1/providers/{name}/health` for per-provider health checks
+4. [x] Tests for discovery + registry — zero regressions
+
+**Response** (filled by project team):
+> **17/17 tests passing** in `apps/orchestrator/tests/test_provider_discovery.py` (0.78s).
+>
+> **Implementation**:
+> 1. **Filesystem auto-discovery** — `ProviderRegistry.auto_discover()` now scans `synapps/providers/llm/*.py` using `importlib` + `inspect`. Skips `_`-prefixed files, imports each module, finds all `BaseLLMProvider` subclasses with non-empty `name`, and registers them globally. Also added `auto_discover_directory()` for scanning arbitrary directories.
+> 2. **`GET /api/v1/providers`** — returns all discovered providers with: name, connected (bool), reason, model_count, and full models list. Includes `discovery: "filesystem"` metadata.
+> 3. **`GET /api/v1/providers/{name}/health`** — per-provider health check returning status (ok/unavailable), connected, reason, model_count. Returns 404 for unknown providers.
+> 4. Added `provider_info()`, `all_providers_info()`, `provider_health()` methods to `ProviderRegistry` instance API.
+>
+> **Test coverage** (17 tests in 3 categories):
+> | Category | Count | What |
+> |----------|-------|------|
+> | Auto-discovery | 5 | finds builtins, idempotent, skips private, directory count, nonexistent dir |
+> | Registry methods | 5 | provider_info shape, unknown raises, all_providers_info, health ok, health unavailable |
+> | API endpoints | 7 | /providers 200, lists discovered, has models, has connected flag, /health openai, /health anthropic, /health unknown 404 |
+>
+> **OpenAPI spec** re-exported: now 30 paths (was 28).
+>
+> **Started**: 2026-02-23 | **Completed**: 2026-02-23 | **Actual**: S (~10min)

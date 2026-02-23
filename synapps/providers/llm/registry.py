@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Type
+import importlib
+import inspect
+import logging
+import pathlib
+from dataclasses import asdict
+from typing import Any, Dict, List, Optional, Type
 
 from synapps.providers.llm.base import BaseLLMProvider, ProviderNotFoundError
+
+logger = logging.getLogger(__name__)
 
 
 class ProviderRegistry:
@@ -72,6 +79,38 @@ class ProviderRegistry:
             f"Provider '{name}' not found and fallback '{fallback}' also unavailable"
         )
 
+    def provider_info(self, name: str) -> Dict[str, Any]:
+        """Return detailed info for a single registered provider."""
+        provider_cls = self.get(name)
+        instance = provider_cls()
+        connected, reason = instance.validate()
+        models = instance.get_models()
+        return {
+            "name": provider_cls.name,
+            "connected": connected,
+            "reason": reason,
+            "model_count": len(models),
+            "models": [asdict(m) for m in models],
+        }
+
+    def all_providers_info(self) -> List[Dict[str, Any]]:
+        """Return info for every registered provider."""
+        return [self.provider_info(n) for n in self.list_providers()]
+
+    def provider_health(self, name: str) -> Dict[str, Any]:
+        """Run a health check on a single provider."""
+        provider_cls = self.get(name)
+        instance = provider_cls()
+        connected, reason = instance.validate()
+        models = instance.get_models()
+        return {
+            "name": provider_cls.name,
+            "status": "ok" if connected else "unavailable",
+            "connected": connected,
+            "reason": reason,
+            "model_count": len(models),
+        }
+
     # --- Class-level (global) API ---
 
     @classmethod
@@ -106,9 +145,41 @@ class ProviderRegistry:
 
     @classmethod
     def auto_discover(cls) -> None:
-        """Import and register the built-in providers."""
-        from synapps.providers.llm.anthropic_provider import AnthropicProvider
-        from synapps.providers.llm.openai_provider import OpenAIProvider
+        """Scan providers/ directory and register every BaseLLMProvider subclass."""
+        providers_dir = pathlib.Path(__file__).resolve().parent
+        _scan_directory(providers_dir, "synapps.providers.llm", cls)
 
-        cls.register_global(OpenAIProvider)
-        cls.register_global(AnthropicProvider)
+    @classmethod
+    def auto_discover_directory(cls, directory: pathlib.Path, base_module: str) -> int:
+        """Scan an arbitrary directory for BaseLLMProvider subclasses.
+
+        Returns the number of providers newly registered.
+        """
+        before = len(cls._global_providers)
+        _scan_directory(directory, base_module, cls)
+        return len(cls._global_providers) - before
+
+
+def _scan_directory(
+    directory: pathlib.Path, base_module: str, registry: type[ProviderRegistry]
+) -> None:
+    """Walk *directory* for .py files, import them, and register providers."""
+    if not directory.is_dir():
+        return
+    for py_file in sorted(directory.glob("*.py")):
+        if py_file.name.startswith("_"):
+            continue
+        module_name = f"{base_module}.{py_file.stem}"
+        try:
+            mod = importlib.import_module(module_name)
+        except Exception:
+            logger.warning("Failed to import provider module %s", module_name)
+            continue
+        for _attr_name, obj in inspect.getmembers(mod, inspect.isclass):
+            if (
+                issubclass(obj, BaseLLMProvider)
+                and obj is not BaseLLMProvider
+                and getattr(obj, "name", "")
+            ):
+                registry.register_global(obj)
+                logger.debug("Auto-discovered provider: %s", obj.name)

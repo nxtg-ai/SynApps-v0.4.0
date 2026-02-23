@@ -7165,6 +7165,41 @@ async def list_image_providers(
     return paginate(providers, page, page_size)
 
 
+# ---------------------------------------------------------------------------
+# Provider auto-discovery + unified registry endpoints
+# ---------------------------------------------------------------------------
+
+from synapps.providers.llm import ProviderRegistry as SynappsProviderRegistry  # noqa: E402
+
+# Run auto-discovery on startup
+SynappsProviderRegistry.auto_discover()
+_synapps_registry = SynappsProviderRegistry()
+# Copy globally-discovered providers into the instance for the endpoints
+for _pname in SynappsProviderRegistry.list_global():
+    _synapps_registry.register(SynappsProviderRegistry.get_global(_pname))
+
+
+@v1.get("/providers", tags=["Providers"])
+async def list_discovered_providers():
+    """List all auto-discovered LLM providers with capabilities and status."""
+    providers = _synapps_registry.all_providers_info()
+    return {
+        "providers": providers,
+        "total": len(providers),
+        "discovery": "filesystem",
+    }
+
+
+@v1.get("/providers/{name}/health", tags=["Providers"])
+async def provider_health_check(name: str):
+    """Run a health check on a specific discovered provider."""
+    try:
+        health = _synapps_registry.provider_health(name)
+    except Exception:
+        raise HTTPException(status_code=404, detail=f"Provider '{name}' not found")
+    return health
+
+
 @v1.post("/flows", status_code=201, tags=["Flows"])
 async def create_flow(
     flow: CreateFlowRequest,

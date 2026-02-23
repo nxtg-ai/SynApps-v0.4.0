@@ -760,6 +760,69 @@
         }
       }
     },
+    "/api/v1/providers": {
+      "get": {
+        "tags": [
+          "v1",
+          "Providers"
+        ],
+        "summary": "List Discovered Providers",
+        "description": "List all auto-discovered LLM providers with capabilities and status.",
+        "operationId": "list_discovered_providers_api_v1_providers_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/providers/{name}/health": {
+      "get": {
+        "tags": [
+          "v1",
+          "Providers"
+        ],
+        "summary": "Provider Health Check",
+        "description": "Run a health check on a specific discovered provider.",
+        "operationId": "provider_health_check_api_v1_providers__name__health_get",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/flows": {
       "post": {
         "tags": [
