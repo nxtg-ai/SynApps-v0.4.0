@@ -207,6 +207,7 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 | 2026-02-23 | DIRECTIVE-NXTG-20260223-02 (Environment Configuration + .env Support) → COMPLETE. `AppConfig` class centralises all env vars with `validate()` and `to_dict(redact_secrets=True)`. Startup validation fails fast in production. `GET /config` endpoint. 23 tests. OpenAPI re-exported (45 paths). 753 total tests passing. |
 | 2026-02-23 | DIRECTIVE-NXTG-20260223-03 (Logging Framework + Request Tracing) → COMPLETE. `_JSONFormatter` structured JSON logs, `_current_request_id` contextvar, `request_id_tracing` middleware with `X-Request-ID` header. CORS updated. 16 tests. 769 total tests passing. |
 | 2026-02-23 | DIRECTIVE-NXTG-20260223-04 (Docker Compose + Production Deployment) → COMPLETE. Multi-stage `Dockerfile.orchestrator` (builder+runtime, non-root, ~150MB). Root + infra `docker-compose.yml` with all env vars. `.dockerignore`. 35 CI-safe tests. 804 total tests passing. |
+| 2026-02-23 | DIRECTIVE-NXTG-20260223-05 (SDK Client Library) → COMPLETE. `synapps-sdk/` with `SynApps` (sync) + `AsyncSynApps` (async) clients via httpx. Full API coverage, poll_task, exception hierarchy. 37 tests. 841 total tests passing. |
 
 ---
 
@@ -1147,3 +1148,31 @@ _(Project team: add questions for ASIF CoS here. They will be answered during th
 
 **Response** (filled by project team):
 > COMPLETE. Multi-stage `Dockerfile.orchestrator` (builder + runtime, non-root user, curl healthcheck, ~150MB image). Root and infra `docker-compose.yml` with all env vars from directives 12-14 (rate limiting, admin keys, engine concurrency, memory backend, etc.). `.dockerignore` with comprehensive exclusions. 35 CI-safe tests validating Dockerfile structure, docker-compose services/healthchecks/networks, and .dockerignore coverage. 804 total tests passing.
+
+### DIRECTIVE-NXTG-20260223-05 — SDK Client Library
+**From**: NXTG-AI CoS | **Priority**: P1
+**Injected**: 2026-02-23 03:30 | **Estimate**: M | **Status**: COMPLETE
+
+**Action Items**:
+1. [x] Create `synapps-sdk/` directory with Python client library
+2. [x] Client class: `SynApps(base_url, api_key)` with methods: `run_template()`, `get_task()`, `list_templates()`, `get_health()`
+3. [x] Async support: `AsyncSynApps` client using httpx
+4. [x] Tests for sync + async client — zero regressions
+
+**Response** (filled by project team):
+> COMPLETE. `synapps-sdk/` package with `SynApps` (sync) and `AsyncSynApps` (async) clients using httpx. Both support context managers, all API endpoints (health, flows, templates, tasks, runs, providers, history), and `poll_task()`/`run_template_and_poll()` convenience methods. Exception hierarchy: `SynAppsError` → `SynAppsAPIError`/`SynAppsConnectionError`/`SynAppsTimeoutError`. 37 tests (13 sync, 10 async, 3 exceptions, 5 polling, 4 init, 2 module). 841 total tests passing.
+
+### DIRECTIVE-NXTG-20260223-06 — Health Dashboard Endpoint + Metrics Collection
+**From**: NXTG-AI CoS | **Priority**: P1
+**Injected**: 2026-02-23 04:00 | **Estimate**: M | **Status**: PENDING
+
+> **Context**: 2Brain is first internal consumer. Before dogfooding, SynApps needs health observability so consumers know if the API fabric is up and performing.
+
+**Action Items**:
+1. [ ] Add `/api/v1/health` endpoint — returns status, uptime, version, active connectors count
+2. [ ] Add `/api/v1/metrics` endpoint — returns request count, avg latency, error rate, per-connector stats (last 1h/24h)
+3. [ ] Collect metrics in-memory with ring buffer (no external dependency needed)
+4. [ ] Tests for health endpoint, metrics collection, ring buffer overflow — zero regressions
+
+**Response** (filled by project team):
+>
