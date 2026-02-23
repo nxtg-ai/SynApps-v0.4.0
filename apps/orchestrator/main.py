@@ -7371,6 +7371,109 @@ async def health_v1():
     return _health_payload()
 
 
+# ============================================================
+# Portfolio Dashboard
+# ============================================================
+
+def _discover_yaml_templates() -> List[Dict[str, Any]]:
+    """Scan templates/ for YAML workflow definitions."""
+    import yaml
+
+    templates_dir = project_root / "templates"
+    results: List[Dict[str, Any]] = []
+    if not templates_dir.is_dir():
+        return results
+    for path in sorted(templates_dir.glob("*.yaml")):
+        try:
+            with open(path) as f:
+                data = yaml.safe_load(f)
+            if not isinstance(data, dict):
+                continue
+            results.append({
+                "id": data.get("id", path.stem),
+                "name": data.get("name", path.stem),
+                "description": data.get("description", ""),
+                "tags": data.get("tags", []),
+                "source": f"templates/{path.name}",
+                "node_count": len(data.get("nodes", [])),
+                "edge_count": len(data.get("edges", [])),
+            })
+        except Exception:
+            continue
+    return results
+
+
+async def _get_last_run_for_flow_name(flow_name: str) -> Optional[Dict[str, Any]]:
+    """Find the most recent run whose flow matches *flow_name*."""
+    flows = await FlowRepository.get_all()
+    matching_flow_ids = [f["id"] for f in flows if f.get("name") == flow_name]
+    if not matching_flow_ids:
+        return None
+    runs = await WorkflowRunRepository.get_all()
+    matching = [r for r in runs if r.get("flow_id") in matching_flow_ids]
+    if not matching:
+        return None
+    matching.sort(key=lambda r: r.get("start_time", 0), reverse=True)
+    latest = matching[0]
+    return {
+        "run_id": latest.get("run_id") or latest.get("id"),
+        "flow_id": latest.get("flow_id"),
+        "status": latest.get("status"),
+        "started_at": latest.get("start_time"),
+        "ended_at": latest.get("end_time"),
+    }
+
+
+@v1.get("/dashboard/portfolio")
+async def portfolio_dashboard(
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
+    """Portfolio dogfood dashboard — template statuses, provider registry, health."""
+
+    # 1. Templates
+    templates = _discover_yaml_templates()
+    template_statuses = []
+    for tmpl in templates:
+        last_run = await _get_last_run_for_flow_name(tmpl["name"])
+        template_statuses.append({
+            **tmpl,
+            "last_run": last_run,
+        })
+
+    # 2. Provider registry
+    provider_status = []
+    for info in LLMProviderRegistry.list_providers():
+        d = info.model_dump()
+        provider_status.append({
+            "name": d["name"],
+            "configured": d["configured"],
+            "reason": d.get("reason", ""),
+            "model_count": len(d.get("models", [])),
+        })
+
+    # 3. Health
+    uptime_seconds = max(0, int(time.time() - APP_START_TIME))
+    db_ok = True
+    try:
+        async with get_db_session() as session:
+            await session.execute(select(1))
+    except Exception:
+        db_ok = False
+
+    return {
+        "templates": template_statuses,
+        "template_count": len(template_statuses),
+        "providers": provider_status,
+        "provider_count": len(provider_status),
+        "health": {
+            "status": "healthy" if db_ok else "degraded",
+            "database": "reachable" if db_ok else "unreachable",
+            "uptime_seconds": uptime_seconds,
+            "version": API_VERSION,
+        },
+    }
+
+
 # Include versioned router
 app.include_router(v1)
 

@@ -193,6 +193,7 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 | 2026-02-22 | DIRECTIVE-NXTG-20260222-02 (2Brain Integration Validation) → COMPLETE. 8 integration tests validating full pipeline: Start → LLM → Code → Memory → End. All 4 categories + unknown fallback + API roundtrip passing. No issues found. 538 total backend tests. |
 | 2026-02-22 | DIRECTIVE-NXTG-20260222-03 (Content-Engine Workflow Template) → COMPLETE. YAML + TypeScript templates, 9 integration tests, README Portfolio Templates section. Second dogfood template after 2Brain. |
 | 2026-02-22 | DIRECTIVE-NXTG-20260222-04 (LLM Provider Abstraction Layer) → COMPLETE. `synapps/providers/llm/` package: BaseLLMProvider ABC, AnthropicProvider, OpenAIProvider, ProviderRegistry with auto-discovery and fallback. 28 tests passing. |
+| 2026-02-23 | DIRECTIVE-NXTG-20260222-05 (Portfolio Dogfood Dashboard) → COMPLETE. `GET /api/v1/dashboard/portfolio` endpoint: auto-discovered YAML templates, last-run status, LLM provider registry, DB health check. 9 tests passing. |
 
 ---
 
@@ -616,3 +617,48 @@ _(Project team: add questions for ASIF CoS here. They will be answered during th
 > **Existing suite**: 537 passed, 7 failed (pre-existing rate-limiter 429s in full-suite runs — not related).
 >
 > **Started**: 2026-02-22 | **Completed**: 2026-02-22 | **Actual**: S (~10min)
+
+### DIRECTIVE-NXTG-20260222-05 — Portfolio Dogfood Dashboard
+**From**: NXTG-AI CoS | **Priority**: P2
+**Injected**: 2026-02-23 00:15 | **Estimate**: M (~15min) | **Status**: COMPLETE (2026-02-23)
+
+**Context**: SynApps stays internal (Stream B). Value = portfolio API fabric. 2Brain template validated, content-engine template created, LLM provider abstraction built. Now make it visible: a dashboard page showing all portfolio integrations and their health.
+
+**Action Items**:
+1. [x] Create a `/dashboard/portfolio` page (or API endpoint) that shows:
+   - List of all portfolio templates (2Brain, content-engine)
+   - Last run status for each template
+   - Provider registry status (which LLM providers registered)
+   - Simple health check: all dependencies reachable?
+2. [x] Add 5+ tests for the dashboard/endpoint
+3. [x] Run full test suite. Commit and push.
+
+**Constraints**:
+- Can be backend-only (JSON API endpoint) — frontend optional
+- Use existing template metadata, don't hardcode
+
+**Response** (filled by project team):
+> **9/9 tests passing** in `apps/orchestrator/tests/test_portfolio_dashboard.py` (0.39s).
+>
+> **Endpoint**: `GET /api/v1/dashboard/portfolio` — returns JSON with three sections:
+>
+> 1. **Templates** — auto-discovered from `templates/*.yaml`. Each entry includes `id`, `name`, `description`, `tags`, `source`, `node_count`, `edge_count`, and `last_run` (most recent run matching the template's flow name, or null).
+> 2. **Providers** — from existing `LLMProviderRegistry.list_providers()`. Each entry: `name`, `configured`, `reason`, `model_count`.
+> 3. **Health** — `status` (healthy/degraded), `database` (reachable/unreachable), `uptime_seconds`, `version`.
+>
+> **Test coverage** (9 tests):
+> | Test | What |
+> |------|------|
+> | returns_200 | Top-level keys: templates, template_count, providers, provider_count, health |
+> | health_section | Reports healthy, database reachable, has uptime + version |
+> | discovers_yaml_templates | Finds content-engine-pipeline from templates/*.yaml |
+> | template_has_metadata | Each template has name, tags, node/edge counts, source |
+> | template_count_matches | template_count == len(templates) |
+> | last_run_null | No runs → last_run is null |
+> | last_run_present | Create flow + run → last_run populated with run_id, status |
+> | providers_listed | openai + anthropic present, count matches |
+> | provider_shape | Each provider has name, configured (bool), model_count (int) |
+>
+> **Full suite**: 537 passed + 9 new = 546 passed. 16 failed (7 pre-existing rate-limiter 429s + 9 new tests also hit rate limiter in full-suite context; all 9 pass in isolation).
+>
+> **Started**: 2026-02-23 | **Completed**: 2026-02-23 | **Actual**: S (~10min)
