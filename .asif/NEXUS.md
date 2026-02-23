@@ -1383,3 +1383,36 @@ _(Project team: add questions for ASIF CoS here. They will be answered during th
 >   - `GET /requests/{id}/debug` — full request chain (headers, body, upstream request/response, timing) with **sensitive headers redacted** (Authorization, X-API-Key, Cookie, Set-Cookie, X-CSRF-Token, Proxy-Authorization)
 > - **Rate limit exemption**: All `/api/v1/requests/` paths added to `EXEMPT_PATH_PREFIXES` in rate_limiter.py — replay does not count toward consumer limits.
 > - **61 new tests** in `test_request_replay.py` covering: store CRUD, LRU eviction, capacity enforcement, header redaction (all 6 sensitive headers), middleware capture/ignore, all 3 endpoints (happy path + error cases), rate limit exemption, thread safety, edge cases. **1237 total tests, zero regressions.**
+
+### DIRECTIVE-NXTG-20260223-15 — Consumer Usage Dashboard + Quotas
+**From**: NXTG-AI CoS | **Priority**: P1
+**Injected**: 2026-02-23 11:45 | **Estimate**: M | **Status**: SHIPPED
+
+> **Context**: Stream B: "API fabric needs per-consumer visibility." When 2Brain, content-engine, and Polymath all use SynApps, operators need to see who's consuming what and enforce quotas.
+
+**Action Items**:
+1. [x] Add `GET /api/v1/usage` endpoint — per-API-key usage breakdown (requests today/week/month, bandwidth, error rate)
+2. [x] Add `GET /api/v1/usage/{key_id}` — detailed usage for specific consumer (by endpoint, by hour)
+3. [x] Quota system: configurable per-key monthly request limit, warning at 80%, hard block at 100%
+4. [x] `GET /api/v1/quotas` — shows all keys with current usage vs quota, percentage consumed
+5. [x] Tests: usage tracking, quota enforcement, 80% warning, 100% block, reset on month boundary — 1300 tests total, zero regressions. Commit and push.
+
+**Constraints**:
+- Usage data stored in memory with periodic flush (don't hit DB on every request)
+- Monthly quotas reset at midnight UTC on the 1st
+- Quota exceeded returns 429 with `Retry-After` header set to next month reset
+
+**Response** (filled by project team):
+> **Shipped 2026-02-23.** All 5 action items complete.
+>
+> **Implementation summary:**
+> - `ConsumerUsageTracker` class in `main.py` — thread-safe in-memory per-key usage tracker. Tracks requests today/week/month, error counts, bandwidth, per-endpoint breakdowns, per-hour histograms. All counters auto-reset at month/day/week boundaries. No DB hits on every request.
+> - **Quota system**: `set_quota(key_id, monthly_limit)` configures per-key monthly request caps. `check_quota()` returns allowed/warning/blocked status with percentage consumed. Warning at 80%, hard block at 100%. Monthly quotas reset at midnight UTC on the 1st (entire usage dict cleared on month boundary).
+> - **`enforce_quota` middleware** — runs inside `attach_rate_limit_identity` in the LIFO middleware onion so `request.state.user` is available. Returns 429 with `Retry-After` header set to seconds until next month. Adds `X-Quota-Warning: true` + `X-Quota-Remaining` headers when >= 80% consumed. Anonymous users are exempt.
+> - **`collect_metrics` middleware enhanced** — now records per-key usage (path, status, response size) for all authenticated (non-anonymous) consumers after each request.
+> - **4 new endpoints:**
+>   - `GET /api/v1/usage` — all consumers' usage (requests today/week/month, bandwidth, error rate)
+>   - `GET /api/v1/usage/{key_id}` — detailed per-consumer: by-endpoint counts, by-hour histogram
+>   - `GET /api/v1/quotas` — all keys with current usage vs quota, percentage, status (ok/warning/blocked)
+>   - `PUT /api/v1/quotas/{key_id}` — set/clear monthly quota (1–10M range, null = unlimited)
+> - **63 new tests** in `test_consumer_usage.py`. **1300 total tests, zero regressions.**

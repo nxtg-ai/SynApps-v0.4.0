@@ -563,6 +563,239 @@ failed_request_store = FailedRequestStore(capacity=_FAILED_REQUEST_CAP)
 
 
 # ============================================================
+# Consumer Usage Tracker + Quota System
+# ============================================================
+
+import calendar
+from datetime import datetime, timezone
+
+
+def _month_start_ts() -> float:
+    """Return Unix timestamp for midnight UTC on the 1st of the current month."""
+    now = datetime.now(timezone.utc)
+    return datetime(now.year, now.month, 1, tzinfo=timezone.utc).timestamp()
+
+
+def _next_month_start_ts() -> float:
+    """Return Unix timestamp for midnight UTC on the 1st of the **next** month."""
+    now = datetime.now(timezone.utc)
+    if now.month == 12:
+        return datetime(now.year + 1, 1, 1, tzinfo=timezone.utc).timestamp()
+    return datetime(now.year, now.month + 1, 1, tzinfo=timezone.utc).timestamp()
+
+
+class ConsumerUsageTracker:
+    """Thread-safe in-memory per-key usage tracker with monthly quota support.
+
+    Tracks per-key:
+    - Requests today / this week / this month
+    - Error count for current month
+    - Per-endpoint request counts
+    - Per-hour histogram (0-23) for current day
+    - Monthly quota + enforcement
+
+    Usage data resets on the 1st of each month at midnight UTC.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        # key_id -> usage record
+        self._usage: Dict[str, Dict[str, Any]] = {}
+        # key_id -> monthly request quota (None = unlimited)
+        self._quotas: Dict[str, Optional[int]] = {}
+        self._month_start = _month_start_ts()
+
+    def _ensure_key(self, key_id: str) -> Dict[str, Any]:
+        """Return (or create) the usage record for *key_id*.  Caller holds lock."""
+        self._maybe_reset_month()
+        if key_id not in self._usage:
+            self._usage[key_id] = self._blank_record()
+        return self._usage[key_id]
+
+    @staticmethod
+    def _blank_record() -> Dict[str, Any]:
+        now = datetime.now(timezone.utc)
+        return {
+            "month": now.month,
+            "year": now.year,
+            "requests_month": 0,
+            "requests_week": 0,
+            "requests_today": 0,
+            "errors_month": 0,
+            "bandwidth_bytes": 0,
+            "by_endpoint": {},   # path -> count
+            "by_hour": {},       # "HH" -> count (today only)
+            "last_request_at": None,
+            "_day": now.day,
+            "_iso_week": now.isocalendar()[1],
+        }
+
+    def _maybe_reset_month(self) -> None:
+        """Check if the month boundary has been crossed and reset if so."""
+        current_start = _month_start_ts()
+        if current_start > self._month_start:
+            self._month_start = current_start
+            self._usage.clear()  # full reset
+
+    def _maybe_roll_day(self, rec: Dict[str, Any]) -> None:
+        """Reset daily / weekly counters if the day or week changed."""
+        now = datetime.now(timezone.utc)
+        if rec["_day"] != now.day:
+            rec["requests_today"] = 0
+            rec["by_hour"] = {}
+            rec["_day"] = now.day
+        iso_week = now.isocalendar()[1]
+        if rec["_iso_week"] != iso_week:
+            rec["requests_week"] = 0
+            rec["_iso_week"] = iso_week
+
+    def record(
+        self,
+        key_id: str,
+        path: str,
+        status_code: int,
+        response_size: int = 0,
+    ) -> None:
+        """Record a request for *key_id*."""
+        now = datetime.now(timezone.utc)
+        with self._lock:
+            rec = self._ensure_key(key_id)
+            self._maybe_roll_day(rec)
+            rec["requests_month"] += 1
+            rec["requests_week"] += 1
+            rec["requests_today"] += 1
+            rec["bandwidth_bytes"] += response_size
+            if status_code >= 400:
+                rec["errors_month"] += 1
+            # Per-endpoint
+            rec["by_endpoint"][path] = rec["by_endpoint"].get(path, 0) + 1
+            # Per-hour histogram
+            hour_key = f"{now.hour:02d}"
+            rec["by_hour"][hour_key] = rec["by_hour"].get(hour_key, 0) + 1
+            rec["last_request_at"] = now.timestamp()
+
+    def set_quota(self, key_id: str, monthly_limit: Optional[int]) -> None:
+        """Set or clear the monthly request quota for *key_id*."""
+        with self._lock:
+            self._quotas[key_id] = monthly_limit
+
+    def get_quota(self, key_id: str) -> Optional[int]:
+        """Return the monthly quota for *key_id* (None = unlimited)."""
+        with self._lock:
+            return self._quotas.get(key_id)
+
+    def check_quota(self, key_id: str) -> Dict[str, Any]:
+        """Return quota status for *key_id*.
+
+        Returns dict with:
+        - allowed: bool — True if the request should proceed
+        - quota: int | None — monthly limit
+        - used: int — requests this month
+        - remaining: int | None — requests left (None if unlimited)
+        - pct: float — percentage consumed (0.0 if unlimited)
+        - warning: bool — True if >= 80% consumed
+        - retry_after: int — seconds until next month reset (only meaningful if blocked)
+        """
+        with self._lock:
+            self._maybe_reset_month()
+            quota = self._quotas.get(key_id)
+            rec = self._usage.get(key_id)
+            used = rec["requests_month"] if rec else 0
+
+        if quota is None:
+            return {
+                "allowed": True,
+                "quota": None,
+                "used": used,
+                "remaining": None,
+                "pct": 0.0,
+                "warning": False,
+                "retry_after": 0,
+            }
+
+        pct = (used / quota * 100) if quota > 0 else 0.0
+        remaining = max(0, quota - used)
+        allowed = used < quota
+        retry_after = max(0, int(_next_month_start_ts() - time.time())) if not allowed else 0
+
+        return {
+            "allowed": allowed,
+            "quota": quota,
+            "used": used,
+            "remaining": remaining,
+            "pct": round(pct, 2),
+            "warning": pct >= 80.0 and allowed,
+            "retry_after": retry_after,
+        }
+
+    def get_usage(self, key_id: str) -> Optional[Dict[str, Any]]:
+        """Return the usage record for a single key."""
+        with self._lock:
+            self._maybe_reset_month()
+            rec = self._usage.get(key_id)
+            if rec is None:
+                return None
+            self._maybe_roll_day(rec)
+            quota = self._quotas.get(key_id)
+            return {**rec, "quota": quota, "key_id": key_id}
+
+    def all_usage(self) -> List[Dict[str, Any]]:
+        """Return usage summaries for all tracked keys."""
+        with self._lock:
+            self._maybe_reset_month()
+            result = []
+            for key_id, rec in self._usage.items():
+                self._maybe_roll_day(rec)
+                quota = self._quotas.get(key_id)
+                pct = (rec["requests_month"] / quota * 100) if quota else 0.0
+                result.append({
+                    "key_id": key_id,
+                    "requests_today": rec["requests_today"],
+                    "requests_week": rec["requests_week"],
+                    "requests_month": rec["requests_month"],
+                    "errors_month": rec["errors_month"],
+                    "bandwidth_bytes": rec["bandwidth_bytes"],
+                    "error_rate_pct": round(
+                        rec["errors_month"] / rec["requests_month"] * 100, 2
+                    ) if rec["requests_month"] > 0 else 0.0,
+                    "last_request_at": rec["last_request_at"],
+                    "quota": quota,
+                    "quota_pct": round(pct, 2),
+                })
+            return result
+
+    def all_quotas(self) -> List[Dict[str, Any]]:
+        """Return quota status for all keys that have a quota set."""
+        with self._lock:
+            self._maybe_reset_month()
+            result = []
+            for key_id, quota in self._quotas.items():
+                rec = self._usage.get(key_id)
+                used = rec["requests_month"] if rec else 0
+                pct = (used / quota * 100) if quota and quota > 0 else 0.0
+                result.append({
+                    "key_id": key_id,
+                    "quota": quota,
+                    "used": used,
+                    "remaining": max(0, (quota or 0) - used),
+                    "pct": round(pct, 2),
+                    "status": "blocked" if quota and used >= quota
+                             else "warning" if pct >= 80.0
+                             else "ok",
+                })
+            return result
+
+    def clear(self) -> None:
+        with self._lock:
+            self._usage.clear()
+            self._quotas.clear()
+            self._month_start = _month_start_ts()
+
+
+usage_tracker = ConsumerUsageTracker()
+
+
+# ============================================================
 # Error Classification + Retry Policies
 # ============================================================
 
@@ -1591,6 +1824,53 @@ def _anonymous_rate_limit_principal(request: Request) -> Dict[str, Any]:
 
 
 @app.middleware("http")
+async def enforce_quota(request: Request, call_next):
+    """Block requests when the consumer's monthly quota is exhausted.
+
+    Registered *before* ``attach_rate_limit_identity`` so that in the LIFO
+    middleware onion this runs *inside* it — ``request.state.user`` is already
+    populated.  Returns 429 with ``Retry-After`` set to the number of seconds
+    until the next month boundary.
+    Adds ``X-Quota-Warning: true`` header when usage >= 80 %.
+    """
+    user = getattr(request.state, "user", None)
+    key_id = user.get("id", "") if user else ""
+
+    if key_id and not key_id.startswith("anonymous"):
+        status = usage_tracker.check_quota(key_id)
+        if not status["allowed"]:
+            return JSONResponse(
+                status_code=429,
+                content={
+                    "error": {
+                        "code": "QUOTA_EXCEEDED",
+                        "status": 429,
+                        "message": (
+                            "Monthly request quota exceeded. "
+                            f"Used {status['used']}/{status['quota']}. "
+                            "Quota resets on the 1st of next month."
+                        ),
+                    }
+                },
+                headers={
+                    "Retry-After": str(status["retry_after"]),
+                    "X-Quota-Remaining": "0",
+                },
+            )
+
+    response = await call_next(request)
+
+    # Attach warning header when nearing quota
+    if key_id and not key_id.startswith("anonymous"):
+        status = usage_tracker.check_quota(key_id)
+        if status["warning"]:
+            response.headers["X-Quota-Warning"] = "true"
+            response.headers["X-Quota-Remaining"] = str(status.get("remaining", 0))
+
+    return response
+
+
+@app.middleware("http")
 async def attach_rate_limit_identity(request: Request, call_next):
     """Attach authenticated principal to request state for per-user rate limiting."""
     principal = await _resolve_rate_limit_user(request)
@@ -1607,6 +1887,20 @@ async def collect_metrics(request: Request, call_next):
     response = await call_next(request)
     duration_ms = (time.monotonic() - start) * 1000
     metrics.record_request(duration_ms, response.status_code, request.url.path)
+
+    # Track per-consumer usage (user is set by attach_rate_limit_identity)
+    user = getattr(request.state, "user", None)
+    key_id = user.get("id", "") if user else ""
+    if key_id and not key_id.startswith("anonymous"):
+        # Estimate response size from content-length header
+        content_length = int(response.headers.get("content-length", "0") or "0")
+        usage_tracker.record(
+            key_id=key_id,
+            path=request.url.path,
+            status_code=response.status_code,
+            response_size=content_length,
+        )
+
     # Emit request.failed webhook for server errors (5xx)
     if response.status_code >= 500:
         await emit_event("request.failed", {
@@ -10149,6 +10443,75 @@ async def debug_request(
             "headers": FailedRequestStore.redact_headers(entry.get("response_headers", {})),
             "body": entry.get("response_body", ""),
         },
+    }
+
+
+# ============================================================
+# Consumer Usage Dashboard + Quotas
+# ============================================================
+
+
+@v1.get("/usage", tags=["Usage"])
+async def list_usage(
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
+    """Per-API-key usage breakdown (requests today/week/month, bandwidth, error rate)."""
+    return usage_tracker.all_usage()
+
+
+@v1.get("/usage/{key_id:path}", tags=["Usage"])
+async def get_key_usage(
+    key_id: str,
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
+    """Detailed usage for a specific consumer (by endpoint, by hour)."""
+    rec = usage_tracker.get_usage(key_id)
+    if rec is None:
+        raise HTTPException(status_code=404, detail="No usage data for this key")
+    return {
+        "key_id": key_id,
+        "requests_today": rec["requests_today"],
+        "requests_week": rec["requests_week"],
+        "requests_month": rec["requests_month"],
+        "errors_month": rec["errors_month"],
+        "bandwidth_bytes": rec["bandwidth_bytes"],
+        "error_rate_pct": round(
+            rec["errors_month"] / rec["requests_month"] * 100, 2
+        ) if rec["requests_month"] > 0 else 0.0,
+        "quota": rec.get("quota"),
+        "by_endpoint": rec.get("by_endpoint", {}),
+        "by_hour": rec.get("by_hour", {}),
+        "last_request_at": rec.get("last_request_at"),
+    }
+
+
+@v1.get("/quotas", tags=["Usage"])
+async def list_quotas(
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
+    """Show all keys with current usage vs quota, percentage consumed."""
+    return usage_tracker.all_quotas()
+
+
+class _SetQuotaRequest(BaseModel):
+    monthly_limit: Optional[int] = Field(
+        None, ge=1, le=10_000_000,
+        description="Monthly request limit. null = unlimited.",
+    )
+
+
+@v1.put("/quotas/{key_id:path}", tags=["Usage"])
+async def set_quota(
+    key_id: str,
+    body: _SetQuotaRequest,
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
+    """Set or clear the monthly request quota for a consumer key."""
+    usage_tracker.set_quota(key_id, body.monthly_limit)
+    return {
+        "key_id": key_id,
+        "monthly_limit": body.monthly_limit,
+        "status": "quota_set" if body.monthly_limit else "quota_cleared",
     }
 
 
