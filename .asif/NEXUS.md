@@ -190,6 +190,7 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 | 2026-02-20 | N-17 (Workflow Export/Import + UX Polish) → SHIPPED. Export/import endpoints + UI, run button UX fix, version strings updated to v1.0. 528 backend tests, 101 frontend tests. **17/17 initiatives shipped.** |
 | 2026-02-22 | DIRECTIVE-NXTG-20260222-01 → COMPLETE. 7 Playwright E2E tests: core workflow journey, 2Brain template verification, auth flow. All passing. UAT-GUIDE.md created. |
 | 2026-02-22 | DIRECTIVE-NXTG-20260222-02 → COMPLETE. UAT-GUIDE.md rewritten as human UX evaluation guide with 2Brain dogfood deep-dive, verdict template, and 5 test inputs. |
+| 2026-02-22 | DIRECTIVE-NXTG-20260222-02 (2Brain Integration Validation) → COMPLETE. 8 integration tests validating full pipeline: Start → LLM → Code → Memory → End. All 4 categories + unknown fallback + API roundtrip passing. No issues found. 538 total backend tests. |
 
 ---
 
@@ -473,3 +474,49 @@ Podcast-Pipeline (P-04) shipped a stage graph orchestrator (N-01) with topologic
 ## Team Questions
 
 _(Project team: add questions for ASIF CoS here. They will be answered during the next enrichment cycle.)_
+
+### DIRECTIVE-NXTG-20260222-02 — 2Brain Integration Validation
+**From**: NXTG-AI CoS | **Priority**: P2
+**Injected**: 2026-02-22 22:00 | **Estimate**: M (~15min) | **Status**: COMPLETE (2026-02-22)
+
+> **Estimate key**: S = 2-10min, M = 10-30min, L = 30-90min
+
+**Context**: Stream B intelligence confirms: SynApps should STAY INTERNAL (3/10 external PMF). Primary value is as portfolio API fabric. 2Brain (P-13) is the first consumer — replacing n8n. Validate that the 2Brain workflow template actually works end-to-end.
+
+**Action Items**:
+1. [x] Load the 2Brain dogfood template (N-16) and run it end-to-end
+2. [x] Document any failures, missing nodes, or broken connections
+3. [x] If the template works: capture a success log and note the execution time
+4. [x] If the template fails: fix the issues and re-run
+5. [x] Update N-16 status based on results. Commit and push.
+
+**Constraints**:
+- This is validation, not new development
+- If external APIs are needed, mock them or use test endpoints
+
+**Response** (filled by project team):
+> **8/8 integration tests passing** in `apps/orchestrator/tests/test_2brain_integration.py` (5.11s).
+>
+> **Validation approach**: Reproduced the exact 2Brain Inbox Triage template (5 nodes, 4 edges) from `TwoBrainInbox.ts` as a Python test flow. LLM node mocked (Ollama not available in CI — per constraint "mock them or use test endpoints"). Code and Memory nodes executed for real against in-memory SQLite.
+>
+> **Test coverage**:
+> | Test | Input | LLM Mock | Result |
+> |------|-------|----------|--------|
+> | Idea classification | "What if we built a CLI..." | "idea" | PASS — all 5 nodes executed, results in run record |
+> | Task classification | "Buy groceries before 6pm" | "task" | PASS |
+> | Reference classification | "RFC 9114 defines HTTP/3..." | "reference" | PASS |
+> | Note classification | "Good meeting about Q2 goals" | "note" | PASS |
+> | Unknown category fallback | "Random thought..." | garbage text | PASS — Code node defaults to "note" |
+> | Template structure | N/A | N/A | PASS — 5 nodes, 4 edges, correct types |
+> | Edge validity | N/A | N/A | PASS — all sources/targets reference valid node IDs |
+> | API endpoint roundtrip | "Build a visual workflow tool" | "idea" | PASS — POST /flows + GET /flows/{id} + POST /flows/{id}/runs |
+>
+> **Failures found**: None. Template structure is correct, all node connections valid, pipeline executes successfully for all 4 categories plus the unknown-category fallback.
+>
+> **Execution time**: Full test suite runs in ~5s. Individual pipeline runs complete in <1s (Code node subprocess + Memory store).
+>
+> **N-16 status**: Remains SHIPPED. No issues found.
+>
+> **Pre-existing issue noted**: 5 tests in `test_main.py` fail with 429 when run as part of the full suite (rate limiter accumulation). All pass in isolation. Not related to this directive.
+>
+> **Started**: 2026-02-22 22:05 | **Completed**: 2026-02-22 22:20 | **Actual**: M (~15min)
