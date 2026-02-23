@@ -486,6 +486,204 @@ class _MetricsCollector:
 metrics = _MetricsCollector()
 
 # ============================================================
+# Error Classification + Retry Policies
+# ============================================================
+
+
+class ErrorCategory(str, Enum):
+    """Classification of errors to drive retry decisions."""
+
+    TRANSIENT = "transient"        # Network blip, 500/502/503 — retry immediately
+    RATE_LIMITED = "rate_limited"  # 429 — retry with backoff
+    PERMANENT = "permanent"        # 401/403/404, validation — fail fast
+
+
+# HTTP status → category mapping
+_STATUS_CATEGORY: Dict[int, ErrorCategory] = {
+    429: ErrorCategory.RATE_LIMITED,
+    500: ErrorCategory.TRANSIENT,
+    502: ErrorCategory.TRANSIENT,
+    503: ErrorCategory.TRANSIENT,
+    504: ErrorCategory.TRANSIENT,
+    408: ErrorCategory.TRANSIENT,
+    401: ErrorCategory.PERMANENT,
+    403: ErrorCategory.PERMANENT,
+    404: ErrorCategory.PERMANENT,
+    422: ErrorCategory.PERMANENT,
+}
+
+# Exception types that are always transient
+_TRANSIENT_EXCEPTIONS: tuple = (
+    httpx.ConnectError,
+    httpx.ConnectTimeout,
+    httpx.ReadTimeout,
+    httpx.WriteTimeout,
+    httpx.PoolTimeout,
+    ConnectionError,
+    TimeoutError,
+    OSError,
+)
+
+
+def classify_error(
+    exc: Optional[Exception] = None,
+    status_code: Optional[int] = None,
+) -> ErrorCategory:
+    """Classify an error as TRANSIENT, RATE_LIMITED, or PERMANENT.
+
+    Priority: explicit status_code > exception type > fallback to PERMANENT.
+    """
+    if status_code is not None:
+        return _STATUS_CATEGORY.get(status_code, ErrorCategory.PERMANENT)
+    if exc is not None:
+        if isinstance(exc, _TRANSIENT_EXCEPTIONS):
+            return ErrorCategory.TRANSIENT
+        if isinstance(exc, httpx.HTTPStatusError):
+            return _STATUS_CATEGORY.get(
+                exc.response.status_code, ErrorCategory.PERMANENT
+            )
+    return ErrorCategory.PERMANENT
+
+
+class RetryPolicy:
+    """Per-connector retry configuration.
+
+    Attributes:
+        max_retries: Maximum number of retry attempts (0 = no retries).
+        base_delay: Initial delay in seconds before first retry.
+        backoff_factor: Multiplier applied to delay after each retry.
+        retryable_categories: Set of ErrorCategory values that are retryable.
+    """
+
+    def __init__(
+        self,
+        max_retries: int = 3,
+        base_delay: float = 1.0,
+        backoff_factor: float = 2.0,
+        retryable_categories: Optional[set] = None,
+    ):
+        self.max_retries = max_retries
+        self.base_delay = base_delay
+        self.backoff_factor = backoff_factor
+        self.retryable_categories: set = retryable_categories or {
+            ErrorCategory.TRANSIENT,
+            ErrorCategory.RATE_LIMITED,
+        }
+
+    def should_retry(self, category: ErrorCategory, attempt: int) -> bool:
+        """Return True if we should retry given the error category and attempt number."""
+        if attempt >= self.max_retries:
+            return False
+        return category in self.retryable_categories
+
+    def delay_for_attempt(self, attempt: int) -> float:
+        """Exponential backoff delay for the given attempt (0-indexed)."""
+        return self.base_delay * (self.backoff_factor ** attempt)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "max_retries": self.max_retries,
+            "base_delay": self.base_delay,
+            "backoff_factor": self.backoff_factor,
+            "retryable_categories": sorted(c.value for c in self.retryable_categories),
+        }
+
+
+# Default policies per connector
+DEFAULT_RETRY_POLICY = RetryPolicy(max_retries=3, base_delay=1.0, backoff_factor=2.0)
+
+CONNECTOR_RETRY_POLICIES: Dict[str, RetryPolicy] = {
+    "openai": RetryPolicy(max_retries=3, base_delay=1.0, backoff_factor=2.0),
+    "anthropic": RetryPolicy(max_retries=3, base_delay=1.5, backoff_factor=2.0),
+    "google": RetryPolicy(max_retries=3, base_delay=1.0, backoff_factor=2.0),
+    "ollama": RetryPolicy(max_retries=2, base_delay=0.5, backoff_factor=2.0),
+    "custom": RetryPolicy(max_retries=2, base_delay=1.0, backoff_factor=2.0),
+    "stability": RetryPolicy(max_retries=3, base_delay=2.0, backoff_factor=2.0),
+}
+
+
+def get_retry_policy(connector: str) -> RetryPolicy:
+    """Get the retry policy for a connector, falling back to default."""
+    return CONNECTOR_RETRY_POLICIES.get(connector, DEFAULT_RETRY_POLICY)
+
+
+class ConnectorError(Exception):
+    """Error raised by a connector with classification metadata."""
+
+    def __init__(
+        self,
+        message: str,
+        category: ErrorCategory,
+        connector: str = "",
+        status_code: Optional[int] = None,
+        attempt: int = 0,
+        max_retries: int = 0,
+    ):
+        super().__init__(message)
+        self.category = category
+        self.connector = connector
+        self.status_code = status_code
+        self.attempt = attempt
+        self.max_retries = max_retries
+
+
+async def execute_with_retry(
+    func,
+    *,
+    connector: str = "",
+    policy: Optional[RetryPolicy] = None,
+) -> Any:
+    """Execute *func* (an async callable) with retry logic.
+
+    On failure, classifies the error and retries according to *policy*.
+    Returns the result on success or raises ``ConnectorError`` on exhaustion.
+    """
+    retry_policy = policy or get_retry_policy(connector)
+    last_exc: Optional[Exception] = None
+
+    for attempt in range(retry_policy.max_retries + 1):
+        try:
+            return await func()
+        except Exception as exc:
+            last_exc = exc
+
+            # Extract status code if available
+            status_code: Optional[int] = None
+            if isinstance(exc, httpx.HTTPStatusError):
+                status_code = exc.response.status_code
+            elif hasattr(exc, "status_code"):
+                status_code = getattr(exc, "status_code")
+
+            category = classify_error(exc=exc, status_code=status_code)
+
+            if not retry_policy.should_retry(category, attempt):
+                raise ConnectorError(
+                    str(exc),
+                    category=category,
+                    connector=connector,
+                    status_code=status_code,
+                    attempt=attempt,
+                    max_retries=retry_policy.max_retries,
+                ) from exc
+
+            delay = retry_policy.delay_for_attempt(attempt)
+            logger.warning(
+                "Connector '%s' attempt %d/%d failed (%s: %s). Retrying in %.1fs...",
+                connector, attempt + 1, retry_policy.max_retries, category.value, exc, delay,
+            )
+            await asyncio.sleep(delay)
+
+    # Should not reach here, but just in case
+    raise ConnectorError(
+        str(last_exc),
+        category=ErrorCategory.PERMANENT,
+        connector=connector,
+        attempt=retry_policy.max_retries,
+        max_retries=retry_policy.max_retries,
+    ) from last_exc
+
+
+# ============================================================
 # Webhook / Event System
 # ============================================================
 

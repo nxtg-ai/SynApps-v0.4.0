@@ -209,6 +209,7 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 | 2026-02-23 | DIRECTIVE-NXTG-20260223-04 (Docker Compose + Production Deployment) → COMPLETE. Multi-stage `Dockerfile.orchestrator` (builder+runtime, non-root, ~150MB). Root + infra `docker-compose.yml` with all env vars. `.dockerignore`. 35 CI-safe tests. 804 total tests passing. |
 | 2026-02-23 | DIRECTIVE-NXTG-20260223-05 (SDK Client Library) → COMPLETE. `synapps-sdk/` with `SynApps` (sync) + `AsyncSynApps` (async) clients via httpx. Full API coverage, poll_task, exception hierarchy. 37 tests. 841 total tests passing. |
 | 2026-02-23 | DIRECTIVE-NXTG-20260223-06 (Health Dashboard + Metrics) → COMPLETE. `_MetricsRingBuffer` ring buffer with windowed queries. `/health` adds `active_connectors`. `/metrics` adds 1h/24h windows, percentiles, per-connector stats. 31 tests. 872 total tests passing. |
+| 2026-02-23 | DIRECTIVE-NXTG-20260223-07 (Error Classification + Retry Policies) → COMPLETE. `ErrorCategory` enum, `classify_error()`, `RetryPolicy`, per-connector policies, `ConnectorError`, `execute_with_retry()` with exponential backoff. 49 tests. 921 total tests passing. |
 
 ---
 
@@ -1177,3 +1178,33 @@ _(Project team: add questions for ASIF CoS here. They will be answered during th
 
 **Response** (filled by project team):
 > COMPLETE. `_MetricsRingBuffer` (fixed-capacity ring with timestamped entries, `query(window_seconds)`) replaces the capped list. `_MetricsCollector` upgraded: windowed stats (1h/24h) with count/avg/p50/p95/p99, per-connector stats, error windows. `/health` now includes `active_connectors` count. `/metrics` now returns `last_1h`/`last_24h` windows, `errors_last_1h`/`errors_last_24h`, and `connector_stats` per provider. 31 tests (9 ring buffer, 11 collector, 4 health, 2 detailed, 5 metrics). 872 total tests passing.
+
+### DIRECTIVE-NXTG-20260223-07 — Error Classification + Retry Policies
+**From**: NXTG-AI CoS | **Priority**: P1
+**Injected**: 2026-02-23 04:15 | **Estimate**: M | **Status**: COMPLETE
+
+> **Context**: Portfolio API fabric needs intelligent error handling. Different connectors fail differently — transient (rate limit, timeout) vs permanent (auth, not found). Retry policies must distinguish between them.
+
+**Action Items**:
+1. [x] Add error classification enum: TRANSIENT (retry), PERMANENT (fail fast), RATE_LIMITED (retry with backoff)
+2. [x] Per-connector retry policy — max_retries, base_delay, backoff_factor, retryable_errors list
+3. [x] Classify errors from HTTP status codes: 429=RATE_LIMITED, 500/502/503=TRANSIENT, 401/403/404=PERMANENT
+4. [x] Tests for error classification, retry with backoff, policy override — zero regressions
+
+**Response** (filled by project team):
+> COMPLETE. `ErrorCategory` enum (TRANSIENT/RATE_LIMITED/PERMANENT). `classify_error()` maps HTTP status codes (429→RATE_LIMITED, 500/502/503/504/408→TRANSIENT, 401/403/404/422→PERMANENT) and exception types (httpx timeouts/connect errors, ConnectionError, OSError→TRANSIENT). `RetryPolicy` class with max_retries, base_delay, backoff_factor, retryable_categories. Per-connector policies for openai/anthropic/google/ollama/custom/stability. `ConnectorError` exception with category/connector/status_code/attempt metadata. `execute_with_retry()` async executor with exponential backoff. 49 tests. 921 total tests passing.
+
+### DIRECTIVE-NXTG-20260223-08 — Connector Health Probes
+**From**: NXTG-AI CoS | **Priority**: P1
+**Injected**: 2026-02-23 04:30 | **Estimate**: M | **Status**: PENDING
+
+> **Context**: 2Brain needs to know which connectors are alive before routing requests. Health probes + auto-disable prevents routing to dead connectors.
+
+**Action Items**:
+1. [ ] Add per-connector health probe — lightweight ping/list-models call to verify connectivity
+2. [ ] Auto-disable connector after 3 consecutive probe failures, auto-re-enable on next successful probe
+3. [ ] `/api/v1/connectors/health` endpoint — returns per-connector status (healthy/degraded/disabled), last check time, failure count
+4. [ ] Tests for probe success/failure, auto-disable threshold, re-enable, health endpoint — zero regressions
+
+**Response** (filled by project team):
+>
