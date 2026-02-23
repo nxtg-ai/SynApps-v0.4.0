@@ -143,6 +143,132 @@ ENGINE_MAX_CONCURRENCY = int(os.environ.get("ENGINE_MAX_CONCURRENCY", "10"))
 TRACE_RESULTS_KEY = "__trace__"
 TRACE_SCHEMA_VERSION = 1
 MAX_DIFF_CHANGES = 250
+
+
+# ============================================================
+# Centralised App Configuration
+# ============================================================
+
+_SECRET_KEYS = frozenset({
+    "database_url", "jwt_secret_key", "synapps_master_key", "fernet_key",
+    "openai_api_key", "stability_api_key", "dalle_api_key", "ws_auth_token",
+    "custom_llm_api_key", "secret_key",
+})
+
+
+def _redact(value: str) -> str:
+    """Redact a secret value — show first 4 and last 2 chars if long enough."""
+    if not value or len(value) < 8:
+        return "***"
+    return value[:4] + "***" + value[-2:]
+
+
+class AppConfig:
+    """Centralised configuration loaded from environment variables.
+
+    All env vars are read once at import time. The ``to_dict()`` method returns
+    the full config with secrets redacted for safe exposure via the /config
+    endpoint. ``validate()`` raises ``ValueError`` listing all problems.
+    """
+
+    def __init__(self) -> None:
+        g = os.environ.get
+
+        # --- Database ---
+        self.database_url: str = g("DATABASE_URL", "sqlite+aiosqlite:///synapps.db")
+
+        # --- Server ---
+        self.backend_host: str = g("BACKEND_HOST", "0.0.0.0")
+        self.backend_port: int = int(g("BACKEND_PORT", "8000"))
+        self.production: bool = g("PRODUCTION", "false").strip().lower() in {"1", "true", "yes"}
+        self.debug: bool = g("DEBUG", "false").strip().lower() in {"1", "true", "yes"}
+        self.log_level: str = g("LOG_LEVEL", "info").strip().lower()
+
+        # --- Auth / JWT ---
+        self.jwt_secret_key: str = g("JWT_SECRET_KEY", "synapps-dev-jwt-secret-change-me")
+        self.jwt_algorithm: str = g("JWT_ALGORITHM", "HS256")
+        self.jwt_access_expire_minutes: int = int(g("JWT_ACCESS_EXPIRE_MINUTES", "15"))
+        self.jwt_refresh_expire_days: int = int(g("JWT_REFRESH_EXPIRE_DAYS", "14"))
+        self.allow_anonymous: bool = g(
+            "ALLOW_ANONYMOUS_WHEN_NO_USERS", "true"
+        ).strip().lower() in {"1", "true", "yes"}
+        self.synapps_master_key: str = g("SYNAPPS_MASTER_KEY", "")
+        self.fernet_key: str = g("FERNET_KEY", "")
+        self.ws_auth_token: str = g("WS_AUTH_TOKEN", "")
+
+        # --- CORS ---
+        self.cors_origins: str = g("BACKEND_CORS_ORIGINS", "")
+
+        # --- Rate Limiting ---
+        self.rate_limit_window: int = int(g("RATE_LIMIT_WINDOW_SECONDS", "60"))
+        self.rate_limit_free: int = int(g("RATE_LIMIT_FREE", "60"))
+        self.rate_limit_pro: int = int(g("RATE_LIMIT_PRO", "200"))
+        self.rate_limit_enterprise: int = int(g("RATE_LIMIT_ENTERPRISE", "1000"))
+        self.rate_limit_anonymous: int = int(g("RATE_LIMIT_ANONYMOUS", "30"))
+
+        # --- Engine ---
+        self.engine_max_concurrency: int = int(g("ENGINE_MAX_CONCURRENCY", "10"))
+
+        # --- API Keys ---
+        self.openai_api_key: str = g("OPENAI_API_KEY", "")
+        self.stability_api_key: str = g("STABILITY_API_KEY", "")
+        self.dalle_api_key: str = g("DALLE_API_KEY", "")
+        self.custom_llm_api_key: str = g("CUSTOM_LLM_API_KEY", "")
+
+        # --- Memory ---
+        self.memory_backend: str = g("MEMORY_BACKEND", "sqlite_fts").strip().lower()
+        self.memory_namespace: str = g("MEMORY_NAMESPACE", "default").strip() or "default"
+        self.memory_sqlite_path: str = g("MEMORY_SQLITE_PATH", "")
+        self.memory_collection: str = g("MEMORY_COLLECTION", "synapps_memory").strip() or "synapps_memory"
+
+    def validate(self) -> List[str]:
+        """Validate configuration. Returns list of error messages (empty = valid)."""
+        errors: List[str] = []
+
+        # In production, certain vars are required
+        if self.production:
+            if self.jwt_secret_key == "synapps-dev-jwt-secret-change-me":
+                errors.append(
+                    "JWT_SECRET_KEY must be changed from the default in production"
+                )
+            if not self.cors_origins.strip():
+                errors.append(
+                    "BACKEND_CORS_ORIGINS is required in production "
+                    "(comma-separated list of allowed origins)"
+                )
+
+        # Always validate ranges
+        if self.backend_port < 1 or self.backend_port > 65535:
+            errors.append(f"BACKEND_PORT must be 1-65535, got {self.backend_port}")
+        if self.rate_limit_window < 1:
+            errors.append(f"RATE_LIMIT_WINDOW_SECONDS must be >= 1, got {self.rate_limit_window}")
+        if self.engine_max_concurrency < 1:
+            errors.append(
+                f"ENGINE_MAX_CONCURRENCY must be >= 1, got {self.engine_max_concurrency}"
+            )
+        if self.log_level not in {"debug", "info", "warning", "error", "critical"}:
+            errors.append(
+                f"LOG_LEVEL must be debug/info/warning/error/critical, got '{self.log_level}'"
+            )
+
+        return errors
+
+    def to_dict(self, redact_secrets: bool = True) -> Dict[str, Any]:
+        """Return config as a dictionary, optionally redacting secrets."""
+        result: Dict[str, Any] = {}
+        for key, value in self.__dict__.items():
+            if key.startswith("_"):
+                continue
+            if redact_secrets and key in _SECRET_KEYS and isinstance(value, str) and value:
+                result[key] = _redact(value)
+            else:
+                result[key] = value
+        return result
+
+
+app_config = AppConfig()
+
+
 # ============================================================
 # In-Memory Metrics Collector
 # ============================================================
@@ -566,6 +692,21 @@ _FALSE_BRANCH_HINTS = {
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for database initialization and cleanup."""
+    # Validate configuration on startup — fail fast with clear messages
+    config_errors = app_config.validate()
+    if config_errors:
+        for err in config_errors:
+            logger.error(f"Configuration error: {err}")
+        if app_config.production:
+            raise RuntimeError(
+                f"Configuration validation failed ({len(config_errors)} error(s)). "
+                f"Fix the issues above before starting in production mode."
+            )
+        else:
+            logger.warning(
+                f"Configuration has {len(config_errors)} warning(s) — "
+                f"continuing in development mode."
+            )
     logger.info("Initializing database...")
     await init_db()
     logger.info("Database initialization complete")
@@ -8708,6 +8849,17 @@ async def get_metrics(
 ):
     """In-memory request metrics: counts, error rate, response time, provider usage."""
     return metrics.snapshot()
+
+
+@v1.get("/config", tags=["Health"])
+async def get_config(
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
+    """Return current server configuration with secrets redacted."""
+    config = app_config.to_dict(redact_secrets=True)
+    config["_validation_errors"] = app_config.validate()
+    config["_env_file_loaded"] = str(env_path) if env_path.exists() else None
+    return config
 
 
 # Include versioned router

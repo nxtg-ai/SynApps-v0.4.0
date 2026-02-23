@@ -204,6 +204,7 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 | 2026-02-23 | DIRECTIVE-NXTG-20260222-13 (Workflow History + Audit Trail) → COMPLETE. `GET /history` with status/template/date filtering + pagination, `GET /history/{id}` with step traces. 16 tests. OpenAPI re-exported (40 paths). |
 | 2026-02-23 | DIRECTIVE-NXTG-20260222-14 (Rate Limiting + Request Throttling) → COMPLETE. Per-API-key configurable rate limits via `AdminKeyRegistry.create(rate_limit=N)`. Admin keys recognised in `get_authenticated_user()` + `_resolve_rate_limit_user()`. 14 new tests. Conftest rate limiter reset. 700 total tests passing. |
 | 2026-02-23 | DIRECTIVE-NXTG-20260223-01 (Template Marketplace + Import/Export) → COMPLETE. `TemplateRegistry` with versioning, 4 new endpoints (import, export, versions, list). Export falls back to YAML on disk. 30 tests. OpenAPI re-exported (44 paths). 730 total tests passing. |
+| 2026-02-23 | DIRECTIVE-NXTG-20260223-02 (Environment Configuration + .env Support) → COMPLETE. `AppConfig` class centralises all env vars with `validate()` and `to_dict(redact_secrets=True)`. Startup validation fails fast in production. `GET /config` endpoint. 23 tests. OpenAPI re-exported (45 paths). 753 total tests passing. |
 
 ---
 
@@ -1037,3 +1038,54 @@ _(Project team: add questions for ASIF CoS here. They will be answered during th
 > **Full suite**: 730 tests passing, zero regressions.
 >
 > **Started**: 2026-02-23 | **Completed**: 2026-02-23 | **Actual**: M (~12min)
+
+### DIRECTIVE-NXTG-20260223-02 — Environment Configuration + .env Support
+**From**: NXTG-AI CoS | **Priority**: P1
+**Injected**: 2026-02-23 02:00 | **Estimate**: M | **Status**: COMPLETE
+
+**Action Items**:
+1. [x] Support `.env` file for all configuration (API keys, DB URL, port, debug mode, rate limits)
+2. [x] Add `GET /api/v1/config` — return current configuration (redact secrets)
+3. [x] Add configuration validation on startup — fail fast with clear error messages for missing required vars
+4. [x] Tests for .env loading, config endpoint, validation — zero regressions
+
+**Response** (filled by project team):
+> **Shipped.** Centralised environment configuration with validation and redacted config endpoint.
+>
+> **AppConfig class** — reads all env vars once at import time:
+> - Database: `DATABASE_URL`
+> - Server: `BACKEND_HOST`, `BACKEND_PORT`, `PRODUCTION`, `DEBUG`, `LOG_LEVEL`
+> - Auth: `JWT_SECRET_KEY`, `JWT_ALGORITHM`, `JWT_ACCESS_EXPIRE_MINUTES`, `JWT_REFRESH_EXPIRE_DAYS`, `SYNAPPS_MASTER_KEY`, `FERNET_KEY`, `WS_AUTH_TOKEN`
+> - CORS: `BACKEND_CORS_ORIGINS`
+> - Rate limiting: `RATE_LIMIT_WINDOW_SECONDS`, `RATE_LIMIT_FREE/PRO/ENTERPRISE/ANONYMOUS`
+> - Engine: `ENGINE_MAX_CONCURRENCY`
+> - API keys: `OPENAI_API_KEY`, `STABILITY_API_KEY`, `DALLE_API_KEY`, `CUSTOM_LLM_API_KEY`
+> - Memory: `MEMORY_BACKEND`, `MEMORY_NAMESPACE`, `MEMORY_SQLITE_PATH`, `MEMORY_COLLECTION`
+>
+> **`validate()`** — returns list of error messages:
+> - Production mode: requires non-default `JWT_SECRET_KEY` and `BACKEND_CORS_ORIGINS`
+> - Always: validates port range (1-65535), rate limit window (≥1), concurrency (≥1), log level enum
+>
+> **Startup validation** in lifespan handler:
+> - Production: raises `RuntimeError` and prevents boot if validation fails
+> - Development: logs warnings and continues
+>
+> **`GET /api/v1/config`** — returns full config with secrets redacted via `_redact()` (shows first 4 + last 2 chars). Includes `_validation_errors` list and `_env_file_loaded` path.
+>
+> **`.env` support** — already existed via `python-dotenv`: `.env` → `.env.development` fallback chain. `.env.example` documents all vars.
+>
+> **23 tests** in `test_env_config.py`:
+>
+> | Category | Count | Coverage |
+> |----------|-------|------|
+> | _redact helper | 3 | short, long, exactly 8 chars |
+> | AppConfig unit | 6 | defaults, env reading, to_dict, redaction, non-secrets, _SECRET_KEYS |
+> | validate() | 6 | dev no errors, prod JWT, prod CORS, prod good, port, log level, window, concurrency |
+> | GET /config | 5 | 200, expected keys, redacts secrets, validation errors, env file loaded |
+> | .env loading | 1 | dotenv loaded verification |
+>
+> **OpenAPI spec** re-exported: now 45 paths (was 44).
+>
+> **Full suite**: 753 tests passing, zero regressions.
+>
+> **Started**: 2026-02-23 | **Completed**: 2026-02-23 | **Actual**: M (~10min)
