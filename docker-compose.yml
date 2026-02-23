@@ -1,6 +1,18 @@
-version: "3.9"
+# =============================================================================
+# SynApps — Docker Compose (one-command startup)
+#
+# Usage:
+#   docker compose up              # Start all services (dev mode)
+#   docker compose up -d           # Start detached
+#   docker compose up --build      # Rebuild images and start
+#   docker compose down -v         # Stop and remove volumes
+#
+# Production:
+#   PRODUCTION=true JWT_SECRET_KEY=<secret> docker compose up -d
+# =============================================================================
 
 services:
+  # ---------- PostgreSQL ----------
   db:
     image: postgres:16-alpine
     environment:
@@ -21,37 +33,56 @@ services:
       - synapps-network
     restart: unless-stopped
 
+  # ---------- Backend (FastAPI Orchestrator) ----------
   orchestrator:
     build:
       context: .
       dockerfile: infra/docker/Dockerfile.orchestrator
-    working_dir: /workspace
-    command: uvicorn apps.orchestrator.main:app --host 0.0.0.0 --port 8000 --reload
     environment:
-      PORT: 8000
-      HOST: 0.0.0.0
+      # Server
       PRODUCTION: ${PRODUCTION:-false}
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
-      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-http://localhost:3000}
+      DEBUG: ${DEBUG:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+
+      # Database
       DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://synapps:synapps@db:5432/synapps}
+
+      # Auth
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-synapps-dev-jwt-secret-change-me}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      JWT_ACCESS_EXPIRE_MINUTES: ${JWT_ACCESS_EXPIRE_MINUTES:-15}
+      SYNAPPS_MASTER_KEY: ${SYNAPPS_MASTER_KEY:-}
+      FERNET_KEY: ${FERNET_KEY:-}
+      ALLOW_ANONYMOUS_WHEN_NO_USERS: ${ALLOW_ANONYMOUS_WHEN_NO_USERS:-true}
+
+      # CORS
+      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-http://localhost:3000}
+
+      # Rate Limiting
+      RATE_LIMIT_WINDOW_SECONDS: ${RATE_LIMIT_WINDOW_SECONDS:-60}
+      RATE_LIMIT_FREE: ${RATE_LIMIT_FREE:-60}
+      RATE_LIMIT_PRO: ${RATE_LIMIT_PRO:-200}
+      RATE_LIMIT_ENTERPRISE: ${RATE_LIMIT_ENTERPRISE:-1000}
+      RATE_LIMIT_ANONYMOUS: ${RATE_LIMIT_ANONYMOUS:-30}
+
+      # Engine
+      ENGINE_MAX_CONCURRENCY: ${ENGINE_MAX_CONCURRENCY:-10}
+
+      # LLM Provider Keys
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       STABILITY_API_KEY: ${STABILITY_API_KEY:-}
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-synapps-dev-jwt-secret-change-me}
+      DALLE_API_KEY: ${DALLE_API_KEY:-}
+      CUSTOM_LLM_API_KEY: ${CUSTOM_LLM_API_KEY:-}
+
+      # Memory
+      MEMORY_BACKEND: ${MEMORY_BACKEND:-sqlite_fts}
     ports:
       - "${BACKEND_PORT:-8000}:8000"
-    volumes:
-      - ./:/workspace
     depends_on:
       db:
         condition: service_healthy
     healthcheck:
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)",
-        ]
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:8000/api/v1/health"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -60,30 +91,25 @@ services:
       - synapps-network
     restart: unless-stopped
 
+  # ---------- Frontend (React + Vite) ----------
   frontend:
-    image: node:20-alpine
-    working_dir: /workspace/apps/web-frontend
-    command: sh -c "if [ ! -d node_modules/.bin ]; then npm ci; fi && npm run dev -- --host 0.0.0.0 --port 3000"
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.frontend
     environment:
-      REACT_APP_API_URL: ${REACT_APP_API_URL:-http://localhost:8000/api/v1}
-      REACT_APP_WEBSOCKET_URL: ${REACT_APP_WEBSOCKET_URL:-ws://localhost:8000/api/v1/ws}
       VITE_API_URL: ${VITE_API_URL:-http://localhost:8000/api/v1}
       VITE_WEBSOCKET_URL: ${VITE_WEBSOCKET_URL:-ws://localhost:8000/api/v1/ws}
-      CHOKIDAR_USEPOLLING: ${CHOKIDAR_USEPOLLING:-true}
     ports:
-      - "${FRONTEND_PORT:-3000}:3000"
-    volumes:
-      - ./:/workspace
-      - frontend_node_modules:/workspace/apps/web-frontend/node_modules
+      - "${FRONTEND_PORT:-3000}:80"
     depends_on:
       orchestrator:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000 >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1/ || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
-      start_period: 20s
+      start_period: 10s
     networks:
       - synapps-network
     restart: unless-stopped
@@ -94,4 +120,3 @@ networks:
 
 volumes:
   postgres_data:
-  frontend_node_modules:

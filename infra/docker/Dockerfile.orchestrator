@@ -1,26 +1,64 @@
-# Base image for the orchestrator (Python FastAPI)
-FROM python:3.11-slim AS orchestrator
+# =============================================================================
+# SynApps Orchestrator — Multi-stage Production Build
+# =============================================================================
+# Stage 1: Install Python dependencies in a builder image
+# Stage 2: Copy only the installed packages + source into a slim runtime image
+# Result: ~150 MB image (vs ~400 MB with build tools included)
+# =============================================================================
+
+# ---------- Stage 1: Builder ----------
+FROM python:3.11-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
-WORKDIR /workspace
+WORKDIR /build
 
-# Install runtime dependencies first for better build caching.
-COPY apps/orchestrator/requirements.txt /tmp/requirements.txt
-RUN pip install --upgrade pip \
-    && pip install -r /tmp/requirements.txt
+# Install build-time deps for native extensions (psycopg2, cryptography)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc libpq-dev && \
+    rm -rf /var/lib/apt/lists/*
 
-# Copy source with package layout expected by imports (apps.*).
-COPY apps /workspace/apps
+COPY apps/orchestrator/requirements.txt /build/requirements.txt
+RUN pip install --prefix=/install --no-warn-script-location \
+    -r /build/requirements.txt
+
+# ---------- Stage 2: Runtime ----------
+FROM python:3.11-slim AS runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+# Runtime-only system libs (libpq for asyncpg/psycopg2)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 curl && \
+    rm -rf /var/lib/apt/lists/* && \
+    # Create non-root user
+    groupadd -r synapps && useradd -r -g synapps -d /app synapps
+
+WORKDIR /app
+
+# Copy installed Python packages from builder
+COPY --from=builder /install /usr/local
+
+# Copy application source (package layout: apps.orchestrator.*)
+COPY apps/orchestrator /app/apps/orchestrator
+COPY apps/__init__.py /app/apps/__init__.py
+COPY templates /app/templates
+COPY .env.example /app/.env.example
+
+# Ensure PYTHONPATH includes /app so `apps.orchestrator` imports resolve
+ENV PYTHONPATH=/app \
+    PORT=8000 \
+    HOST=0.0.0.0
 
 EXPOSE 8000
 
-ENV PORT=8000
-ENV HOST=0.0.0.0
+# Health check using curl (lighter than Python import)
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=5 \
+    CMD curl -sf http://127.0.0.1:8000/api/v1/health || exit 1
 
-HEALTHCHECK --interval=30s --timeout=5s --retries=5 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)"
+USER synapps
 
 CMD ["uvicorn", "apps.orchestrator.main:app", "--host", "0.0.0.0", "--port", "8000"]

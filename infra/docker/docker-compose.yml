@@ -1,4 +1,9 @@
-version: "3.9"
+# =============================================================================
+# SynApps — Docker Compose (infra/docker context)
+#
+# Same as root docker-compose.yml but with adjusted build context paths.
+# Prefer using the root docker-compose.yml via `docker compose up` from repo root.
+# =============================================================================
 
 services:
   db:
@@ -25,33 +30,20 @@ services:
     build:
       context: ../../
       dockerfile: infra/docker/Dockerfile.orchestrator
-    working_dir: /workspace
-    command: uvicorn apps.orchestrator.main:app --host 0.0.0.0 --port 8000 --reload
     environment:
-      PORT: 8000
-      HOST: 0.0.0.0
       PRODUCTION: ${PRODUCTION:-false}
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
-      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-http://localhost:3000}
       DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://synapps:synapps@db:5432/synapps}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      STABILITY_API_KEY: ${STABILITY_API_KEY:-}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-synapps-dev-jwt-secret-change-me}
+      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-http://localhost:3000}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      SYNAPPS_MASTER_KEY: ${SYNAPPS_MASTER_KEY:-}
     ports:
       - "${BACKEND_PORT:-8000}:8000"
-    volumes:
-      - ../../:/workspace
     depends_on:
       db:
         condition: service_healthy
     healthcheck:
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)",
-        ]
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:8000/api/v1/health"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -61,29 +53,23 @@ services:
     restart: unless-stopped
 
   frontend:
-    image: node:20-alpine
-    working_dir: /workspace/apps/web-frontend
-    command: sh -c "if [ ! -d node_modules/.bin ]; then npm ci; fi && npm run dev -- --host 0.0.0.0 --port 3000"
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.frontend
     environment:
-      REACT_APP_API_URL: ${REACT_APP_API_URL:-http://localhost:8000}
-      REACT_APP_WEBSOCKET_URL: ${REACT_APP_WEBSOCKET_URL:-ws://localhost:8000/ws}
-      VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
-      VITE_WEBSOCKET_URL: ${VITE_WEBSOCKET_URL:-ws://localhost:8000/ws}
-      CHOKIDAR_USEPOLLING: ${CHOKIDAR_USEPOLLING:-true}
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:8000/api/v1}
+      VITE_WEBSOCKET_URL: ${VITE_WEBSOCKET_URL:-ws://localhost:8000/api/v1/ws}
     ports:
-      - "${FRONTEND_PORT:-3000}:3000"
-    volumes:
-      - ../../:/workspace
-      - frontend_node_modules:/workspace/apps/web-frontend/node_modules
+      - "${FRONTEND_PORT:-3000}:80"
     depends_on:
       orchestrator:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000 >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1/ || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
-      start_period: 20s
+      start_period: 10s
     networks:
       - synapps-network
     restart: unless-stopped
@@ -94,4 +80,3 @@ networks:
 
 volumes:
   postgres_data:
-  frontend_node_modules:
