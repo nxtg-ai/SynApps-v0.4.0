@@ -8459,11 +8459,29 @@ async def delete_webhook(
 TEMPLATE_EXPORT_VERSION = "1.0.0"
 
 
+_SEMVER_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
+
+
+def _parse_semver(v: str) -> Optional[tuple]:
+    """Parse a semver string into (major, minor, patch) or None."""
+    m = _SEMVER_RE.match(v)
+    return (int(m.group(1)), int(m.group(2)), int(m.group(3))) if m else None
+
+
+def _bump_patch(semver: str) -> str:
+    """Increment the patch component of a semver string."""
+    parts = _parse_semver(semver)
+    if not parts:
+        return "1.0.0"
+    return f"{parts[0]}.{parts[1]}.{parts[2] + 1}"
+
+
 class TemplateRegistry:
     """In-memory versioned template store.
 
     Each template has a unique ID. Every import of the same ID creates a new
-    version. Versions are numbered sequentially starting at 1.
+    version. Versions are numbered sequentially starting at 1. Each version
+    also carries a semver string (``major.minor.patch``).
     """
 
     def __init__(self) -> None:
@@ -8471,16 +8489,34 @@ class TemplateRegistry:
         # template_id -> list of version dicts (index 0 = v1, index 1 = v2, …)
         self._templates: Dict[str, List[Dict[str, Any]]] = {}
 
+    def _next_semver(self, versions: List[Dict[str, Any]], explicit: Optional[str]) -> str:
+        """Determine the semver for the next version."""
+        if explicit:
+            parsed = _parse_semver(explicit)
+            if not parsed:
+                raise ValueError(f"Invalid semver: '{explicit}'. Expected format: major.minor.patch")
+            # Check for duplicates
+            for v in versions:
+                if v.get("semver") == explicit:
+                    raise ValueError(f"Version '{explicit}' already exists for this template")
+            return explicit
+        if not versions:
+            return "1.0.0"
+        return _bump_patch(versions[-1].get("semver", "1.0.0"))
+
     def import_template(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Import a template, creating a new version if the ID already exists."""
         template_id = data.get("id") or str(uuid.uuid4())
         name = data.get("name", "Unnamed Template")
+        explicit_semver = data.get("version") if isinstance(data.get("version"), str) else None
         with self._lock:
             versions = self._templates.setdefault(template_id, [])
-            version = len(versions) + 1
+            semver = self._next_semver(versions, explicit_semver)
+            seq = len(versions) + 1
             entry = {
                 "id": template_id,
-                "version": version,
+                "version": seq,
+                "semver": semver,
                 "name": name,
                 "description": data.get("description", ""),
                 "tags": data.get("tags", []),
@@ -8503,6 +8539,54 @@ class TemplateRegistry:
                     return dict(versions[version - 1])
                 return None
             return dict(versions[-1])
+
+    def get_by_semver(
+        self, template_id: str, semver: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """Get a template by semver string. Returns latest if semver is None."""
+        with self._lock:
+            versions = self._templates.get(template_id)
+            if not versions:
+                return None
+            if semver is None:
+                return dict(versions[-1])
+            for v in versions:
+                if v.get("semver") == semver:
+                    return dict(v)
+            return None
+
+    def rollback(self, template_id: str, target_semver: str) -> Optional[Dict[str, Any]]:
+        """Rollback to a previous semver by creating a new version from that snapshot."""
+        with self._lock:
+            versions = self._templates.get(template_id)
+            if not versions:
+                return None
+            # Find the target version
+            target = None
+            for v in versions:
+                if v.get("semver") == target_semver:
+                    target = v
+                    break
+            if target is None:
+                return None
+            # Create a new version from the target snapshot
+            seq = len(versions) + 1
+            new_semver = _bump_patch(versions[-1].get("semver", "1.0.0"))
+            entry = {
+                "id": template_id,
+                "version": seq,
+                "semver": new_semver,
+                "name": target["name"],
+                "description": target.get("description", ""),
+                "tags": list(target.get("tags", [])),
+                "nodes": list(target.get("nodes", [])),
+                "edges": list(target.get("edges", [])),
+                "metadata": dict(target.get("metadata", {})),
+                "imported_at": time.time(),
+                "rolled_back_from": target_semver,
+            }
+            versions.append(entry)
+        return entry
 
     def list_templates(self) -> List[Dict[str, Any]]:
         """List all templates (latest version of each)."""
@@ -8540,11 +8624,27 @@ class TemplateImportRequest(BaseModel):
     model_config = ConfigDict(extra="allow")
     id: Optional[str] = Field(None, description="Template ID. Auto-generated if omitted.")
     name: str = Field(..., min_length=1, max_length=200)
+    version: Optional[Any] = Field(
+        None,
+        description="Semver version string (e.g. '1.2.0'). Auto-incremented patch if omitted. "
+        "Integer values from legacy exports are accepted but ignored.",
+    )
     description: Optional[str] = Field("", max_length=1000)
     tags: Optional[List[str]] = Field(default_factory=list)
     nodes: List[Dict[str, Any]] = Field(default_factory=list)
     edges: List[Dict[str, Any]] = Field(default_factory=list)
     metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
+
+    @field_validator("version")
+    @classmethod
+    def validate_version(cls, v):
+        if v is None or isinstance(v, int):
+            return v  # None or legacy integer — ignored by registry
+        if isinstance(v, str):
+            if not _SEMVER_RE.match(v):
+                raise ValueError("version must be semver format: major.minor.patch (e.g. '1.2.0')")
+            return v
+        raise ValueError("version must be a semver string or null")
 
 
 @v1.post("/templates/import", status_code=201, tags=["Templates"])
@@ -8554,7 +8654,10 @@ async def import_template(
 ):
     """Import a template from JSON. Creates a new version if the ID already exists."""
     data = body.model_dump()
-    entry = template_registry.import_template(data)
+    try:
+        entry = template_registry.import_template(data)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     return entry
 
 
@@ -8578,6 +8681,7 @@ async def export_template(
         template = {
             "id": yaml_data.get("id", template_id),
             "version": 1,
+            "semver": "1.0.0",
             "name": yaml_data.get("name", ""),
             "description": yaml_data.get("description", ""),
             "tags": yaml_data.get("tags", []),
@@ -8620,6 +8724,76 @@ async def list_templates(
     """List all imported templates (latest version of each)."""
     templates = template_registry.list_templates()
     return {"templates": templates, "total": len(templates)}
+
+
+@v1.get("/templates/{template_id}/by-semver", tags=["Templates"])
+async def get_template_by_semver(
+    template_id: str,
+    version: Optional[str] = Query(
+        None,
+        description="Semver version (e.g. '1.0.0'). Returns latest if omitted.",
+        pattern=r"^\d+\.\d+\.\d+$",
+    ),
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
+    """Fetch a specific template version by semver string.
+
+    Returns the latest version if the ``version`` query param is omitted.
+    """
+    template = template_registry.get_by_semver(template_id, semver=version)
+    if not template:
+        # Fall back to YAML templates on disk when no semver requested
+        if version is None:
+            yaml_data = _load_yaml_template(template_id)
+            if yaml_data:
+                return {
+                    "id": yaml_data.get("id", template_id),
+                    "version": 1,
+                    "semver": "1.0.0",
+                    "name": yaml_data.get("name", ""),
+                    "description": yaml_data.get("description", ""),
+                    "tags": yaml_data.get("tags", []),
+                    "nodes": yaml_data.get("nodes", []),
+                    "edges": yaml_data.get("edges", []),
+                    "metadata": yaml_data.get("metadata", {}),
+                }
+        detail = (
+            f"Template '{template_id}' version '{version}' not found"
+            if version
+            else f"Template '{template_id}' not found"
+        )
+        raise HTTPException(status_code=404, detail=detail)
+    return template
+
+
+@v1.put("/templates/{template_id}/rollback", tags=["Templates"])
+async def rollback_template(
+    template_id: str,
+    version: str = Query(
+        ...,
+        description="Semver version to rollback to (e.g. '1.0.0').",
+        pattern=r"^\d+\.\d+\.\d+$",
+    ),
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
+    """Rollback a template to a previous semver version.
+
+    Creates a new version whose content is copied from the target version.
+    The new version gets the next auto-incremented semver.
+    """
+    entry = template_registry.rollback(template_id, target_semver=version)
+    if entry is None:
+        # Distinguish between template not found and version not found
+        versions = template_registry.list_versions(template_id)
+        if not versions:
+            raise HTTPException(
+                status_code=404, detail=f"Template '{template_id}' not found"
+            )
+        raise HTTPException(
+            status_code=404,
+            detail=f"Version '{version}' not found for template '{template_id}'",
+        )
+    return entry
 
 
 # ---------------------------------------------------------------------------

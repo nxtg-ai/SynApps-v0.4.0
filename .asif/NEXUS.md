@@ -211,6 +211,7 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 | 2026-02-23 | DIRECTIVE-NXTG-20260223-06 (Health Dashboard + Metrics) → COMPLETE. `_MetricsRingBuffer` ring buffer with windowed queries. `/health` adds `active_connectors`. `/metrics` adds 1h/24h windows, percentiles, per-connector stats. 31 tests. 872 total tests passing. |
 | 2026-02-23 | DIRECTIVE-NXTG-20260223-07 (Error Classification + Retry Policies) → COMPLETE. `ErrorCategory` enum, `classify_error()`, `RetryPolicy`, per-connector policies, `ConnectorError`, `execute_with_retry()` with exponential backoff. 49 tests. 921 total tests passing. |
 | 2026-02-23 | DIRECTIVE-NXTG-20260223-08 (Connector Health Probes) → COMPLETE. `ConnectorHealthTracker` with auto-disable (3 failures) / auto-re-enable. `GET /connectors/health` + `POST /connectors/{name}/probe`. 32 tests. OpenAPI 47 paths. 953 total tests passing. |
+| 2026-02-23 | DIRECTIVE-NXTG-20260223-09 (Template Versioning) → COMPLETE. Semver field on all template versions (auto-patch-bump or explicit). `GET /templates/{id}/by-semver?version=X.Y.Z` + `PUT /templates/{id}/rollback?version=X.Y.Z`. 43 tests. 996 total tests passing. |
 
 ---
 
@@ -1209,3 +1210,24 @@ _(Project team: add questions for ASIF CoS here. They will be answered during th
 
 **Response** (filled by project team):
 > COMPLETE. `ConnectorHealthTracker` with `ConnectorStatus` enum (healthy/degraded/disabled). Auto-disable after 3 consecutive failures, auto-re-enable on single success. `probe_connector()` uses `validate_config()` as lightweight check. `probe_all_connectors()` scans all LLMProviderRegistry connectors. `GET /connectors/health` returns per-connector status with summary counts. `POST /connectors/{name}/probe` for individual probes. 32 tests (16 tracker unit, 4 probe, 2 probe-all, 6 endpoint, 2 probe-endpoint, 2 integration). OpenAPI re-exported (47 paths). 953 total tests passing.
+
+### DIRECTIVE-NXTG-20260223-09 — Template Versioning
+**From**: NXTG-AI CoS | **Priority**: P1
+**Injected**: 2026-02-23 04:45 | **Estimate**: M | **Status**: COMPLETE
+
+> **Context**: As 2Brain and other consumers depend on SynApps templates, they need version pinning. Template changes must not break existing consumers.
+
+**Action Items**:
+1. [x] Add version field to templates — semver format (major.minor.patch)
+2. [x] `GET /api/v1/templates/{name}/by-semver?version=1.0.0` — fetch specific version (default: latest)
+3. [x] Template history: store previous versions, allow rollback via `PUT /api/v1/templates/{name}/rollback?version=1.0.0`
+4. [x] Tests for version creation, fetching specific versions, rollback, latest resolution — zero regressions
+
+**Response** (filled by project team):
+> **All 4 items shipped.** `TemplateRegistry` now carries a `semver` field (major.minor.patch) on every version. Auto-increments patch on import; explicit semver accepted. Duplicate semver → 409. Legacy integer `version` from exports accepted for backwards compatibility.
+>
+> **New endpoints**: `GET /templates/{id}/by-semver?version=X.Y.Z` (fetch by semver, default latest, YAML fallback) + `PUT /templates/{id}/rollback?version=X.Y.Z` (creates new version from target snapshot, copies nodes/edges/metadata, records `rolled_back_from`).
+>
+> **43 new tests** in `test_template_versioning.py`: semver helpers (9), registry semver (11), rollback (5), fetch-by-semver endpoint (5), rollback endpoint (6), import-with-semver (4), integration (3). **996 total tests passing**, zero regressions.
+>
+> **Started**: 2026-02-23 06:40 | **Completed**: 2026-02-23 06:50 | **Actual**: M (~10min)
