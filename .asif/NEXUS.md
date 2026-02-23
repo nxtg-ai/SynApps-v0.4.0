@@ -203,6 +203,7 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 | 2026-02-23 | DIRECTIVE-NXTG-20260222-12 (API Key Authentication) → COMPLETE. `AdminKeyRegistry` + `require_master_key` dependency, 3 admin endpoints, auth enforced on 9 previously-open endpoints. 31 tests. OpenAPI re-exported (38 paths). |
 | 2026-02-23 | DIRECTIVE-NXTG-20260222-13 (Workflow History + Audit Trail) → COMPLETE. `GET /history` with status/template/date filtering + pagination, `GET /history/{id}` with step traces. 16 tests. OpenAPI re-exported (40 paths). |
 | 2026-02-23 | DIRECTIVE-NXTG-20260222-14 (Rate Limiting + Request Throttling) → COMPLETE. Per-API-key configurable rate limits via `AdminKeyRegistry.create(rate_limit=N)`. Admin keys recognised in `get_authenticated_user()` + `_resolve_rate_limit_user()`. 14 new tests. Conftest rate limiter reset. 700 total tests passing. |
+| 2026-02-23 | DIRECTIVE-NXTG-20260223-01 (Template Marketplace + Import/Export) → COMPLETE. `TemplateRegistry` with versioning, 4 new endpoints (import, export, versions, list). Export falls back to YAML on disk. 30 tests. OpenAPI re-exported (44 paths). 730 total tests passing. |
 
 ---
 
@@ -993,3 +994,46 @@ _(Project team: add questions for ASIF CoS here. They will be answered during th
 > **Full suite**: 700 tests passing, zero regressions.
 >
 > **Started**: 2026-02-23 | **Completed**: 2026-02-23 | **Actual**: M (~15min)
+
+### DIRECTIVE-NXTG-20260223-01 — Template Marketplace + Import/Export
+**From**: NXTG-AI CoS | **Priority**: P1
+**Injected**: 2026-02-23 01:30 | **Estimate**: M | **Status**: COMPLETE
+
+**Action Items**:
+1. [x] Add `POST /api/v1/templates/import` — import template from JSON/YAML
+2. [x] Add `GET /api/v1/templates/{id}/export` — export template as portable JSON with metadata
+3. [x] Template versioning — each import creates a new version, previous versions accessible
+4. [x] Tests for import, export, versioning — zero regressions
+
+**Response** (filled by project team):
+> **Shipped.** Template Marketplace with versioned import/export is live.
+>
+> **TemplateRegistry** — in-memory versioned store (same pattern as AdminKeyRegistry):
+> - `import_template(data)` — stores template, auto-increments version per ID
+> - `get(id, version=None)` — latest or specific version
+> - `list_templates()` — all templates with `total_versions` count
+> - `list_versions(id)` — all versions of a template
+> - `delete(id)` / `reset()`
+>
+> **4 new endpoints**:
+> - `POST /templates/import` (201) — import from JSON, auto-ID if omitted, creates new version if ID exists
+> - `GET /templates/{id}/export` — portable JSON with `synapps_export_version`, `exported_at`, `Content-Disposition` header. Falls back to YAML templates on disk. Supports `?version=N`.
+> - `GET /templates/{id}/versions` — list all versions of a template
+> - `GET /templates` — list all imported templates (latest version of each)
+>
+> **30 tests** in `test_template_marketplace.py`:
+>
+> | Category | Count | Coverage |
+> |----------|-------|------|
+> | Registry unit | 13 | import, auto-id, versioning, get latest/specific, list, versions, delete, reset |
+> | POST /import | 5 | 201, versioning, auto-id, validation (422), metadata |
+> | GET /export | 6 | 200, content-disposition, specific version, latest default, 404, YAML fallback |
+> | GET /versions | 2 | lists all versions, 404 |
+> | GET /templates | 3 | lists all, empty, total_versions |
+> | Roundtrip | 1 | import → export → re-import creates v2 |
+>
+> **OpenAPI spec** re-exported: now 44 paths (was 40).
+>
+> **Full suite**: 730 tests passing, zero regressions.
+>
+> **Started**: 2026-02-23 | **Completed**: 2026-02-23 | **Actual**: M (~12min)

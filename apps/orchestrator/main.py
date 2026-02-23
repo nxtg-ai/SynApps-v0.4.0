@@ -7753,6 +7753,176 @@ async def delete_webhook(
 
 
 # ---------------------------------------------------------------------------
+# Template Marketplace — Import / Export / Versioning
+# ---------------------------------------------------------------------------
+
+TEMPLATE_EXPORT_VERSION = "1.0.0"
+
+
+class TemplateRegistry:
+    """In-memory versioned template store.
+
+    Each template has a unique ID. Every import of the same ID creates a new
+    version. Versions are numbered sequentially starting at 1.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        # template_id -> list of version dicts (index 0 = v1, index 1 = v2, …)
+        self._templates: Dict[str, List[Dict[str, Any]]] = {}
+
+    def import_template(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Import a template, creating a new version if the ID already exists."""
+        template_id = data.get("id") or str(uuid.uuid4())
+        name = data.get("name", "Unnamed Template")
+        with self._lock:
+            versions = self._templates.setdefault(template_id, [])
+            version = len(versions) + 1
+            entry = {
+                "id": template_id,
+                "version": version,
+                "name": name,
+                "description": data.get("description", ""),
+                "tags": data.get("tags", []),
+                "nodes": data.get("nodes", []),
+                "edges": data.get("edges", []),
+                "metadata": data.get("metadata", {}),
+                "imported_at": time.time(),
+            }
+            versions.append(entry)
+        return entry
+
+    def get(self, template_id: str, version: Optional[int] = None) -> Optional[Dict[str, Any]]:
+        """Get a template. Returns latest version unless a specific version is given."""
+        with self._lock:
+            versions = self._templates.get(template_id)
+            if not versions:
+                return None
+            if version is not None:
+                if 1 <= version <= len(versions):
+                    return dict(versions[version - 1])
+                return None
+            return dict(versions[-1])
+
+    def list_templates(self) -> List[Dict[str, Any]]:
+        """List all templates (latest version of each)."""
+        with self._lock:
+            result = []
+            for versions in self._templates.values():
+                if versions:
+                    latest = dict(versions[-1])
+                    latest["total_versions"] = len(versions)
+                    result.append(latest)
+            return sorted(result, key=lambda t: t.get("imported_at", 0), reverse=True)
+
+    def list_versions(self, template_id: str) -> List[Dict[str, Any]]:
+        """List all versions of a template."""
+        with self._lock:
+            versions = self._templates.get(template_id)
+            if not versions:
+                return []
+            return [dict(v) for v in versions]
+
+    def delete(self, template_id: str) -> bool:
+        with self._lock:
+            return self._templates.pop(template_id, None) is not None
+
+    def reset(self) -> None:
+        with self._lock:
+            self._templates.clear()
+
+
+template_registry = TemplateRegistry()
+
+
+class TemplateImportRequest(BaseModel):
+    """Request body for importing a template."""
+    model_config = ConfigDict(extra="allow")
+    id: Optional[str] = Field(None, description="Template ID. Auto-generated if omitted.")
+    name: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = Field("", max_length=1000)
+    tags: Optional[List[str]] = Field(default_factory=list)
+    nodes: List[Dict[str, Any]] = Field(default_factory=list)
+    edges: List[Dict[str, Any]] = Field(default_factory=list)
+    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
+
+
+@v1.post("/templates/import", status_code=201, tags=["Templates"])
+async def import_template(
+    body: TemplateImportRequest,
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
+    """Import a template from JSON. Creates a new version if the ID already exists."""
+    data = body.model_dump()
+    entry = template_registry.import_template(data)
+    return entry
+
+
+@v1.get("/templates/{template_id}/export", tags=["Templates"])
+async def export_template(
+    template_id: str,
+    version: Optional[int] = Query(None, ge=1, description="Version number. Latest if omitted."),
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
+    """Export a template as portable JSON with metadata.
+
+    Checks the versioned template registry first, then falls back to YAML
+    templates on disk.
+    """
+    template = template_registry.get(template_id, version=version)
+    if not template:
+        # Fall back to YAML templates on disk (no versioning)
+        yaml_data = _load_yaml_template(template_id)
+        if not yaml_data:
+            raise HTTPException(status_code=404, detail=f"Template '{template_id}' not found")
+        template = {
+            "id": yaml_data.get("id", template_id),
+            "version": 1,
+            "name": yaml_data.get("name", ""),
+            "description": yaml_data.get("description", ""),
+            "tags": yaml_data.get("tags", []),
+            "nodes": yaml_data.get("nodes", []),
+            "edges": yaml_data.get("edges", []),
+            "metadata": yaml_data.get("metadata", {}),
+        }
+
+    export_data = {
+        "synapps_export_version": TEMPLATE_EXPORT_VERSION,
+        "exported_at": time.time(),
+        **template,
+    }
+
+    safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", template.get("name", "template"))[:60]
+    return JSONResponse(
+        content=export_data,
+        headers={
+            "Content-Disposition": f'attachment; filename="{safe_name}.synapps-template.json"',
+        },
+    )
+
+
+@v1.get("/templates/{template_id}/versions", tags=["Templates"])
+async def list_template_versions(
+    template_id: str,
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
+    """List all versions of a template."""
+    versions = template_registry.list_versions(template_id)
+    if not versions:
+        raise HTTPException(status_code=404, detail=f"Template '{template_id}' not found")
+    return {"template_id": template_id, "versions": versions, "total": len(versions)}
+
+
+@v1.get("/templates", tags=["Templates"])
+async def list_templates(
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
+    """List all imported templates (latest version of each)."""
+    templates = template_registry.list_templates()
+    return {"templates": templates, "total": len(templates)}
+
+
+# ---------------------------------------------------------------------------
 # Async Task Queue endpoints
 # ---------------------------------------------------------------------------
 
