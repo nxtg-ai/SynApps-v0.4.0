@@ -218,6 +218,124 @@ class _MetricsCollector:
 
 metrics = _MetricsCollector()
 
+# ============================================================
+# Webhook / Event System
+# ============================================================
+
+WEBHOOK_EVENTS = frozenset({
+    "template_started",
+    "template_completed",
+    "template_failed",
+    "step_completed",
+    "step_failed",
+})
+
+WEBHOOK_MAX_RETRIES = 3
+WEBHOOK_RETRY_BASE_SECONDS = 1.0  # exponential backoff base
+
+
+class WebhookRegistry:
+    """In-memory webhook registration and delivery."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._hooks: Dict[str, Dict[str, Any]] = {}  # id -> hook data
+
+    def register(self, url: str, events: List[str], secret: Optional[str] = None) -> Dict[str, Any]:
+        hook_id = str(uuid.uuid4())
+        hook = {
+            "id": hook_id,
+            "url": url,
+            "events": sorted(set(events)),
+            "secret": secret,
+            "active": True,
+            "created_at": time.time(),
+            "delivery_count": 0,
+            "failure_count": 0,
+        }
+        with self._lock:
+            self._hooks[hook_id] = hook
+        return {k: v for k, v in hook.items() if k != "secret"}
+
+    def list_hooks(self) -> List[Dict[str, Any]]:
+        with self._lock:
+            return [
+                {k: v for k, v in h.items() if k != "secret"}
+                for h in self._hooks.values()
+            ]
+
+    def get(self, hook_id: str) -> Optional[Dict[str, Any]]:
+        with self._lock:
+            h = self._hooks.get(hook_id)
+            return dict(h) if h else None
+
+    def delete(self, hook_id: str) -> bool:
+        with self._lock:
+            return self._hooks.pop(hook_id, None) is not None
+
+    def hooks_for_event(self, event: str) -> List[Dict[str, Any]]:
+        with self._lock:
+            return [
+                dict(h)
+                for h in self._hooks.values()
+                if h["active"] and event in h["events"]
+            ]
+
+    def record_delivery(self, hook_id: str, success: bool) -> None:
+        with self._lock:
+            h = self._hooks.get(hook_id)
+            if h:
+                h["delivery_count"] += 1
+                if not success:
+                    h["failure_count"] += 1
+
+    def reset(self) -> None:
+        with self._lock:
+            self._hooks.clear()
+
+
+webhook_registry = WebhookRegistry()
+
+
+def _sign_payload(payload_bytes: bytes, secret: str) -> str:
+    return hmac.new(secret.encode(), payload_bytes, hashlib.sha256).hexdigest()
+
+
+async def _deliver_webhook(hook: Dict[str, Any], payload: Dict[str, Any]) -> bool:
+    """Deliver a webhook with retry + exponential backoff. Returns True on success."""
+    import httpx
+
+    payload_bytes = json.dumps(payload, default=str).encode()
+    headers: Dict[str, str] = {"Content-Type": "application/json"}
+    if hook.get("secret"):
+        headers["X-Webhook-Signature"] = f"sha256={_sign_payload(payload_bytes, hook['secret'])}"
+
+    for attempt in range(WEBHOOK_MAX_RETRIES):
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(hook["url"], content=payload_bytes, headers=headers)
+                if resp.status_code < 400:
+                    webhook_registry.record_delivery(hook["id"], success=True)
+                    return True
+        except Exception:
+            pass
+        if attempt < WEBHOOK_MAX_RETRIES - 1:
+            await asyncio.sleep(WEBHOOK_RETRY_BASE_SECONDS * (2 ** attempt))
+
+    webhook_registry.record_delivery(hook["id"], success=False)
+    return False
+
+
+async def emit_event(event: str, data: Dict[str, Any]) -> None:
+    """Fire-and-forget delivery to all webhooks registered for *event*."""
+    hooks = webhook_registry.hooks_for_event(event)
+    if not hooks:
+        return
+    payload = {"event": event, "timestamp": time.time(), "data": data}
+    for hook in hooks:
+        asyncio.create_task(_deliver_webhook(hook, payload))
+
+
 DEFAULT_MEMORY_BACKEND = os.environ.get("MEMORY_BACKEND", "sqlite_fts").strip().lower()
 DEFAULT_MEMORY_NAMESPACE = os.environ.get("MEMORY_NAMESPACE", "default").strip() or "default"
 DEFAULT_MEMORY_SQLITE_PATH = str(
@@ -6256,6 +6374,10 @@ class Orchestrator:
         if flow_name:
             metrics.record_template_run(flow_name)
 
+        await emit_event("template_started", {
+            "run_id": run_id, "flow_id": flow_id, "flow_name": flow_name,
+        })
+
         workflow_run_repo = WorkflowRunRepository()
         logger.info(f"Starting workflow execution with run ID: {run_id}")
         await workflow_run_repo.save(status_dict)
@@ -6637,6 +6759,11 @@ class Orchestrator:
                         if isinstance(trace_nodes, list):
                             trace_nodes.append(node_trace)
                         _ensure_trace_in_context_results()
+                        await emit_event("step_completed", {
+                            "run_id": run_id, "node_id": node_id,
+                            "node_type": node.get("type"),
+                            "duration_ms": node_trace.get("duration_ms"),
+                        })
                         success = True
                         break
 
@@ -6745,6 +6872,11 @@ class Orchestrator:
                         f"Error in applet '{node['type']}': "
                         f"{last_error.message if last_error else 'Unknown error'}"
                     )
+                    await emit_event("step_failed", {
+                        "run_id": run_id, "node_id": node_id,
+                        "node_type": node.get("type"),
+                        "error": err_msg,
+                    })
                     await _fail(err_msg, error_payload if isinstance(error_payload, dict) else None)
                     return None
 
@@ -6871,6 +7003,11 @@ class Orchestrator:
                 broadcast_data = status.copy()
                 broadcast_data["completed_applets"] = memory_completed_applets
                 await broadcast_status_fn(broadcast_data)
+                await emit_event("template_completed", {
+                    "run_id": run_id, "flow_id": flow.get("id"),
+                    "flow_name": flow.get("name", ""),
+                    "duration_ms": execution_trace.get("duration_ms"),
+                })
 
         except Exception as e:
             logger.error(f"Error executing workflow: {e}")
@@ -6900,6 +7037,11 @@ class Orchestrator:
                     "error": f"Workflow execution error: {str(e)}",
                     "completed_applets": memory_completed_applets,
                 })
+            await emit_event("template_failed", {
+                "run_id": run_id, "flow_id": flow.get("id"),
+                "flow_name": flow.get("name", ""),
+                "error": str(e),
+            })
 
 
 
@@ -7357,6 +7499,51 @@ async def validate_template_endpoint(payload: ValidateTemplateRequest):
     data = payload.model_dump()
     result = validate_template(data)
     return result
+
+
+# ---------------------------------------------------------------------------
+# Webhook CRUD endpoints
+# ---------------------------------------------------------------------------
+
+class RegisterWebhookRequest(StrictRequestModel):
+    """Request body for webhook registration."""
+    url: str = Field(..., min_length=1, description="Delivery URL")
+    events: List[str] = Field(..., min_length=1, description="Event names to subscribe to")
+    secret: Optional[str] = Field(None, description="HMAC-SHA256 signing secret")
+
+    @field_validator("events")
+    @classmethod
+    def events_valid(cls, v):
+        invalid = [e for e in v if e not in WEBHOOK_EVENTS]
+        if invalid:
+            raise ValueError(f"Invalid events: {invalid}. Valid: {sorted(WEBHOOK_EVENTS)}")
+        return v
+
+
+@v1.post("/webhooks", status_code=201, tags=["Dashboard"])
+async def register_webhook(payload: RegisterWebhookRequest):
+    """Register a new webhook for event delivery."""
+    hook = webhook_registry.register(
+        url=payload.url,
+        events=payload.events,
+        secret=payload.secret,
+    )
+    return hook
+
+
+@v1.get("/webhooks", tags=["Dashboard"])
+async def list_webhooks():
+    """List all registered webhooks (secrets are not returned)."""
+    hooks = webhook_registry.list_hooks()
+    return {"webhooks": hooks, "total": len(hooks)}
+
+
+@v1.delete("/webhooks/{hook_id}", tags=["Dashboard"])
+async def delete_webhook(hook_id: str):
+    """Delete a webhook by ID."""
+    if not webhook_registry.delete(hook_id):
+        raise HTTPException(status_code=404, detail=f"Webhook '{hook_id}' not found")
+    return {"message": "Webhook deleted", "id": hook_id}
 
 
 @v1.post("/flows", status_code=201, tags=["Flows"])

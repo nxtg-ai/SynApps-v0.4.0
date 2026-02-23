@@ -198,6 +198,7 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 | 2026-02-23 | DIRECTIVE-NXTG-20260222-07 (Health Monitoring + Metrics Endpoint) → COMPLETE. `_MetricsCollector` with thread-safe in-memory counters, `collect_metrics` middleware, `GET /health/detailed` (ok/degraded/down + DB + providers), `GET /metrics` (requests, provider_usage, template_runs). 9 tests. OpenAPI re-exported (28 paths). |
 | 2026-02-23 | DIRECTIVE-NXTG-20260222-08 (Provider Auto-Discovery + Registry) → COMPLETE. Filesystem scanning via `importlib` + `inspect`, `GET /providers` (all discovered with models), `GET /providers/{name}/health` (per-provider health). 17 tests. OpenAPI re-exported (30 paths). |
 | 2026-02-23 | DIRECTIVE-NXTG-20260222-09 (Template Validation + Error Reporting) → COMPLETE. `validate_template()` with DFS circular dependency detection, `POST /templates/validate` dry-run endpoint. 18 tests. OpenAPI re-exported (31 paths). |
+| 2026-02-23 | DIRECTIVE-NXTG-20260222-10 (Webhook Support + Event System) → COMPLETE. `WebhookRegistry`, 5 event types, HMAC-SHA256 signing, 3-retry exponential backoff delivery, CRUD endpoints. 20 tests. OpenAPI re-exported (33 paths). |
 
 ---
 
@@ -814,3 +815,36 @@ _(Project team: add questions for ASIF CoS here. They will be answered during th
 > **OpenAPI spec** re-exported: now 31 paths (was 30).
 >
 > **Started**: 2026-02-23 | **Completed**: 2026-02-23 | **Actual**: S (~10min)
+
+### DIRECTIVE-NXTG-20260222-10 — Webhook Support + Event System
+**From**: NXTG-AI CoS | **Priority**: P1
+**Injected**: 2026-02-22 23:05 | **Estimate**: M | **Status**: COMPLETE (2026-02-23)
+
+**Action Items**:
+1. [x] Add webhook registration: `POST /api/v1/webhooks` with URL, events list, optional secret for HMAC signing
+2. [x] Emit events on: template_started, template_completed, template_failed, step_completed, step_failed
+3. [x] Webhook delivery with retry (3 attempts, exponential backoff) and HMAC-SHA256 signature header
+4. [x] Tests for registration, event emission, HMAC verification, retry logic — zero regressions
+
+**Response** (filled by project team):
+> **20/20 tests passing** in `apps/orchestrator/tests/test_webhooks.py` (0.41s).
+>
+> **Implementation**:
+> 1. **`WebhookRegistry`** — in-memory webhook store with `register()`, `list_hooks()`, `get()`, `delete()`, `hooks_for_event()`, `record_delivery()`, `reset()`. Secrets never leaked in list/get responses.
+> 2. **5 event types**: `template_started`, `template_completed`, `template_failed`, `step_completed`, `step_failed`. Wired into `Orchestrator.execute_flow` (start), `_execute_flow_async` (success/error), and node execution loop (step success/failure).
+> 3. **`_deliver_webhook()`** — async delivery with 3 retries, exponential backoff (1s, 2s, 4s). HMAC-SHA256 signature in `X-Webhook-Signature: sha256=...` header when secret is set. Uses `httpx.AsyncClient` with 10s timeout.
+> 4. **`emit_event()`** — fire-and-forget via `asyncio.create_task` for all matching hooks.
+> 5. **3 API endpoints**: `POST /webhooks` (register), `GET /webhooks` (list), `DELETE /webhooks/{id}` (remove). Event validation rejects unknown event names (422).
+>
+> **Test coverage** (20 tests in 5 categories):
+> | Category | Count | What |
+> |----------|-------|------|
+> | Registry unit | 6 | register, list, delete, delete-nonexistent, hooks_for_event, record_delivery |
+> | HMAC signing | 2 | correct digest, different secrets produce different sigs |
+> | Delivery + retry | 3 | success, HMAC header present, retry on failure (3 attempts) |
+> | emit_event | 2 | no hooks noop, triggers delivery with payload |
+> | API endpoints | 7 | register, register-with-secret, invalid-event-422, list, delete, delete-404, events constant |
+>
+> **OpenAPI spec** re-exported: now 33 paths (was 31).
+>
+> **Started**: 2026-02-23 | **Completed**: 2026-02-23 | **Actual**: M (~12min)

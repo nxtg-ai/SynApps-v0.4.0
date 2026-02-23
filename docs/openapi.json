@@ -864,6 +864,108 @@
         }
       }
     },
+    "/api/v1/webhooks": {
+      "get": {
+        "tags": [
+          "v1",
+          "Dashboard"
+        ],
+        "summary": "List Webhooks",
+        "description": "List all registered webhooks (secrets are not returned).",
+        "operationId": "list_webhooks_api_v1_webhooks_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "v1",
+          "Dashboard"
+        ],
+        "summary": "Register Webhook",
+        "description": "Register a new webhook for event delivery.",
+        "operationId": "register_webhook_api_v1_webhooks_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterWebhookRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks/{hook_id}": {
+      "delete": {
+        "tags": [
+          "v1",
+          "Dashboard"
+        ],
+        "summary": "Delete Webhook",
+        "description": "Delete a webhook by ID.",
+        "operationId": "delete_webhook_api_v1_webhooks__hook_id__delete",
+        "parameters": [
+          {
+            "name": "hook_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Hook Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/flows": {
       "post": {
         "tags": [
@@ -2595,6 +2697,45 @@
         ],
         "title": "ImportFlowRequest",
         "description": "Request body for importing a flow."
+      },
+      "RegisterWebhookRequest": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Url",
+            "description": "Delivery URL"
+          },
+          "events": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Events",
+            "description": "Event names to subscribe to"
+          },
+          "secret": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secret",
+            "description": "HMAC-SHA256 signing secret"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "url",
+          "events"
+        ],
+        "title": "RegisterWebhookRequest",
+        "description": "Request body for webhook registration."
       },
       "RerunFlowRequest": {
         "properties": {
