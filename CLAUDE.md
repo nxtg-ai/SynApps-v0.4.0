@@ -133,4 +133,11 @@ This project is **P-10** in the ASIF portfolio (Developer Tools vertical). On ev
 4. Update initiative statuses in NEXUS if your work changes them
 5. If you have questions for the CoS, add them under `## Team Questions` in NEXUS
 
+## Execution Strategy
+For any directive that touches 3+ files or requires architectural decisions:
+1. USE PLAN MODE — think before you code. Outline your approach first.
+2. USE AGENT TEAMS — break complex work into parallel sub-tasks. You have sub-agents. Use them.
+3. Test everything. Test counts never decrease.
+Do NOT skip planning on complex directives. Plan mode and agent teams are your super-powers.
+
 **Escalation via Team Questions**: When you hit a blocker, need an architecture review, or have a portfolio-level question, add it under `## Team Questions` in your `.asif/NEXUS.md`. Your CoS checks these 3x daily during scheduled enrichment cycles and will respond inline or issue follow-up directives.
