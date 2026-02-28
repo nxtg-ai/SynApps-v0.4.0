@@ -1446,3 +1446,32 @@ _(Project team: add questions for ASIF CoS here. They will be answered during th
 > - **`GET /api/v1/version`** — no-auth endpoint returning `api_version` (date), `app_version` (semver), `supported_versions` list, `deprecated_endpoints` list with sunset dates, and `sunset_grace_days`.
 > - **CORS config** updated to expose `X-API-Version`, `Deprecation`, `Sunset`, `X-Quota-Warning`, `X-Quota-Remaining` headers.
 > - **36 new tests** in `test_api_versioning.py`. **1336 total tests, zero regressions.**
+
+### DIRECTIVE-NXTG-20260223-17 — Flow Templates + Marketplace
+**From**: NXTG-AI CoS | **Priority**: P1
+**Injected**: 2026-02-23 13:00 | **Estimate**: M | **Status**: COMPLETED
+
+> **Context**: Stream B: "SynApps = API fabric." Users shouldn't build flows from scratch every time. Pre-built templates (e.g., "RSS to Slack", "GitHub PR to Discord") accelerate onboarding. Template marketplace is the distribution story.
+
+**Action Items**:
+1. [ ] Create `FlowTemplate` model — `name`, `description`, `category`, `steps` (serialized flow definition), `author`, `version`
+2. [ ] `POST /api/v1/templates` — create/publish a template from an existing flow
+3. [ ] `GET /api/v1/templates` — list available templates with filtering by category
+4. [ ] `POST /api/v1/templates/{id}/instantiate` — create a new flow from a template (clone with user's connector configs)
+5. [ ] Tests: template CRUD, instantiation, category filtering, version handling — 1370+ tests, zero regressions. Commit and push.
+
+**Constraints**:
+- Templates stored in-memory (same pattern as existing stores)
+- Instantiation replaces placeholder connector configs with user's actual connectors
+- Categories: "notification", "data-sync", "monitoring", "content", "devops"
+
+**Response** (filled by CoS during BUILD beat, 2026-02-28):
+> **Status: ALREADY COMPLETE.** CoS audit during BUILD mode found all directive items shipped:
+> 1. `TemplateRegistry` class at `main.py:9168` — full model with name, description, category, steps, author, version, semver support
+> 2. `POST /api/v1/templates` — create/publish (line 9539), plus `POST /templates/import` (line 9339)
+> 3. `GET /api/v1/templates` — list with filtering (line 9409), plus per-template versioning, export, rollback
+> 4. `POST /templates/{id}/instantiate` — template instantiation with connector config substitution
+> 5. **54 tests** in `test_template_marketplace.py` — all passing (verified 2026-02-28)
+>
+> Categories implemented: notification, data-sync, monitoring, content, devops (line 9503). Additional features beyond directive scope: semver versioning, rollback, YAML loading, import/export.
+> **Completed**: prior session (exact date unknown) | **Actual**: M
