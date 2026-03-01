@@ -469,6 +469,21 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 > - [x] Security deps (`cryptography>=42.0.0`, `pyjwt[crypto]>=2.8.0`) NOT downgraded
 > - [x] Workflow fails on non-zero exit from either backend or frontend
 
+### DIRECTIVE-NXTG-20260228-04 — Python Modernization Assessment
+**From**: NXTG-AI CoS | **Priority**: P1
+**Injected**: 2026-02-28 | **Estimate**: S | **Status**: PENDING
+
+> **Estimate key**: S = hours (same session), M = 1-2 days, L = 3+ days
+
+**Action Items**:
+1. [ ] Assess feasibility of Python 3.9 → 3.13 upgrade. List breaking changes and dependencies that block the upgrade
+2. [ ] Assess feasibility of Pydantic v1 → v2 migration. Count Pydantic v1 model classes and estimate migration effort
+3. [ ] Write findings as a new Team Question (TQ) in NEXUS for CoS review — do NOT execute the upgrade, just assess
+4. [ ] Run full test suite and report current pass/fail counts
+
+**Response** (filled by project team):
+>
+
 ---
 
 ## Portfolio Intelligence
