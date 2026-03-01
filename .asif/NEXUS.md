@@ -471,18 +471,58 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 
 ### DIRECTIVE-NXTG-20260228-04 — Python Modernization Assessment
 **From**: NXTG-AI CoS | **Priority**: P1
-**Injected**: 2026-02-28 | **Estimate**: S | **Status**: PENDING
+**Injected**: 2026-02-28 | **Estimate**: S | **Status**: DONE (2026-02-28)
 
 > **Estimate key**: S = hours (same session), M = 1-2 days, L = 3+ days
 
 **Action Items**:
-1. [ ] Assess feasibility of Python 3.9 → 3.13 upgrade. List breaking changes and dependencies that block the upgrade
-2. [ ] Assess feasibility of Pydantic v1 → v2 migration. Count Pydantic v1 model classes and estimate migration effort
-3. [ ] Write findings as a new Team Question (TQ) in NEXUS for CoS review — do NOT execute the upgrade, just assess
-4. [ ] Run full test suite and report current pass/fail counts
+1. [x] Assess feasibility of Python 3.9 → 3.13 upgrade. List breaking changes and dependencies that block the upgrade
+2. [x] Assess feasibility of Pydantic v1 → v2 migration. Count Pydantic v1 model classes and estimate migration effort
+3. [x] Write findings as a new Team Question (TQ) in NEXUS for CoS review — do NOT execute the upgrade, just assess
+4. [x] Run full test suite and report current pass/fail counts
 
 **Response** (filled by project team):
+> **Baseline correction**: Directive referenced Python 3.9; project is already at **Python 3.11** (Dockerfile `python:3.11-slim`, CI `PYTHON_VERSION: "3.11"`, setup.py classifiers 3.11/3.12). Assessment is for 3.11 → 3.13.
 >
+> ---
+>
+> **Python 3.11 → 3.13 — LOW RISK**
+>
+> One issue found, test-only:
+> - `tests/test_websocket_protocol.py:360` — `asyncio.get_event_loop().run_until_complete(…)` is deprecated (DeprecationWarning in 3.13, becomes RuntimeError in 3.14). Fix: replace with `asyncio.run(…)`.
+>
+> Deprecated-but-not-removed in 3.13:
+> - `typing.Dict/List/Optional` imported in 8 files — deprecated since 3.9, removed in 3.14. Mechanical find-replace when ready.
+> - `datetime.utcnow()` in 2 test code-template strings (embedded as Code-applet source, not runtime code). Production code uses `datetime.now(timezone.utc)` correctly.
+>
+> No removed stdlib modules detected (checked: distutils, aifc, cgi, cgitb, crypt, imghdr, mailcap, etc.).
+>
+> Dependency compatibility at current pins — all green:
+> `fastapi>=0.115` ✅ `pydantic>=2.8` ✅ `sqlalchemy>=2.0.30` ✅ `uvicorn>=0.30` ✅ `asyncpg>=0.30` ✅ `psycopg2-binary>=2.9.9` ✅ `cryptography>=42` ✅ `pyjwt>=2.8` ✅
+>
+> **Upgrade effort: S** — fix 1 test file, bump Dockerfile base images to `python:3.13-slim`, update CI `PYTHON_VERSION`.
+>
+> ---
+>
+> **Pydantic v1 → v2 — ALREADY COMPLETE. PI-002 is factually incorrect.**
+>
+> Both `requirements.txt` and `setup.py` pin `pydantic>=2.8.0`. All code uses v2 patterns exclusively.
+>
+> Evidence of v2 compliance: `model_dump()` (31 occurrences in main.py), `model_validate()`, `ConfigDict`, `field_validator`, `model_validator` — all present. Zero v1 patterns: no `@validator`, `root_validator`, `orm_mode`, or Pydantic `.dict()`/`.json()` method calls anywhere.
+>
+> Model class count: **32 in models.py + 13 inline in main.py = 45 total — all v2-compliant.**
+>
+> **Migration effort: 0. Nothing to do.**
+>
+> ---
+>
+> **Test Suite — 2026-02-28**
+>
+> Backend (pytest): **1360 passed, 0 failed, 9 warnings** — 61s
+> Frontend (vitest): **101 passed across 13 test files** — 7.5s
+> Frontend E2E: 4 failures in last run (Playwright, not blocking — pre-existing)
+>
+> **Started**: 2026-02-28 | **Completed**: 2026-02-28 | **Actual**: S
 
 ---
 
@@ -512,6 +552,13 @@ Podcast-Pipeline (P-04) shipped a stage graph orchestrator (N-01) with topologic
 ## Team Questions
 
 _(Project team: add questions for ASIF CoS here. They will be answered during the next enrichment cycle.)_
+
+### TQ-20260228-01 — PI-002 Is Incorrect: SynApps Is Already on Pydantic v2
+**From**: Project team | **Date**: 2026-02-28 | **Re**: DIRECTIVE-NXTG-20260228-04 + PI-002
+
+PI-002 states "You are the only project still on Pydantic v1." This is factually wrong. SynApps has `pydantic>=2.8.0` pinned in both `requirements.txt` and `setup.py`, and all 45 model classes use v2 patterns (`model_dump`, `model_validate`, `ConfigDict`, `field_validator`). Zero v1 patterns exist in the codebase.
+
+**Question for CoS**: Please correct PI-002 in portfolio records. Is there a different SynApps branch or artifact the CoS is referencing? Should N-07 (Modernization) be closed if Pydantic v2 and Python 3.11 are already in place? The remaining gap to close N-07 would be: bump Python 3.11 → 3.13 (S effort, 1 test fix + Dockerfile + CI) and clean up deprecated `typing.Dict/List` aliases.
 
 ### DIRECTIVE-NXTG-20260222-02 — 2Brain Integration Validation
 **From**: NXTG-AI CoS | **Priority**: P2
