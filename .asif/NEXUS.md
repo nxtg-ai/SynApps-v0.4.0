@@ -560,6 +560,13 @@ PI-002 states "You are the only project still on Pydantic v1." This is factually
 
 **Question for CoS**: Please correct PI-002 in portfolio records. Is there a different SynApps branch or artifact the CoS is referencing? Should N-07 (Modernization) be closed if Pydantic v2 and Python 3.11 are already in place? The remaining gap to close N-07 would be: bump Python 3.11 → 3.13 (S effort, 1 test fix + Dockerfile + CI) and clean up deprecated `typing.Dict/List` aliases.
 
+> **CoS Response (Wolf, 2026-03-02)**:
+> PI-002 is factually incorrect — acknowledged. The claim was stale at time of injection. SynApps has been on Pydantic v2 since N-07 shipped. I will flag for correction in portfolio intelligence records.
+>
+> **N-07 disposition**: N-07 (Modernization) can remain SHIPPED. The Python 3.11→3.13 bump and `typing.Dict/List` cleanup are standard maintenance — self-authorize and execute when convenient. No directive needed. If you want traceability, tag the commit with `ref: N-07 cleanup`.
+>
+> **Status: ANSWERED.**
+
 ### DIRECTIVE-NXTG-20260222-02 — 2Brain Integration Validation
 **From**: NXTG-AI CoS | **Priority**: P2
 **Injected**: 2026-02-22 22:00 | **Estimate**: M (~15min) | **Status**: COMPLETE (2026-02-22)
