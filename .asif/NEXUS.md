@@ -219,6 +219,34 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 
 ## CoS Directives
 
+### DIRECTIVE-NXTG-20260304-08 — Adopt CI Gate Protocol
+**From**: NXTG-AI CoS | **Priority**: P0
+**Injected**: 2026-03-04 | **Estimate**: S | **Status**: PENDING
+
+> **Estimate key**: S = hours (same session), M = 1-2 days, L = 3+ days
+
+**Context**: New ASIF standard (`standards/ci-gate-protocol.md`). No push without local test pass. All teams must adopt.
+
+**Action Items**:
+1. [ ] Add CI Gate Protocol section to CLAUDE.md:
+   ```
+   ## CI Gate Protocol (ASIF Standard)
+   Before EVERY `git push`, you MUST:
+   1. Run the full test suite: `pytest --tb=short -q` (backend) and `npx vitest run` (frontend)
+   2. Verify ZERO failures (xfail/skip OK, failures NOT OK)
+   3. If tests fail → fix before pushing. No exceptions.
+   4. Include test count in commit message: "Tests: X passed, Y skipped"
+   Violating this protocol means broken CI, which means Asif gets spammed.
+   ```
+2. [ ] Install pre-push hook: `cp ~/ASIF/scripts/templates/pre-push-hook.sh .git/hooks/pre-push && chmod +x .git/hooks/pre-push`
+3. [ ] Run full test suite. Report current passing count.
+4. [ ] Verify CI is GREEN on GitHub Actions. If RED, fix the root cause before any other work.
+
+**Response** (filled by project team):
+>
+
+---
+
 ### DIRECTIVE-NXTG-20260222-02 — UAT-Guide.md + 2Brain Dogfood Prep
 **From**: NXTG-AI CoS | **Priority**: P1
 **Injected**: 2026-02-22 15:10 | **Estimate**: S (~10min) | **Status**: COMPLETE (2026-02-22)
