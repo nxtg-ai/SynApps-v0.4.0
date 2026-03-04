@@ -141,6 +141,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload backend coverage to Codecov
+        continue-on-error: true
         uses: codecov/codecov-action@v4
         with:
           files: ./apps/orchestrator/coverage.xml
@@ -179,6 +180,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload frontend coverage to Codecov
+        continue-on-error: true
         uses: codecov/codecov-action@v4
         with:
           files: ./apps/web-frontend/coverage/lcov.info
