@@ -80,7 +80,7 @@
 
 ### N-04: Memory Applet
 **Pillar**: NODES | **Status**: SHIPPED | **Priority**: P1
-**What**: Vector-based context storage (in-memory dict). Upgrade to ChromaDB planned.
+**What**: Persistent Memory Node with dual backends. `SQLiteFTSMemoryStoreBackend` (default, FTS5 full-text search with LIKE fallback) and `ChromaMemoryStoreBackend` (optional vector store, requires `chromadb` package). `MemoryStoreFactory` with automatic fallback. Configurable via `MEMORY_BACKEND` env var (`sqlite_fts`|`chroma`). Operations: store, retrieve, search, delete, clear. Shipped in T-055/T-056 commits `5692d90`/`4a85783`. Note: original description "in-memory dict, upgrade planned" was stale — upgrade shipped long before NEXUS tracking began.
 
 ### N-05: Sequential Execution Engine
 **Pillar**: EXECUTION | **Status**: SHIPPED | **Priority**: P1
@@ -221,6 +221,7 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 | 2026-03-06 | Gitignore sweep round 2 (`dab8ece`). Missed in prior pass: playwright-report/, .venv/ (dot-prefix venv), .claude/ (Claude Code local settings). Working tree fully clean. Awaiting next directive. |
 | 2026-03-06 | Cycle 6 reflection — null result. Nothing shipped. All debt cleared. 1,465 tests passing. Asked CoS whether idle is correct state or self-direct on N-04 (ChromaDB). |
 | 2026-03-06 | Cycle 7 reflection — null result. Self-authorizing N-04 (ChromaDB Memory upgrade) per N-07 precedent. Deployment remains HOLD. CoS notified. |
+| 2026-03-06 | Cycle 8 — N-04 self-authorization withdrawn: ChromaDB already shipped in T-055/T-056 (`5692d90`/`4a85783`). Updated N-04 description in NEXUS. Asked CoS for T-0xx commit series inventory. |
 
 ---
 
@@ -262,43 +263,56 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 
 ## Team Feedback
 
-> Last updated: 2026-03-06 (Wolf) — cycle 7
+> Last updated: 2026-03-06 (Wolf) — cycle 8
 
 ### 1. What did you ship since last check-in?
 
-**Nothing.** No commits since `0fb165b`. State unchanged: 1,465 tests passing, clean working tree, CI green.
+**One correction, no new code.** Updated N-04 description in NEXUS to reflect actual shipped state.
+
+No commits since `fa8aae1`. Tests unchanged: 1,465 passing.
 
 ---
 
 ### 2. What surprised me?
 
-Seven reflection cycles in one session without a feature directive is itself a data point. Cycles 1–3 found and fixed real debt. Cycles 4–7 have been diminishing returns — the reflection format has exhausted the available housekeeping. Nothing surprising because there's nothing left to discover through reflection alone.
+**N-04 was already done. I've been recommending it as "next priority" for 7 cycles.**
+
+The ChromaDB Memory upgrade shipped in `5692d90` (T-055) and `4a85783` (T-056) — well before this session's tracking window. `SUPPORTED_MEMORY_BACKENDS = ("sqlite_fts", "chroma")`, full `ChromaMemoryStoreBackend` implementation, `MemoryStoreFactory` with automatic fallback, 6 tests. The NEXUS description still said "in-memory dict, upgrade to ChromaDB planned."
+
+This is the same class of error as the orphaned marketplace work (cycle 2): NEXUS diverged from the codebase, and I was reading NEXUS instead of the code. The fix for orphaned work is `git log`. The fix for stale descriptions is reading the actual implementation. Both require periodic `git log --oneline` + implementation-level audits, not just NEXUS reads.
+
+**Implication:** If N-04 description was stale, other NEXUS descriptions might be too. The initiatives span commits from `5574417` (2025-12) to the current session. A lot happened before NEXUS tracking began.
 
 ---
 
 ### 3. Cross-project signals
 
-Nothing new. All prior signals still stand (gitignore two-step, `.venv/` gap, E2E auth injection, grep-for-failed hook pattern). No new observations this cycle.
+**NEXUS descriptions can diverge from code just as easily as NEXUS status fields.** The N-04 case: status correctly said SHIPPED but the description said "upgrade planned." This is subtler than a wrong status — a casual reader sees SHIPPED and stops reading. The stale description then influences future planning (as it did for 7 cycles here). Recommendation for ASIF: treat `**What**` descriptions as living documentation, not one-time entries. Update on completion, not just at creation.
+
+**"Read the code, not just the tracking doc" is a discipline, not a given.** Before recommending a feature as the next priority, the right check is `grep -n "ClassName\|function_name" main.py` — not NEXUS. NEXUS is a summary; the code is ground truth. This applies to any project with a long history and active development before governance was established.
 
 ---
 
 ### 4. What would I prioritize next?
 
-**Self-authorizing N-04 (ChromaDB Memory upgrade).** Seven cycles of null results is sufficient signal that waiting for a directive is the wrong choice. Precedent: CoS self-authorized N-07 cleanup ("standard maintenance — self-authorize and execute when convenient"). N-04 upgrade is similarly bounded — it's an improvement to a shipped initiative (Memory Applet), not a new external product decision. Deployment remains HOLD per explicit CoS instruction; N-04 does not.
+N-04 is done. Need to re-derive the actual next priority from a code audit, not NEXUS.
 
-Plan:
-1. Add `chromadb` to backend dependencies
-2. Replace `MemoryNodeApplet`'s in-memory dict with a persistent ChromaDB collection
-3. Maintain the existing API surface (store/retrieve by namespace key)
-4. Add/update tests — count must not decrease from 1,360
+**Code audit findings (cycle 8):** The codebase has 8 applet types, full auth (JWT + API keys), provider registry, template system with versioning and marketplace, webhook system, async task queue, connector health probes, rate limiting, structured logging, and a complete SDK. This is more complete than NEXUS's 17 initiatives suggest — the directive series (NXTG-20260222/23-xx) added significant capability on top.
+
+**Actual candidates for next work:**
+1. **Frontend Memory Node config** — does the frontend NodeConfigModal expose `backend` / `persist_path` / `collection` fields for the Memory Node? If not, users can't configure ChromaDB from the UI. S effort.
+2. **Content engine test isolation** — `test_pipeline_with_empty_summary` intermittent failure. Still unresolved. S effort.
+3. **Deployment** — HOLD, Asif's decision.
 
 ---
 
 ### 5. Blockers / Questions for CoS
 
-**Notifying CoS of self-authorization:** Beginning N-04 (ChromaDB Memory upgrade) next work session per the self-authorize precedent established for N-07. If CoS has a reason to hold — competing initiative, Asif preference, sequencing constraint — flag it before the next enrichment cycle and I'll stand down. Otherwise proceeding.
+**Withdrawing N-04 self-authorization — it was already done.** No action needed.
 
-Deployment (Fly.io + Vercel) remains HOLD. That is an Asif decision and I will not self-authorize it.
+**New question:** Given that N-04 was already complete before I proposed self-authorizing it, is there a comprehensive list of what was shipped in the T-0xx commit series (T-051 through T-077) that predates NEXUS? Those commits appear to have implemented substantial capability. Understanding what's there would prevent future cases of proposing work that's already done.
+
+**Standing question on deployment:** HOLD, per CoS. Awaiting Asif's decision.
 
 ---
 
