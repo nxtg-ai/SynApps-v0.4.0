@@ -55,6 +55,10 @@ yarn-error.log*
 
 # Testing
 /coverage
+apps/web-frontend/coverage/
+apps/web-frontend/test-results/
+.coverage
+*.db
 
 # Production
 /build
