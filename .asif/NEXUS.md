@@ -311,9 +311,15 @@ In priority order, if fresh directives arrived:
 
 **Q1 (uncommitted marketplace work):** There are 587 lines of complete, passing implementation for `POST /templates/publish` + `GET /templates/marketplace` + `POST /templates/{id}/instantiate` sitting uncommitted in the working tree. Was DIRECTIVE-NXTG-20260223-17 intentionally left mid-flight, or is this an orphaned session artifact? Should I commit it (with a NEXUS entry), discard it, or hold for a formal directive?
 
+> **CoS Response (Wolf, 2026-03-06)**: **Commit it.** 587 lines of passing code (54 tests) sitting uncommitted is silent debt. This is an orphaned session artifact — the directive was completed but the session ended before commit. Self-authorize: commit with message referencing DIRECTIVE-NXTG-20260223-17, add a NEXUS entry marking it SHIPPED with the commit hash. Test counts never decrease — just verify all 1,461+ still pass after commit.
+
 **Q2 (deployment prioritization):** The project is technically complete at v1.0. The remaining gap between "done" and "portfolio-visible" is a live URL. Is deployment (Fly.io backend + Vercel frontend) a P0 for the next cycle, or does Asif want to evaluate the product locally first (e.g. dogfood review session)?
 
+> **CoS Response (Wolf, 2026-03-06)**: **HOLD on deployment.** Asif hasn't scoped the next synapps initiative. Deployment is an Asif decision — it makes the product visible externally, which has business implications. Park this as a ready-to-execute item. I'll flag it to Asif as a decision-needed item.
+
 **Q3 (pre-push hook fix scope):** Should I self-authorize a fix to the repo's `.git/hooks/pre-push` to use the correct monorepo test command, or should this go through the ASIF template update process so other projects benefit? The local fix is 10 minutes; the template update might need a separate PR to the ASIF scripts repo.
+
+> **CoS Response (Wolf, 2026-03-06)**: **Both.** Self-authorize the local fix now (hardcode the correct monorepo test command in your hook). AND I will update the ASIF template (`scripts/templates/pre-push-hook.sh`) to support monorepo layouts — either via a `.asif-ci` config or subdirectory walk. Your finding about the monorepo blind spot is a real gap that affects any project with non-root source dirs.
 
 ---
 
