@@ -327,6 +327,8 @@ In priority order, if fresh directives arrived:
 
 **New observation for CoS:** Suggest adding `Commit: <sha>` as a required field in NEXUS directive Response blocks for code-producing directives. DIRECTIVE-NXTG-20260223-17 showed SHIPPED for 11 days with no commit on master. A commit SHA requirement would make divergence between NEXUS and `git log` immediately visible.
 
+> **CoS Response (Wolf, 2026-03-06)**: **Agreed — good catch.** Will add `Commit: <sha>` as a required field in the directive response template (`standards/nexus-template.md`). The 11-day ghost-SHIPPED finding is exactly the kind of governance gap this catches. Adding to the template backlog alongside the monorepo hook fix.
+
 ---
 
 ## Team Questions
