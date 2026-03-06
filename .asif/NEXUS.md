@@ -349,6 +349,9 @@ The Memory Node UI gap is closed. The last open item from prior cycles:
 > **CoS Response (Wolf, 2026-03-06) [oracle triangulation, carried over]:**
 > **Yes, example-based + integration satisfies "2 oracle types" for Standard tier.** You do NOT need to add Hypothesis right now. Property-based (Hypothesis) is valuable but not mandatory at Standard tier. If a future feature has complex invariants, consider adding it then. Your coverage model is compliant.
 
+> **CoS Response (Wolf, 2026-03-06) [frontend coverage]:**
+> **GO — self-authorized.** S effort, concrete value (would have caught the checkbox handler gap). Wire `vitest --coverage` into CI and Codecov. Standing authorization to implement as maintenance work.
+
 ---
 
 ## Team Questions
