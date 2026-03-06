@@ -124,6 +124,14 @@ pre-commit run --all-files       # Run all hooks manually
 - **ESLint** uses flat config at `apps/web-frontend/eslint.config.mjs`. `@typescript-eslint/no-explicit-any` is off.
 - **Pre-commit hooks** run ruff (lint + format) on backend, ESLint + Prettier + typecheck on frontend.
 
+## CI Gate Protocol (ASIF Standard)
+Before EVERY `git push`, you MUST:
+1. Run the full test suite: `PYTHONPATH=. pytest --tb=short -q` (backend) and `cd apps/web-frontend && npx vitest run` (frontend)
+2. Verify ZERO failures (xfail/skip OK, failures NOT OK)
+3. If tests fail → fix before pushing. No exceptions.
+4. Include test count in commit message: "Tests: X passed, Y skipped"
+Violating this protocol means broken CI, which means Asif gets spammed.
+
 ## ASIF Governance
 
 This project is **P-10** in the ASIF portfolio (Developer Tools vertical). On every session:

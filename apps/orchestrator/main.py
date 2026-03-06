@@ -9408,10 +9408,21 @@ async def list_template_versions(
 
 @v1.get("/templates", tags=["Templates"])
 async def list_templates(
+    category: Optional[str] = Query(
+        None,
+        description="Filter by category: notification, data-sync, monitoring, content, devops",
+    ),
     current_user: Dict[str, Any] = Depends(get_authenticated_user),
 ):
-    """List all imported templates (latest version of each)."""
+    """List all imported templates (latest version of each), optionally filtered by category."""
     templates = template_registry.list_templates()
+    if category:
+        category_lower = category.lower()
+        templates = [
+            t for t in templates
+            if t.get("metadata", {}).get("category", "").lower() == category_lower
+            or category_lower in [c.lower() for c in t.get("metadata", {}).get("categories", [])]
+        ]
     return {"templates": templates, "total": len(templates)}
 
 
@@ -9483,6 +9494,148 @@ async def rollback_template(
             detail=f"Version '{version}' not found for template '{template_id}'",
         )
     return entry
+
+
+# ---------------------------------------------------------------------------
+# Flow Templates + Marketplace (DIRECTIVE-NXTG-20260223-17)
+# ---------------------------------------------------------------------------
+
+MARKETPLACE_CATEGORIES = {"notification", "data-sync", "monitoring", "content", "devops"}
+
+
+class PublishTemplateRequest(StrictRequestModel):
+    """Request body for publishing a flow as a marketplace template."""
+    flow_id: str = Field(..., description="ID of the existing flow to publish as a template")
+    name: str = Field(..., min_length=1, max_length=200, description="Template display name")
+    description: str = Field("", max_length=2000, description="Template description")
+    category: str = Field(..., description="One of: notification, data-sync, monitoring, content, devops")
+    author: str = Field("anonymous", min_length=1, max_length=100, description="Template author")
+    version: Optional[str] = Field(
+        None,
+        description="Semver version string (e.g. '1.0.0'). Auto-generated if omitted.",
+    )
+
+    @field_validator("category")
+    @classmethod
+    def validate_category(cls, v):
+        if v.lower() not in MARKETPLACE_CATEGORIES:
+            raise ValueError(
+                f"Invalid category '{v}'. Must be one of: {', '.join(sorted(MARKETPLACE_CATEGORIES))}"
+            )
+        return v.lower()
+
+
+class InstantiateTemplateRequest(StrictRequestModel):
+    """Request body for instantiating a flow from a template."""
+    flow_name: Optional[str] = Field(
+        None, max_length=200, description="Name for the new flow. Defaults to template name."
+    )
+    connector_overrides: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Map of node IDs to connector config overrides.",
+    )
+
+
+@v1.post("/templates", status_code=201, tags=["Templates"])
+async def publish_template(
+    body: PublishTemplateRequest,
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
+    """Publish an existing flow as a marketplace template.
+
+    Snapshots the flow's nodes and edges into the template registry with
+    marketplace metadata (category, author).
+    """
+    flow = await FlowRepository.get_by_id(body.flow_id)
+    if not flow:
+        raise HTTPException(status_code=404, detail=f"Flow '{body.flow_id}' not found")
+
+    template_data = {
+        "name": body.name,
+        "description": body.description,
+        "tags": [body.category],
+        "nodes": flow.get("nodes", []),
+        "edges": flow.get("edges", []),
+        "metadata": {
+            "category": body.category,
+            "author": body.author,
+            "source_flow_id": body.flow_id,
+        },
+    }
+    if body.version:
+        template_data["version"] = body.version
+
+    try:
+        entry = template_registry.import_template(template_data)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return entry
+
+
+@v1.post("/templates/{template_id}/instantiate", status_code=201, tags=["Templates"])
+async def instantiate_template(
+    template_id: str,
+    body: InstantiateTemplateRequest,
+    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+):
+    """Create a new flow from a marketplace template.
+
+    Clones the template's nodes and edges into a fresh flow, re-mapping all
+    IDs to avoid collisions. If ``connector_overrides`` are provided, the
+    matching node configs are merged with the user's actual connector settings.
+    """
+    template = template_registry.get(template_id)
+    if not template:
+        raise HTTPException(
+            status_code=404, detail=f"Template '{template_id}' not found"
+        )
+
+    # Re-map node IDs
+    id_map: Dict[str, str] = {}
+    new_nodes = []
+    for node in template.get("nodes", []):
+        old_id = node.get("id", str(uuid.uuid4()))
+        new_node_id = str(uuid.uuid4())
+        id_map[old_id] = new_node_id
+        new_node = {**node, "id": new_node_id}
+
+        # Apply connector overrides for this node
+        if old_id in body.connector_overrides:
+            overrides = body.connector_overrides[old_id]
+            existing_data = new_node.get("data", {})
+            if isinstance(existing_data, dict) and isinstance(overrides, dict):
+                new_node["data"] = {**existing_data, **overrides}
+            else:
+                new_node["data"] = overrides
+
+        new_nodes.append(new_node)
+
+    # Re-map edge references
+    new_edges = []
+    for edge in template.get("edges", []):
+        new_edges.append({
+            "id": str(uuid.uuid4()),
+            "source": id_map.get(edge.get("source", ""), edge.get("source", "")),
+            "target": id_map.get(edge.get("target", ""), edge.get("target", "")),
+            "animated": edge.get("animated", False),
+        })
+
+    flow_name = body.flow_name or template.get("name", "Unnamed Flow")
+    new_flow_id = str(uuid.uuid4())
+    flow_data = {
+        "id": new_flow_id,
+        "name": flow_name,
+        "nodes": new_nodes,
+        "edges": new_edges,
+    }
+
+    await FlowRepository.save(flow_data)
+    return {
+        "message": "Flow created from template",
+        "flow_id": new_flow_id,
+        "template_id": template_id,
+        "template_version": template.get("version"),
+    }
 
 
 # ---------------------------------------------------------------------------
