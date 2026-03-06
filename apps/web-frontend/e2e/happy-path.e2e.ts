@@ -41,6 +41,16 @@ const savedFlow = {
 };
 
 test.beforeEach(async ({ page }) => {
+  // Inject auth state before page scripts run so loadAuth() finds a valid token
+  // and protected routes render instead of redirecting to /login.
+  await page.addInitScript(() => {
+    window.localStorage.setItem('access_token', 'e2e-test-token');
+    window.localStorage.setItem(
+      'auth_user',
+      JSON.stringify({ id: 'e2e-user', email: 'e2e@test.com', is_active: true, created_at: 0 }),
+    );
+  });
+
   await page.route('**/flows', async (route) => {
     if (route.request().method() === 'GET') {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(dashboardFlows) });
@@ -136,11 +146,26 @@ test.describe('Frontend happy-path', () => {
   });
 
   test('runs an existing workflow from editor', async ({ page }) => {
+    // Capture the WebSocket route so we can inject a completion event after clicking Run.
+    // Without this, the button stays disabled forever (waiting for a WS success message
+    // that never arrives because there is no real backend in E2E).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let wsRoute: any = null;
+    await page.routeWebSocket('**/ws', (ws) => {
+      wsRoute = ws;
+    });
+
     await page.goto('/editor/flow-created');
 
     await expect(page.getByRole('button', { name: 'Run Workflow' })).toBeEnabled();
     await page.locator('.input-textarea').fill('{"topic":"release notes"}');
     await page.getByRole('button', { name: 'Run Workflow' }).click();
+
+    // Emit workflow.status: success so the execution store re-enables the button.
+    if (wsRoute) {
+      wsRoute.send(JSON.stringify({ type: 'workflow.status', data: { status: 'success', results: {} } }));
+    }
+
     await expect(page.getByRole('button', { name: 'Run Workflow' })).toBeEnabled();
   });
 
