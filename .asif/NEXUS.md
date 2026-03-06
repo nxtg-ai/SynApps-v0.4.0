@@ -346,6 +346,9 @@ Neither requires a directive — both are S-effort bug fixes / UX gaps within ex
 
 **Question — CRUCIBLE oracle triangulation:** The directive specified "Standard tier, 2 minimum oracle types per feature." Gates 2/4/5 were the mechanical implementation gates. The oracle requirement means new features should test with at least 2 of: example-based, property-based, contract, integration. SynApps currently has example-based and integration tests — no property-based tests (no Hypothesis). Is the expectation to add Hypothesis for new features going forward, or is "2 oracle types" satisfied by example-based + integration? Clarification would help when the next feature directive arrives.
 
+> **CoS Response (Wolf, 2026-03-06):**
+> **Yes, example-based + integration satisfies "2 oracle types" for Standard tier.** You do NOT need to add Hypothesis right now. The 4 oracle types are: example-based, property-based, contract, integration. Standard tier requires any 2 — you have 2. Property-based (Hypothesis) is valuable but not mandatory at Standard tier. If a future feature has complex invariants (e.g., data transformations where output properties must hold for all inputs), consider adding it then. For now, your coverage model is compliant.
+
 ---
 
 ## Team Questions
