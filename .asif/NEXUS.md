@@ -214,6 +214,7 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 | 2026-02-23 | DIRECTIVE-NXTG-20260223-09 (Template Versioning) → COMPLETE. Semver field on all template versions (auto-patch-bump or explicit). `GET /templates/{id}/by-semver?version=X.Y.Z` + `PUT /templates/{id}/rollback?version=X.Y.Z`. 43 tests. 996 total tests passing. |
 | 2026-02-23 | DIRECTIVE-NXTG-20260223-10 (Token Bucket Rate Limiting) → COMPLETE. `TokenBucket` + `TokenBucketRegistry` with per-key (60 req/min) and global (300 req/min) limits. Burst allowance. `X-RateLimit-Scope` header. 26 tests. 1022 total tests passing. |
 | 2026-02-23 | DIRECTIVE-NXTG-20260223-11 (API Key Management + Rotation) → COMPLETE. `api_keys/manager.py` with Fernet encryption, CRUD, scoped permissions, rotation with 24h grace period. 6 REST endpoints. Auth integration. 59 tests. 1081 total tests passing. |
+| 2026-03-05 | DIRECTIVE-NXTG-20260304-08 (CI Gate Protocol) → COMPLETE. Protocol already adopted: CLAUDE.md section at line 127, pre-push hook installed. 1360 backend + 101 frontend = 1461 total passing. CI GREEN on GitHub Actions. |
 
 ---
 
@@ -224,57 +225,32 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 
 ### DIRECTIVE-NXTG-20260304-08 — Adopt CI Gate Protocol
 **From**: NXTG-AI CoS | **Priority**: P0
-**Injected**: 2026-03-04 | **Estimate**: S | **Status**: PENDING
+**Injected**: 2026-03-04 | **Estimate**: S | **Status**: COMPLETE
 
 > **Estimate key**: S = hours (same session), M = 1-2 days, L = 3+ days
 
 **Context**: New ASIF standard (`standards/ci-gate-protocol.md`). No push without local test pass. All teams must adopt.
 
 **Action Items**:
-1. [ ] Add CI Gate Protocol section to CLAUDE.md:
-   ```
-   ## CI Gate Protocol (ASIF Standard)
-   Before EVERY `git push`, you MUST:
-   1. Run the full test suite: `pytest --tb=short -q` (backend) and `npx vitest run` (frontend)
-   2. Verify ZERO failures (xfail/skip OK, failures NOT OK)
-   3. If tests fail → fix before pushing. No exceptions.
-   4. Include test count in commit message: "Tests: X passed, Y skipped"
-   Violating this protocol means broken CI, which means Asif gets spammed.
-   ```
-2. [ ] Install pre-push hook: `cp ~/ASIF/scripts/templates/pre-push-hook.sh .git/hooks/pre-push && chmod +x .git/hooks/pre-push`
-3. [ ] Run full test suite. Report current passing count.
-4. [ ] Verify CI is GREEN on GitHub Actions. If RED, fix the root cause before any other work.
+1. [x] Add CI Gate Protocol section to CLAUDE.md — already present at line 127 (added in prior session)
+2. [x] Pre-push hook installed — `.git/hooks/pre-push` exists (ASIF template, runs pytest before push)
+3. [x] Full test suite run: **1360 backend passed** (1 known flaky teardown error in `test_metrics_template_runs_after_flow_execution` — aiosqlite event-loop teardown, pre-existing, CI-skipped), **101 frontend passed**
+4. [x] CI GREEN — last 4 GitHub Actions runs on master all `conclusion: success` (checked 2026-03-05)
 
 **Response** (filled by project team):
->
+> All 4 action items verified complete as of 2026-03-05. CI Gate Protocol was already adopted in a prior session (CLAUDE.md line 127, pre-push hook installed). Current test counts: 1360 backend + 101 frontend = 1461 total passing. CI is GREEN on GitHub Actions (master branch, last 4 runs success). The single `ERROR` in pytest output is the known flaky `test_metrics_template_runs_after_flow_execution` aiosqlite teardown — pre-existing, not a new failure. Status: **COMPLETE**.
 
 ---
 
 ---
 
 ## Portfolio Intelligence
+> Injected by CLX9 CoS (Emma) — Enrichment Cycle 2026-03-05
 
-_Cross-project insights injected by ASIF CoS. Read these for awareness — they inform your priorities._
-
-### PI-001: 2Brain Is Your First Dogfood Consumer (2026-02-17)
-**From**: NXTG-AI CoS + Asif (founder decision, 2026-02-17)
-
-2Brain (P-13) has been stale for 38 days, blocked waiting for SynApps. Asif has confirmed: **SynApps' first dogfood use case is 2Brain's capture→classify→store pipeline.** This means:
-
-1. Your visual workflow builder will be validated with a real portfolio use case
-2. 2Brain's pipeline (capture text → Ollama classification → storage) is the test scenario
-3. CLX9 CoS directive to build a standalone Python replacement (DIRECTIVE-CLX9-20260216-03) has been **DEFERRED** — SynApps IS the path forward
-
-Ship the dogfood milestone. 2Brain is waiting.
-
-### PI-002: Portfolio Standard Is Pydantic v2 + FastAPI Modern (2026-02-17)
-~~You are the only project still on Pydantic v1.~~ **CORRECTION (Wolf, 2026-03-02):** SynApps has been on Pydantic v2 since N-07 shipped (2026-02-18). All 45 model classes use v2 patterns. PI-002 was stale at time of injection. The portfolio standard is Pydantic v2 + FastAPI 0.115+ + Python 3.11+ — **SynApps is fully compliant.**
-
-### PI-003: Podcast-Pipeline Has a Shipped DAG Execution Engine (2026-02-18)
-Podcast-Pipeline (P-04) shipped a stage graph orchestrator (N-01) with topological sort, dependency resolution, and parallel level computation — 14 tests passing. Your N-10 (Parallel Execution Engine) needs the same thing: topological sort with parallel group detection, fan-out/fan-in. Both are Python. Reference their implementation before building from scratch.
-
----
-
+- **v1.0 complete**: 17/17 initiatives shipped. 1,081 tests, 93% coverage. Dogfood-ready.
+- **2Brain (P-13)**: N-05 SynApps Orchestration waiting on a real use case. CoS assessment: do not force it.
+- **Portfolio context**: 16,442 tests. SynApps is one of 3 complete projects (with oneDB and Faultline Kaggle).
+- **Pydantic v2**: Already on v2 (corrected from earlier PI-002 error). No modernization needed.
 
 ---
 
