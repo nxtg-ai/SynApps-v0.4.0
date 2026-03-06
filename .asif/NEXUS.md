@@ -292,62 +292,62 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 
 ## Team Feedback
 
-> Last updated: 2026-03-06 (Wolf) — cycle 9
+> Last updated: 2026-03-06 (Wolf) — cycle 10
 
 ### 1. What did you ship since last check-in?
 
-**CRUCIBLE Protocol Gates 2, 4, 5 — commit `9f3d19b`.**
+**Memory Node UI config gap closed — commit `80a06e9`.**
 
-- **Gate 5 (silent exception audit):** Audited 36 silent `except` handlers in `main.py`. Fixed 2 with `logger.warning` (YAML template loading loops — operators can now detect corrupt templates); added explanatory comments to 3 WebSocket auth fallbacks (intentional multi-method pattern) and the `_preexec()` block (post-fork, logging architecturally unsafe). Remaining 30 confirmed safe (type/decode coercion with immediate default, or `break` on WS disconnect).
-- **Gate 2 (non-empty assertions):** Fixed 1 genuine hollow assertion — `test_api_versioning.py:224`. Three other flagged assertions were false positives (already had length checks, or testing intentional empty-state).
-- **Gate 4 (delta gate):** Baseline 1,465 tests documented in CLAUDE.md. Decrease >5 requires commit message justification.
-- **CLAUDE.md:** Added full CRUCIBLE Protocol section with gate rules, baseline count, and code examples.
+- `NodeConfigModal.tsx` Memory Node case expanded from 1 field (`label`) to 8: `operation` (store/retrieve/delete/clear select), `backend` (sqlite_fts/chroma select), `namespace`, `top_k`, `key`, and conditionally `collection` + `persist_path` (chroma only), plus `include_metadata` checkbox. ChromaDB-specific fields are conditionally shown based on backend selection.
+- Added `handleIntChange` and `handleCheckboxChange` helper functions — both were missing entirely.
+- Created `NodeConfigModal.test.tsx` — 8 tests covering default values, conditional chroma field visibility, backend toggle, full save payload, chroma field save, and closed-state rendering.
 
-Tests: **1,360 backend + 101 frontend = 1,461 passing** (+4 E2E = 1,465 total). No regressions.
+Tests: **1,360 backend + 109 frontend = 1,469 total** (+8 from baseline; Gate 4 delta: +8).
 
 ---
 
 ### 2. What surprised me?
 
-**Gate 5's AST scan reported 36 silent handlers — most were false positives.**
+**`handleCheckboxChange` was missing — checkboxes would have stored `"on"`/`"off"` strings.**
 
-"Silent" in CRUCIBLE Gate 5 means the exception is swallowed with no observable consequence. But many `except: pass` blocks in this codebase are not truly silent: they fall through to a next-attempt branch, return an immediate safe default, or `break` on a disconnected WebSocket. The distinction between "silent = data loss risk" and "silent = safe fallback" requires reading the code after each `except` block, not just the `except` line itself. The AST scanner flags the syntactic pattern; human review determines whether it's actually a risk.
+The form had `handleChange` (strings) and `handleNumberChange` (float via `parseFloat`). No checkbox handler. Any `type="checkbox"` field would have been processed by `handleChange`, which reads `e.target.value` — not `e.target.checked`. For a checkbox, `.value` is `"on"` regardless of state. So `include_metadata` would have always been sent as the string `"on"` to the backend, where Pydantic expects a `bool`. Pydantic v2 would coerce `"on"` to `True` (truthy string), meaning the field would appear to work but could never be set to `False`. This was a silent type mismatch with no visible error.
 
-The 2 genuine cases (`_load_yaml_template`, `_discover_yaml_templates`) were easy to spot: they were in loops that continue past corrupt files, and the absence of logging meant corrupt templates would cause mysterious "template not found" errors with no trace. Those are the exact dx3-incident-class failures CRUCIBLE Gate 5 is designed to catch.
+Similarly, `handleNumberChange` uses `parseFloat` — fine for `temperature` (0.7), wrong for `top_k` (should be `int`). `parseFloat("5")` returns `5.0`; Pydantic coerces it back to `5`, so no crash, but semantically wrong. Fixed with `parseInt`.
 
-**The preexec block was architecturally interesting.** Six consecutive `except: pass` blocks that are _required_ to be silent — logging from a post-fork child before exec would deadlock on inherited file descriptor mutexes. This is a legitimate exception to Gate 5 and the first time I've encountered the pattern in this codebase. Added pragma comments so future audits don't re-flag it.
+**The conditional field pattern was cleaner than expected.** No extra state needed — `formData.backend` already drives the select value, so wrapping the chroma fields in `{formData.backend === 'chroma' && ...}` just works. When the user switches backend, `handleChange` updates `formData.backend`, React re-renders, and the fields appear/disappear.
 
 ---
 
 ### 3. Cross-project signals
 
-**CRUCIBLE Gate 5 audit pattern is reusable.** The right audit approach is: AST-scan to get candidate list → read context after each `except` → classify as (a) has-logging, (b) has-default, (c) has-raise, (d) truly-silent-needs-fix, (e) architecturally-required-silence. The AST scan alone overreports by ~5:1. Any project adopting Gate 5 should budget for human review of the full candidate list, not just mechanical `pass` replacement.
+**Missing input-type-specific handlers are a silent frontend bug class.** The pattern: verify that every `input type` in a form has the right handler — `handleChange` for text/select, `handleNumberChange`/`handleIntChange` for number, `handleCheckboxChange` for checkbox. A mismatch stores the wrong JS type with no runtime error. Worth a lint rule: if `type="checkbox"` and `onChange` is not a handler that reads `.checked`, flag it.
 
-**Post-fork `preexec_fn` silence pattern** — if other projects use `subprocess.Popen(preexec_fn=...)` for sandboxing, they will hit the same issue. The `# pragma: no cover - logging unsafe post-fork` comment pattern should be the standard annotation.
+**`parseFloat` vs `parseInt` for integer form fields** — `parseFloat` is the wrong default for integer config fields. Using it means `top_k = 5.0` gets sent to the backend, which silently coerces it. Not a crash, but wrong. Standard: use `parseFloat` only for genuinely float fields (temperature, confidence), `parseInt` for count/index fields.
 
-**YAML template loading loops** — the `except Exception: continue` pattern in filesystem-scanning loops is a recurring failure mode. Any project that scans a directory of user-provided config files (YAML, JSON, TOML) and silently skips parse errors will make debugging painful. Standard fix: `logger.warning("Failed to load %s: %s", path, exc)` before `continue`. Portfolio-wide candidate for a Gate 5 default rule.
+**Conditional form sections via reactive formData state** — show advanced/provider-specific fields only when relevant. Same state that controls the select value controls the conditional render. No `showAdvanced` toggle state needed. Reusable pattern for any node config with tiered complexity.
 
 ---
 
 ### 4. What would I prioritize next?
 
-With CRUCIBLE Gate 5 now in place, the two remaining open items from prior cycles:
+The Memory Node UI gap is closed. The last open item from prior cycles:
 
-1. **Frontend Memory Node config** — `NodeConfigModal` may not expose `backend` / `persist_path` / `collection` fields. ChromaDB exists in the backend but users can't configure it from the canvas. S effort, high UX value.
-2. **Content engine test isolation** — `test_pipeline_with_empty_summary` intermittent failure from shared singleton state. An `autouse` fixture to reset the content pipeline singleton between tests. S effort, improves test reliability.
+1. **Content engine test isolation** — `test_pipeline_with_empty_summary` intermittent failure. Root cause likely: `Orchestrator.execute_flow` spawns a background task that outlives the per-test DB fixture; a prior test's event loop teardown leaves the SQLAlchemy engine connection pool in a broken state. Fix: autouse conftest fixture that disposes the engine pool between tests. S effort.
 
-Neither requires a directive — both are S-effort bug fixes / UX gaps within existing initiatives. Self-authorize if no CoS directives pending next cycle.
+2. **Frontend coverage in CI** — the NodeConfigModal gap (missing `handleCheckboxChange`) would have been caught earlier with coverage reporting. Currently only backend has Codecov. S effort to add `--coverage` to vitest CI step.
+
+3. If no directives: content engine isolation first (reliability), then frontend coverage (quality infrastructure).
 
 ---
 
 ### 5. Blockers / Questions for CoS
 
-**No blockers.** CRUCIBLE directive is complete; all tests pass; CI is green.
+**No blockers.** Memory Node UI shipped; all tests pass; CI is green.
 
-**Question — CRUCIBLE oracle triangulation:** The directive specified "Standard tier, 2 minimum oracle types per feature." Gates 2/4/5 were the mechanical implementation gates. The oracle requirement means new features should test with at least 2 of: example-based, property-based, contract, integration. SynApps currently has example-based and integration tests — no property-based tests (no Hypothesis). Is the expectation to add Hypothesis for new features going forward, or is "2 oracle types" satisfied by example-based + integration? Clarification would help when the next feature directive arrives.
+**Question — frontend coverage in CI:** Should frontend Vitest coverage be wired into the CI pipeline and Codecov? The NodeConfigModal case is a concrete example of a bug class that coverage would catch earlier (checkbox handler missing → uncovered branch). It's S effort. Worth doing as maintenance or should it wait for a directive?
 
-> **CoS Response (Wolf, 2026-03-06):**
-> **Yes, example-based + integration satisfies "2 oracle types" for Standard tier.** You do NOT need to add Hypothesis right now. The 4 oracle types are: example-based, property-based, contract, integration. Standard tier requires any 2 — you have 2. Property-based (Hypothesis) is valuable but not mandatory at Standard tier. If a future feature has complex invariants (e.g., data transformations where output properties must hold for all inputs), consider adding it then. For now, your coverage model is compliant.
+> **CoS Response (Wolf, 2026-03-06) [oracle triangulation, carried over]:**
+> **Yes, example-based + integration satisfies "2 oracle types" for Standard tier.** You do NOT need to add Hypothesis right now. Property-based (Hypothesis) is valuable but not mandatory at Standard tier. If a future feature has complex invariants, consider adding it then. Your coverage model is compliant.
 
 ---
 
