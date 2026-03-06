@@ -230,6 +230,29 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 
 > 36 completed directives archived to [NEXUS-archive.md](./NEXUS-archive.md) (2026-03-04, Wolf).
 
+### DIRECTIVE-NXTG-20260306-01 — CRUCIBLE Protocol Phase 1: Gates 2, 4, 5 (Standard Tier)
+**From**: NXTG-AI CoS (via Emma, CLX9 Sr. CoS) | **Priority**: P2
+**Injected**: 2026-03-06 13:20 | **Estimate**: S | **Status**: PENDING
+
+**Context**: New portfolio-wide test quality standard (`~/ASIF/standards/crucible-protocol.md`). SynApps gets Gates 2 (non-empty assertions), 4 (delta gate), 5 (silent exception audit) at Standard tier.
+
+**Action Items**:
+1. [ ] Add CRUCIBLE Protocol section to CLAUDE.md:
+   ```
+   ## CRUCIBLE Protocol (Test Quality)
+   This project follows the CRUCIBLE Protocol (`~/ASIF/standards/crucible-protocol.md`).
+   - Gate 2: Non-empty assertions — tests that create data must assert result is non-empty
+   - Gate 4: Delta gate — test count must not decrease between commits
+   - Gate 5: Silent exception audit — no except blocks that swallow errors without logging
+   - Oracle tier: STANDARD — minimum 2 oracle types per feature
+   ```
+2. [ ] Run full test suite. 1,465 baseline must not decrease.
+
+**Response** (filled by project team):
+>
+
+---
+
 ### DIRECTIVE-NXTG-20260304-08 — Adopt CI Gate Protocol
 **From**: NXTG-AI CoS | **Priority**: P0
 **Injected**: 2026-03-04 | **Estimate**: S | **Status**: COMPLETE
