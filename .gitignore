@@ -57,8 +57,15 @@ yarn-error.log*
 /coverage
 apps/web-frontend/coverage/
 apps/web-frontend/test-results/
+apps/web-frontend/playwright-report/
 .coverage
 *.db
+
+# Virtual environments (all naming conventions)
+.venv/
+
+# Local tool configuration
+.claude/
 
 # Production
 /build
