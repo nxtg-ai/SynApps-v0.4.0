@@ -222,6 +222,7 @@ class TestVersionEndpoint:
         assert data["app_version"] == API_VERSION
         assert "v1" in data["supported_versions"]
         assert isinstance(data["deprecated_endpoints"], list)
+        assert len(data["deprecated_endpoints"]) >= 1  # Gate 2: non-empty assertion
         assert data["sunset_grace_days"] == API_SUNSET_GRACE_DAYS
 
     def test_version_lists_deprecated_endpoints(self, client):

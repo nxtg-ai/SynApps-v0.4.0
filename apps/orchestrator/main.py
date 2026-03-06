@@ -3439,34 +3439,40 @@ def _sandbox_preexec_fn(
     max_file_size = max(1024, int(max_output_bytes * 2))
 
     def _preexec() -> None:
+        # NOTE: This function runs in the child process after fork(), before exec().
+        # Logging is NOT safe here (may deadlock on inherited mutexes) — silence is
+        # intentional.  Each setrlimit call is best-effort: if the platform or
+        # container doesn't support a limit, we continue rather than aborting the
+        # child startup.  All failures are implicitly visible via the absence of the
+        # resource constraint (overrun → SIGXCPU / SIGKILL from parent timeout).
         try:
             os.setsid()
-        except Exception:
+        except Exception:  # pragma: no cover - platform-dependent
             pass
 
         try:
             resource.setrlimit(resource.RLIMIT_CPU, (cpu_time_seconds, cpu_time_seconds))
-        except Exception:
+        except Exception:  # pragma: no cover - unsupported on some kernels
             pass
         try:
             resource.setrlimit(resource.RLIMIT_AS, (memory_bytes, memory_bytes))
-        except Exception:
+        except Exception:  # pragma: no cover - unsupported on some kernels
             pass
         try:
             resource.setrlimit(resource.RLIMIT_FSIZE, (max_file_size, max_file_size))
-        except Exception:
+        except Exception:  # pragma: no cover - unsupported on some kernels
             pass
         try:
             resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
-        except Exception:
+        except Exception:  # pragma: no cover - unsupported on some kernels
             pass
         try:
             resource.setrlimit(resource.RLIMIT_NOFILE, (64, 64))
-        except Exception:
+        except Exception:  # pragma: no cover - unsupported on some kernels
             pass
         try:
             resource.setrlimit(resource.RLIMIT_NPROC, (1, 1)) # Limit to a single process
-        except Exception:
+        except Exception:  # pragma: no cover - unsupported on some kernels
             pass
     return _preexec
 
@@ -9658,7 +9664,8 @@ def _load_yaml_template(template_id: str) -> Optional[Dict[str, Any]]:
             tid = data.get("id", path.stem)
             if tid == template_id:
                 return data
-        except Exception:
+        except Exception as exc:
+            logger.warning("Failed to load template from %s: %s", path, exc)
             continue
     return None
 
@@ -10407,7 +10414,8 @@ def _discover_yaml_templates() -> List[Dict[str, Any]]:
                 "node_count": len(data.get("nodes", [])),
                 "edge_count": len(data.get("edges", [])),
             })
-        except Exception:
+        except Exception as exc:
+            logger.warning("Failed to load template from %s: %s", path, exc)
             continue
     return results
 
@@ -10874,6 +10882,9 @@ async def _ws_authenticate(websocket: WebSocket) -> Optional[Dict[str, Any]]:
                 if user:
                     return user
         except (asyncio.TimeoutError, json.JSONDecodeError, Exception):
+            # Intentional: anonymous bootstrap allows connections without auth.
+            # Timeout (no message sent), malformed JSON, or any transport error
+            # all fall through to the anonymous user below — silence is correct.
             pass
         return {
             "id": "anonymous",
@@ -10945,6 +10956,9 @@ async def _ws_try_credentials(msg: dict) -> Optional[Dict[str, Any]]:
         try:
             return await _authenticate_user_by_jwt(token)
         except HTTPException:
+            # JWT auth failed — fall through to try API key auth below.
+            # HTTPException from _authenticate_user_by_jwt carries the rejection
+            # detail; we suppress it here because we have a second auth method.
             pass
 
     api_key = msg.get("api_key", "")
@@ -10952,6 +10966,7 @@ async def _ws_try_credentials(msg: dict) -> Optional[Dict[str, Any]]:
         try:
             return await _authenticate_user_by_api_key(api_key)
         except HTTPException:
+            # API key auth also failed — fall through to return None (rejected).
             pass
 
     return None

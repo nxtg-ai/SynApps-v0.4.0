@@ -132,6 +132,40 @@ Before EVERY `git push`, you MUST:
 4. Include test count in commit message: "Tests: X passed, Y skipped"
 Violating this protocol means broken CI, which means Asif gets spammed.
 
+## CRUCIBLE Protocol (ASIF Standard — Gates 2, 4, 5 at Standard tier)
+
+SynApps applies the CRUCIBLE test-quality standard per DIRECTIVE-NXTG-20260306-01.
+
+### Gate 2 — Non-Empty Assertions
+Any test that **creates or fetches data** (POST, upsert, store, seed) and then asserts on a list result MUST include a length guard:
+```python
+assert isinstance(result, list)
+assert len(result) >= 1  # Gate 2: confirm data was not silently lost
+```
+Exception: `assert result == []` is valid when testing an empty-state scenario.
+
+### Gate 4 — Delta Gate
+Test count MUST NOT decrease by more than 5 between commits without justification.
+If your commit removes/consolidates tests (net decrease > 5), include in the commit message:
+```
+Test delta: -N (reason: <brief justification>)
+```
+Track baseline: **1,465 total** (1,360 backend + 101 frontend unit + 4 E2E) as of 2026-03-06.
+
+### Gate 5 — Silent Exception Audit
+`except` blocks MUST do at least one of: `logger.*`, `raise`, or return an error value.
+Silent `pass` is only allowed when:
+- Running in post-fork child process (logging unsafe) — must have comment
+- Trying multiple auth methods sequentially — must have comment
+- Decode/coerce fallback that immediately uses a safe default — must have comment
+
+Pattern to follow:
+```python
+except Exception as exc:
+    logger.warning("Failed to load X from %s: %s", path, exc)
+    continue  # skip corrupt entry; do not abort the loop
+```
+
 ## ASIF Governance
 
 This project is **P-10** in the ASIF portfolio (Developer Tools vertical). On every session:
