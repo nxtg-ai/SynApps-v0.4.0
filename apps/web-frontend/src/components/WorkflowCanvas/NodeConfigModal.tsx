@@ -44,6 +44,22 @@ const NodeConfigModal: React.FC<NodeConfigModalProps> = ({
       [name]: parseFloat(value)
     }));
   };
+
+  const handleIntChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setFormData((prev: Record<string, any>) => ({
+      ...prev,
+      [name]: parseInt(value, 10)
+    }));
+  };
+
+  const handleCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, checked } = e.target;
+    setFormData((prev: Record<string, any>) => ({
+      ...prev,
+      [name]: checked
+    }));
+  };
   
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -227,6 +243,103 @@ const NodeConfigModal: React.FC<NodeConfigModalProps> = ({
                 onChange={handleChange}
                 placeholder="Enter node label"
               />
+            </div>
+            <div className="form-group">
+              <label htmlFor="operation">Operation</label>
+              <select
+                id="operation"
+                name="operation"
+                value={formData.operation || 'store'}
+                onChange={handleChange}
+              >
+                <option value="store">Store</option>
+                <option value="retrieve">Retrieve</option>
+                <option value="delete">Delete</option>
+                <option value="clear">Clear</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label htmlFor="backend">Backend</label>
+              <select
+                id="backend"
+                name="backend"
+                value={formData.backend || 'sqlite_fts'}
+                onChange={handleChange}
+              >
+                <option value="sqlite_fts">SQLite FTS (default)</option>
+                <option value="chroma">ChromaDB (vector search)</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label htmlFor="namespace">Namespace</label>
+              <input
+                type="text"
+                id="namespace"
+                name="namespace"
+                value={formData.namespace || ''}
+                onChange={handleChange}
+                placeholder="default"
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="top_k">Top K (retrieve results)</label>
+              <input
+                type="number"
+                id="top_k"
+                name="top_k"
+                value={formData.top_k ?? 5}
+                onChange={handleIntChange}
+                min={1}
+                max={50}
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="key">Key (optional, for keyed store/retrieve)</label>
+              <input
+                type="text"
+                id="key"
+                name="key"
+                value={formData.key || ''}
+                onChange={handleChange}
+                placeholder="Leave blank for auto-generated key"
+              />
+            </div>
+            {formData.backend === 'chroma' && (
+              <>
+                <div className="form-group">
+                  <label htmlFor="collection">Collection Name</label>
+                  <input
+                    type="text"
+                    id="collection"
+                    name="collection"
+                    value={formData.collection || ''}
+                    onChange={handleChange}
+                    placeholder="synapps_memory"
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="persist_path">Persist Path</label>
+                  <input
+                    type="text"
+                    id="persist_path"
+                    name="persist_path"
+                    value={formData.persist_path || ''}
+                    onChange={handleChange}
+                    placeholder="/tmp/chroma (leave blank for default)"
+                  />
+                </div>
+              </>
+            )}
+            <div className="form-group">
+              <label>
+                <input
+                  type="checkbox"
+                  name="include_metadata"
+                  checked={formData.include_metadata ?? false}
+                  onChange={handleCheckboxChange}
+                />
+                {' '}Include metadata in results
+              </label>
             </div>
           </>
         );
