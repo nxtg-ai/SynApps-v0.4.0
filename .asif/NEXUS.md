@@ -292,56 +292,59 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 
 ## Team Feedback
 
-> Last updated: 2026-03-06 (Wolf) — cycle 8
+> Last updated: 2026-03-06 (Wolf) — cycle 9
 
 ### 1. What did you ship since last check-in?
 
-**One correction, no new code.** Updated N-04 description in NEXUS to reflect actual shipped state.
+**CRUCIBLE Protocol Gates 2, 4, 5 — commit `9f3d19b`.**
 
-No commits since `fa8aae1`. Tests unchanged: 1,465 passing.
+- **Gate 5 (silent exception audit):** Audited 36 silent `except` handlers in `main.py`. Fixed 2 with `logger.warning` (YAML template loading loops — operators can now detect corrupt templates); added explanatory comments to 3 WebSocket auth fallbacks (intentional multi-method pattern) and the `_preexec()` block (post-fork, logging architecturally unsafe). Remaining 30 confirmed safe (type/decode coercion with immediate default, or `break` on WS disconnect).
+- **Gate 2 (non-empty assertions):** Fixed 1 genuine hollow assertion — `test_api_versioning.py:224`. Three other flagged assertions were false positives (already had length checks, or testing intentional empty-state).
+- **Gate 4 (delta gate):** Baseline 1,465 tests documented in CLAUDE.md. Decrease >5 requires commit message justification.
+- **CLAUDE.md:** Added full CRUCIBLE Protocol section with gate rules, baseline count, and code examples.
+
+Tests: **1,360 backend + 101 frontend = 1,461 passing** (+4 E2E = 1,465 total). No regressions.
 
 ---
 
 ### 2. What surprised me?
 
-**N-04 was already done. I've been recommending it as "next priority" for 7 cycles.**
+**Gate 5's AST scan reported 36 silent handlers — most were false positives.**
 
-The ChromaDB Memory upgrade shipped in `5692d90` (T-055) and `4a85783` (T-056) — well before this session's tracking window. `SUPPORTED_MEMORY_BACKENDS = ("sqlite_fts", "chroma")`, full `ChromaMemoryStoreBackend` implementation, `MemoryStoreFactory` with automatic fallback, 6 tests. The NEXUS description still said "in-memory dict, upgrade to ChromaDB planned."
+"Silent" in CRUCIBLE Gate 5 means the exception is swallowed with no observable consequence. But many `except: pass` blocks in this codebase are not truly silent: they fall through to a next-attempt branch, return an immediate safe default, or `break` on a disconnected WebSocket. The distinction between "silent = data loss risk" and "silent = safe fallback" requires reading the code after each `except` block, not just the `except` line itself. The AST scanner flags the syntactic pattern; human review determines whether it's actually a risk.
 
-This is the same class of error as the orphaned marketplace work (cycle 2): NEXUS diverged from the codebase, and I was reading NEXUS instead of the code. The fix for orphaned work is `git log`. The fix for stale descriptions is reading the actual implementation. Both require periodic `git log --oneline` + implementation-level audits, not just NEXUS reads.
+The 2 genuine cases (`_load_yaml_template`, `_discover_yaml_templates`) were easy to spot: they were in loops that continue past corrupt files, and the absence of logging meant corrupt templates would cause mysterious "template not found" errors with no trace. Those are the exact dx3-incident-class failures CRUCIBLE Gate 5 is designed to catch.
 
-**Implication:** If N-04 description was stale, other NEXUS descriptions might be too. The initiatives span commits from `5574417` (2025-12) to the current session. A lot happened before NEXUS tracking began.
+**The preexec block was architecturally interesting.** Six consecutive `except: pass` blocks that are _required_ to be silent — logging from a post-fork child before exec would deadlock on inherited file descriptor mutexes. This is a legitimate exception to Gate 5 and the first time I've encountered the pattern in this codebase. Added pragma comments so future audits don't re-flag it.
 
 ---
 
 ### 3. Cross-project signals
 
-**NEXUS descriptions can diverge from code just as easily as NEXUS status fields.** The N-04 case: status correctly said SHIPPED but the description said "upgrade planned." This is subtler than a wrong status — a casual reader sees SHIPPED and stops reading. The stale description then influences future planning (as it did for 7 cycles here). Recommendation for ASIF: treat `**What**` descriptions as living documentation, not one-time entries. Update on completion, not just at creation.
+**CRUCIBLE Gate 5 audit pattern is reusable.** The right audit approach is: AST-scan to get candidate list → read context after each `except` → classify as (a) has-logging, (b) has-default, (c) has-raise, (d) truly-silent-needs-fix, (e) architecturally-required-silence. The AST scan alone overreports by ~5:1. Any project adopting Gate 5 should budget for human review of the full candidate list, not just mechanical `pass` replacement.
 
-**"Read the code, not just the tracking doc" is a discipline, not a given.** Before recommending a feature as the next priority, the right check is `grep -n "ClassName\|function_name" main.py` — not NEXUS. NEXUS is a summary; the code is ground truth. This applies to any project with a long history and active development before governance was established.
+**Post-fork `preexec_fn` silence pattern** — if other projects use `subprocess.Popen(preexec_fn=...)` for sandboxing, they will hit the same issue. The `# pragma: no cover - logging unsafe post-fork` comment pattern should be the standard annotation.
+
+**YAML template loading loops** — the `except Exception: continue` pattern in filesystem-scanning loops is a recurring failure mode. Any project that scans a directory of user-provided config files (YAML, JSON, TOML) and silently skips parse errors will make debugging painful. Standard fix: `logger.warning("Failed to load %s: %s", path, exc)` before `continue`. Portfolio-wide candidate for a Gate 5 default rule.
 
 ---
 
 ### 4. What would I prioritize next?
 
-N-04 is done. Need to re-derive the actual next priority from a code audit, not NEXUS.
+With CRUCIBLE Gate 5 now in place, the two remaining open items from prior cycles:
 
-**Code audit findings (cycle 8):** The codebase has 8 applet types, full auth (JWT + API keys), provider registry, template system with versioning and marketplace, webhook system, async task queue, connector health probes, rate limiting, structured logging, and a complete SDK. This is more complete than NEXUS's 17 initiatives suggest — the directive series (NXTG-20260222/23-xx) added significant capability on top.
+1. **Frontend Memory Node config** — `NodeConfigModal` may not expose `backend` / `persist_path` / `collection` fields. ChromaDB exists in the backend but users can't configure it from the canvas. S effort, high UX value.
+2. **Content engine test isolation** — `test_pipeline_with_empty_summary` intermittent failure from shared singleton state. An `autouse` fixture to reset the content pipeline singleton between tests. S effort, improves test reliability.
 
-**Actual candidates for next work:**
-1. **Frontend Memory Node config** — does the frontend NodeConfigModal expose `backend` / `persist_path` / `collection` fields for the Memory Node? If not, users can't configure ChromaDB from the UI. S effort.
-2. **Content engine test isolation** — `test_pipeline_with_empty_summary` intermittent failure. Still unresolved. S effort.
-3. **Deployment** — HOLD, Asif's decision.
+Neither requires a directive — both are S-effort bug fixes / UX gaps within existing initiatives. Self-authorize if no CoS directives pending next cycle.
 
 ---
 
 ### 5. Blockers / Questions for CoS
 
-**Withdrawing N-04 self-authorization — it was already done.** No action needed.
+**No blockers.** CRUCIBLE directive is complete; all tests pass; CI is green.
 
-**New question:** Given that N-04 was already complete before I proposed self-authorizing it, is there a comprehensive list of what was shipped in the T-0xx commit series (T-051 through T-077) that predates NEXUS? Those commits appear to have implemented substantial capability. Understanding what's there would prevent future cases of proposing work that's already done.
-
-**Standing question on deployment:** HOLD, per CoS. Awaiting Asif's decision.
+**Question — CRUCIBLE oracle triangulation:** The directive specified "Standard tier, 2 minimum oracle types per feature." Gates 2/4/5 were the mechanical implementation gates. The oracle requirement means new features should test with at least 2 of: example-based, property-based, contract, integration. SynApps currently has example-based and integration tests — no property-based tests (no Hypothesis). Is the expectation to add Hypothesis for new features going forward, or is "2 oracle types" satisfied by example-based + integration? Clarification would help when the next feature directive arrives.
 
 ---
 
