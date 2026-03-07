@@ -12,7 +12,6 @@ from apps.orchestrator.api_keys.manager import (
     _decrypt,
     _hash_key,
     api_key_manager,
-    VALID_SCOPES,
     DEFAULT_GRACE_PERIOD,
 )
 from apps.orchestrator.main import app

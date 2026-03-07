@@ -3,18 +3,17 @@ Tests for the SynApps Orchestrator models.
 """
 import pytest
 import time
-from datetime import datetime, timezone
 from apps.orchestrator.models import (
     CodeNodeConfigModel, LLMNodeConfigModel, LLMMessageModel, LLMRequestModel,
-    LLMResponseModel, LLMUsageModel, LLMModelInfoModel, LLMProviderInfoModel,
+    LLMResponseModel, LLMModelInfoModel, LLMProviderInfoModel,
     ImageGenNodeConfigModel, ImageGenRequestModel, ImageGenResponseModel,
     ImageModelInfoModel, ImageProviderInfoModel, MemoryNodeConfigModel,
     MemorySearchResultModel, HTTPRequestNodeConfigModel, TransformNodeConfigModel,
     IfElseNodeConfigModel, MergeNodeConfigModel, ForEachNodeConfigModel,
     WorkflowRunStatusModel, AuthRegisterRequestModel, AuthLoginRequestModel,
-    AuthRefreshRequestModel, APIKeyCreateRequestModel,
+    APIKeyCreateRequestModel,
     FlowModel, FlowNodeModel, FlowEdgeModel,
-    Flow, FlowNode, FlowEdge, User, RefreshToken, UserAPIKey, WorkflowRun
+    Flow, FlowNode, FlowEdge, User, UserAPIKey, WorkflowRun
 )
 
 # Helper for ORM models (since we don't have a live DB session in unit tests)

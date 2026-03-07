@@ -1,6 +1,5 @@
 import pytest
 import os
-import json
 from unittest.mock import patch, MagicMock, AsyncMock
 from apps.applets.writer.applet import WriterApplet
 from apps.applets.artist.applet import ArtistApplet

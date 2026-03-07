@@ -15,13 +15,12 @@ Usage::
     rotated = api_key_manager.rotate(key["id"], grace_period=86400)
 """
 
-import base64
 import hashlib
 import os
 import threading
 import time
 import uuid
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 from cryptography.fernet import Fernet, InvalidToken
 
@@ -38,7 +37,7 @@ else:
 
 _fernet = Fernet(FERNET_KEY)
 
-VALID_SCOPES: Set[str] = {"read", "write", "admin"}
+VALID_SCOPES: set[str] = {"read", "write", "admin"}
 
 # Default grace period for rotation (24 hours in seconds)
 DEFAULT_GRACE_PERIOD = 24 * 60 * 60
@@ -49,7 +48,7 @@ def _encrypt(plaintext: str) -> str:
     return _fernet.encrypt(plaintext.encode()).decode()
 
 
-def _decrypt(ciphertext: str) -> Optional[str]:
+def _decrypt(ciphertext: str) -> str | None:
     """Decrypt base64-encoded ciphertext, returning None on failure."""
     try:
         return _fernet.decrypt(ciphertext.encode()).decode()
@@ -75,19 +74,19 @@ class APIKeyManager:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         # key_id -> key record
-        self._keys: Dict[str, Dict[str, Any]] = {}
+        self._keys: dict[str, dict[str, Any]] = {}
         # hash(plain_key) -> key_id  (fast lookup index)
-        self._hash_index: Dict[str, str] = {}
+        self._hash_index: dict[str, str] = {}
 
     # ---- Create ----
 
     def create(
         self,
         name: str,
-        scopes: Optional[List[str]] = None,
-        expires_in: Optional[int] = None,
-        rate_limit: Optional[int] = None,
-    ) -> Dict[str, Any]:
+        scopes: list[str] | None = None,
+        expires_in: int | None = None,
+        rate_limit: int | None = None,
+    ) -> dict[str, Any]:
         """Create a new API key.
 
         Args:
@@ -114,7 +113,7 @@ class APIKeyManager:
         encrypted_key = _encrypt(plain_key)
 
         now = time.time()
-        entry: Dict[str, Any] = {
+        entry: dict[str, Any] = {
             "id": key_id,
             "name": name,
             "key_prefix": plain_key[:12],
@@ -139,13 +138,13 @@ class APIKeyManager:
 
     # ---- Read ----
 
-    def get(self, key_id: str) -> Optional[Dict[str, Any]]:
+    def get(self, key_id: str) -> dict[str, Any] | None:
         """Get a key record by ID (without plain key)."""
         with self._lock:
             entry = self._keys.get(key_id)
             return self._safe_record(entry) if entry else None
 
-    def list_keys(self, include_inactive: bool = False) -> List[Dict[str, Any]]:
+    def list_keys(self, include_inactive: bool = False) -> list[dict[str, Any]]:
         """List all keys (without plain keys)."""
         with self._lock:
             result = []
@@ -181,7 +180,7 @@ class APIKeyManager:
 
     def rotate(
         self, key_id: str, grace_period: int = DEFAULT_GRACE_PERIOD
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Rotate a key: generate a new key, keep old valid during grace period.
 
         Args:
@@ -208,7 +207,7 @@ class APIKeyManager:
             new_hash = _hash_key(new_plain)
             new_encrypted = _encrypt(new_plain)
 
-            new_entry: Dict[str, Any] = {
+            new_entry: dict[str, Any] = {
                 "id": new_id,
                 "name": old["name"],
                 "key_prefix": new_plain[:12],
@@ -232,7 +231,7 @@ class APIKeyManager:
 
     # ---- Validate ----
 
-    def validate(self, plain_key: str) -> Optional[Dict[str, Any]]:
+    def validate(self, plain_key: str) -> dict[str, Any] | None:
         """Validate a plain API key.  Returns the key record if valid, else None.
 
         Checks: hash lookup → active flag → expiry → grace period.
@@ -288,7 +287,7 @@ class APIKeyManager:
 
     # ---- Helpers ----
 
-    def _safe_record(self, entry: Dict[str, Any]) -> Dict[str, Any]:
+    def _safe_record(self, entry: dict[str, Any]) -> dict[str, Any]:
         """Return a record without sensitive fields."""
         return {
             k: v for k, v in entry.items()
@@ -301,7 +300,7 @@ class APIKeyManager:
             self._keys.clear()
             self._hash_index.clear()
 
-    def decrypt_key(self, key_id: str) -> Optional[str]:
+    def decrypt_key(self, key_id: str) -> str | None:
         """Decrypt and return the plain key for a given ID (admin use only)."""
         with self._lock:
             entry = self._keys.get(key_id)
@@ -309,7 +308,7 @@ class APIKeyManager:
                 return None
             return _decrypt(entry["encrypted_key"])
 
-    def keys_expiring_within(self, seconds: int) -> List[Dict[str, Any]]:
+    def keys_expiring_within(self, seconds: int) -> list[dict[str, Any]]:
         """Return active keys that expire within *seconds* from now."""
         now = time.time()
         cutoff = now + seconds

@@ -13,7 +13,7 @@ import os
 import time
 import threading
 from collections import defaultdict, deque
-from typing import Callable, Deque, Dict, Optional, Tuple
+from collections.abc import Callable
 
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
@@ -52,7 +52,7 @@ EXEMPT_PATH_PREFIXES: tuple = (
     "/api/v1/requests/",
 )
 
-_TIER_LIMITS: Dict[str, int] = {
+_TIER_LIMITS: dict[str, int] = {
     "free": RATE_LIMIT_FREE,
     "pro": RATE_LIMIT_PRO,
     "enterprise": RATE_LIMIT_ENTERPRISE,
@@ -70,11 +70,11 @@ class _SlidingWindowCounter:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         # key -> deque of timestamps
-        self._windows: Dict[str, Deque[float]] = defaultdict(deque)
+        self._windows: dict[str, deque[float]] = defaultdict(deque)
 
     def check_and_record(
         self, key: str, limit: int, window: int
-    ) -> Tuple[bool, int, int]:
+    ) -> tuple[bool, int, int]:
         """Check whether request is allowed and record it.
 
         Returns (allowed, remaining, retry_after_seconds).
@@ -139,7 +139,7 @@ class TokenBucket:
         self._tokens = min(self.burst, self._tokens + elapsed * self.rate)
         self._last_refill = now
 
-    def consume(self, tokens: int = 1) -> Tuple[bool, float, float]:
+    def consume(self, tokens: int = 1) -> tuple[bool, float, float]:
         """Try to consume ``tokens``.
 
         Returns ``(allowed, remaining, retry_after_seconds)``.
@@ -181,10 +181,10 @@ class TokenBucketRegistry:
         self._lock = threading.Lock()
         self.default_rate = default_rate
         self.default_burst = default_burst
-        self._buckets: Dict[str, TokenBucket] = {}
+        self._buckets: dict[str, TokenBucket] = {}
         self.global_bucket = TokenBucket(rate=global_rate, burst=global_burst)
 
-    def get_or_create(self, key: str, rate: Optional[float] = None, burst: Optional[int] = None) -> TokenBucket:
+    def get_or_create(self, key: str, rate: float | None = None, burst: int | None = None) -> TokenBucket:
         with self._lock:
             if key not in self._buckets:
                 self._buckets[key] = TokenBucket(
@@ -193,7 +193,7 @@ class TokenBucketRegistry:
                 )
             return self._buckets[key]
 
-    def consume(self, key: str, rate: Optional[float] = None, burst: Optional[int] = None) -> Tuple[bool, float, float, str]:
+    def consume(self, key: str, rate: float | None = None, burst: int | None = None) -> tuple[bool, float, float, str]:
         """Consume a token from both the per-key and global buckets.
 
         Returns ``(allowed, remaining, retry_after, limited_by)`` where
@@ -226,7 +226,7 @@ class TokenBucketRegistry:
 _token_buckets = TokenBucketRegistry()
 
 
-def _identify_client(request: Request) -> Tuple[str, str, Optional[int]]:
+def _identify_client(request: Request) -> tuple[str, str, int | None]:
     """Extract a rate-limit key, tier, and optional per-key limit from the request.
 
     The key is built from the authenticated user ID when available,

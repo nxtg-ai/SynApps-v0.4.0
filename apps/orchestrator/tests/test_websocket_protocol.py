@@ -1,6 +1,5 @@
 """Tests for the WebSocket protocol: auth, structured messages, reconnection, and state recovery."""
 
-import json
 import time
 
 import pytest
@@ -13,14 +12,10 @@ from apps.orchestrator.main import (
     ws_manager,
     broadcast_status,
     _ws_message,
-    _WSSession,
     WebSocketSessionManager,
     init_db,
-    JWT_SECRET_KEY,
-    JWT_ALGORITHM,
 )
 
-import jwt as pyjwt
 
 
 @pytest_asyncio.fixture(autouse=True)

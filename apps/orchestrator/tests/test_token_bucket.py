@@ -10,7 +10,6 @@ from apps.orchestrator.middleware.rate_limiter import (
     TokenBucket,
     TokenBucketRegistry,
     _SlidingWindowCounter,
-    _token_buckets,
     add_rate_limiter,
     TOKEN_BUCKET_RATE,
     TOKEN_BUCKET_BURST,

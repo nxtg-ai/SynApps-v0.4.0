@@ -14,7 +14,8 @@ import logging
 import threading
 import time
 import uuid
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
+from collections.abc import Callable
 
 import httpx
 
@@ -73,11 +74,11 @@ class WebhookManager:
 
     def __init__(
         self,
-        encrypt_fn: Optional[Callable[[str], str]] = None,
-        decrypt_fn: Optional[Callable[[str], Optional[str]]] = None,
+        encrypt_fn: Callable[[str], str] | None = None,
+        decrypt_fn: Callable[[str], str | None] | None = None,
     ) -> None:
         self._lock = threading.Lock()
-        self._hooks: Dict[str, Dict[str, Any]] = {}
+        self._hooks: dict[str, dict[str, Any]] = {}
         self._encrypt = encrypt_fn or (lambda s: s)
         self._decrypt = decrypt_fn or (lambda s: s)
 
@@ -86,13 +87,13 @@ class WebhookManager:
     def register(
         self,
         url: str,
-        events: List[str],
-        secret: Optional[str] = None,
+        events: list[str],
+        secret: str | None = None,
         active: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Register a new webhook. Returns the hook dict (secret omitted)."""
         hook_id = str(uuid.uuid4())
-        encrypted_secret: Optional[str] = None
+        encrypted_secret: str | None = None
         if secret:
             encrypted_secret = self._encrypt(secret)
         hook = {
@@ -111,13 +112,13 @@ class WebhookManager:
             self._hooks[hook_id] = hook
         return self._safe_view(hook)
 
-    def get(self, hook_id: str) -> Optional[Dict[str, Any]]:
+    def get(self, hook_id: str) -> dict[str, Any] | None:
         """Get a hook by ID (internal view with encrypted secret)."""
         with self._lock:
             h = self._hooks.get(hook_id)
             return dict(h) if h else None
 
-    def list_hooks(self) -> List[Dict[str, Any]]:
+    def list_hooks(self) -> list[dict[str, Any]]:
         """List all hooks (secrets omitted)."""
         with self._lock:
             return [self._safe_view(h) for h in self._hooks.values()]
@@ -138,7 +139,7 @@ class WebhookManager:
 
     # -- Query ------------------------------------------------------------
 
-    def hooks_for_event(self, event: str) -> List[Dict[str, Any]]:
+    def hooks_for_event(self, event: str) -> list[dict[str, Any]]:
         """Return internal copies of all active hooks subscribed to *event*."""
         with self._lock:
             return [
@@ -153,7 +154,7 @@ class WebhookManager:
         self,
         hook_id: str,
         success: bool,
-        status_code: Optional[int] = None,
+        status_code: int | None = None,
     ) -> None:
         with self._lock:
             h = self._hooks.get(hook_id)
@@ -166,7 +167,7 @@ class WebhookManager:
 
     # -- Secret helpers ---------------------------------------------------
 
-    def decrypt_secret(self, hook: Dict[str, Any]) -> Optional[str]:
+    def decrypt_secret(self, hook: dict[str, Any]) -> str | None:
         """Decrypt the secret for a hook dict."""
         enc = hook.get("secret_encrypted")
         if enc is None:
@@ -182,7 +183,7 @@ class WebhookManager:
     # -- Internal ---------------------------------------------------------
 
     @staticmethod
-    def _safe_view(h: Dict[str, Any]) -> Dict[str, Any]:
+    def _safe_view(h: dict[str, Any]) -> dict[str, Any]:
         """Return a copy with the encrypted secret stripped."""
         return {k: v for k, v in h.items() if k != "secret_encrypted"}
 
@@ -192,8 +193,8 @@ class WebhookManager:
 # -----------------------------------------------------------------------
 
 async def deliver_webhook(
-    hook: Dict[str, Any],
-    payload: Dict[str, Any],
+    hook: dict[str, Any],
+    payload: dict[str, Any],
     manager: WebhookManager,
 ) -> bool:
     """Deliver *payload* to *hook* with HMAC signing and fixed-schedule retries.
@@ -202,14 +203,14 @@ async def deliver_webhook(
     ``WEBHOOK_RETRY_DELAYS`` (1 s, 5 s, 30 s).  Returns True on success.
     """
     payload_bytes = json.dumps(payload, default=str).encode()
-    headers: Dict[str, str] = {"Content-Type": "application/json"}
+    headers: dict[str, str] = {"Content-Type": "application/json"}
 
     secret = manager.decrypt_secret(hook)
     if secret:
         sig = sign_payload(payload_bytes, secret)
         headers["X-Webhook-Signature"] = f"sha256={sig}"
 
-    last_status: Optional[int] = None
+    last_status: int | None = None
     for attempt in range(WEBHOOK_MAX_RETRIES):
         try:
             async with httpx.AsyncClient(timeout=WEBHOOK_DELIVERY_TIMEOUT) as client:
@@ -229,7 +230,7 @@ async def deliver_webhook(
 
 async def emit_webhook_event(
     event: str,
-    data: Dict[str, Any],
+    data: dict[str, Any],
     manager: WebhookManager,
 ) -> None:
     """Fire-and-forget delivery to all hooks registered for *event*."""

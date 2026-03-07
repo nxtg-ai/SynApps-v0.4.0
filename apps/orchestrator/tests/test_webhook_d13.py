@@ -22,7 +22,6 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
-import json
 import time
 from unittest.mock import AsyncMock, patch
 
@@ -32,7 +31,6 @@ from fastapi.testclient import TestClient
 from apps.orchestrator.main import (
     app,
     connector_health,
-    emit_event,
     webhook_registry,
     _health_cache,
     _maybe_emit_status_change,

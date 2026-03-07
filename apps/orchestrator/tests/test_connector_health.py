@@ -13,7 +13,6 @@ Covers:
 
 from __future__ import annotations
 
-import time
 from unittest.mock import patch
 
 import pytest
@@ -185,7 +184,6 @@ class TestProbeConnector:
         """Probing a provider with a valid API key should return reachable=True."""
         # openai adapter's validate_config checks OPENAI_API_KEY
         with patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}):
-            from apps.orchestrator.main import LLMProviderRegistry
             result = await probe_connector("openai")
             assert result["connector"] == "openai"
             assert result["reachable"] is True

@@ -5,7 +5,7 @@ import pytest
 from unittest.mock import patch
 from fastapi.testclient import TestClient
 
-from apps.orchestrator.main import app, AppConfig, _redact, _SECRET_KEYS, app_config
+from apps.orchestrator.main import app, AppConfig, _redact, _SECRET_KEYS
 
 
 @pytest.fixture

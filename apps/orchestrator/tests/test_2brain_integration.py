@@ -8,8 +8,6 @@ The LLM node is mocked (Ollama not available in CI), but Code and Memory nodes
 execute for real, validating the actual data flow through the pipeline.
 """
 import asyncio
-import json
-import time
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -21,7 +19,7 @@ from apps.orchestrator.main import (
     Orchestrator,
     app,
 )
-from apps.orchestrator.repositories import FlowRepository, WorkflowRunRepository
+from apps.orchestrator.repositories import WorkflowRunRepository
 
 
 # ============================================================

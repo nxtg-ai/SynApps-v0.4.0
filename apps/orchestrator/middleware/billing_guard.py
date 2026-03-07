@@ -6,8 +6,8 @@ for the freemium model.
 """
 import os
 import time
-from typing import Dict, Optional, Callable
-from fastapi import Request, HTTPException, Response
+from collections.abc import Callable
+from fastapi import Request, Response
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -18,8 +18,8 @@ PRO_TIER_MAX_RUNS = 200  # Maximum number of workflow runs per month for pro tie
 ENTERPRISE_TIER_MAX_RUNS = -1  # Unlimited runs for enterprise tier
 
 # In-memory store for rate limiting (would be replaced with a database in production)
-user_runs: Dict[str, int] = {}
-run_timestamps: Dict[str, Dict[str, float]] = {}
+user_runs: dict[str, int] = {}
+run_timestamps: dict[str, dict[str, float]] = {}
 
 class BillingGuard(BaseHTTPMiddleware):
     """
@@ -113,7 +113,7 @@ class BillingGuard(BaseHTTPMiddleware):
             user_runs[user_id] = 1
             run_timestamps[user_id] = {"month": time.strftime("%Y-%m")}
     
-    async def _check_applet_limit(self, request: Request) -> Optional[JSONResponse]:
+    async def _check_applet_limit(self, request: Request) -> JSONResponse | None:
         """
         Check if the workflow has more applets than allowed for the free tier.
         This is a placeholder - in a real implementation, we would parse the request body.

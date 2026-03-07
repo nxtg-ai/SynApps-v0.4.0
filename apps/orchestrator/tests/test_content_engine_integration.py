@@ -8,7 +8,6 @@ HTTP and LLM nodes are mocked (no external APIs in CI). Code and Memory nodes
 execute for real, validating the actual data flow through the pipeline.
 """
 import asyncio
-import json
 import os
 from unittest.mock import AsyncMock, patch
 
@@ -22,7 +21,7 @@ from apps.orchestrator.main import (
     Orchestrator,
     app,
 )
-from apps.orchestrator.repositories import FlowRepository, WorkflowRunRepository
+from apps.orchestrator.repositories import WorkflowRunRepository
 
 
 # ============================================================

@@ -1,8 +1,6 @@
 import pytest
 import asyncio
-import os
 from unittest.mock import patch, MagicMock, AsyncMock
-from pathlib import Path
 from apps.orchestrator.main import CodeNodeApplet, AppletMessage, CODE_NODE_TYPE
 
 # Mock the _sandbox_preexec_fn since resource.setrlimit is OS-specific and hard to test directly

@@ -8,9 +8,8 @@ round-trips without mocking. The TestClient triggers lifespan (DB init).
 from __future__ import annotations
 
 import sys
-import time
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 import httpx
 import pytest
@@ -269,7 +268,7 @@ class TestPollTask:
 
     def test_sync_poll_completed(self, sync_client: SynApps):
         call_count = 0
-        def mock_get(tid: str) -> Dict[str, Any]:
+        def mock_get(tid: str) -> dict[str, Any]:
             nonlocal call_count
             call_count += 1
             if call_count < 3:
@@ -293,7 +292,7 @@ class TestPollTask:
     @pytest.mark.asyncio
     async def test_async_poll_completed(self, async_client: AsyncSynApps):
         call_count = 0
-        async def mock_get(tid: str) -> Dict[str, Any]:
+        async def mock_get(tid: str) -> dict[str, Any]:
             nonlocal call_count
             call_count += 1
             if call_count < 3:
@@ -306,7 +305,7 @@ class TestPollTask:
 
     @pytest.mark.asyncio
     async def test_async_poll_timeout(self, async_client: AsyncSynApps):
-        async def always_running(tid: str) -> Dict[str, Any]:
+        async def always_running(tid: str) -> dict[str, Any]:
             return {"task_id": tid, "status": "running"}
         async_client.get_task = always_running  # type: ignore[assignment]
         with pytest.raises(SynAppsTimeoutError):

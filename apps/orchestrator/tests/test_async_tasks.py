@@ -1,6 +1,5 @@
 """Tests for async task queue + background execution endpoints."""
 
-import time
 import pytest
 from fastapi.testclient import TestClient
 

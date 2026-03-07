@@ -3,7 +3,6 @@ Tests for PostgreSQL compatibility and schema enhancements.
 """
 import pytest
 import time
-from apps.orchestrator.models import WorkflowRun
 from apps.orchestrator.repositories import WorkflowRunRepository
 from apps.orchestrator.db import init_db
 

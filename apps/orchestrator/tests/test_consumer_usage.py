@@ -14,8 +14,8 @@ Covers:
 import time
 import threading
 import pytest
-from datetime import datetime, timezone
-from unittest.mock import patch, MagicMock
+from datetime import datetime, UTC
+from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from apps.orchestrator.main import (
@@ -49,7 +49,7 @@ def _clear_usage():
 class TestUtilityFunctions:
     def test_month_start_ts_is_first_of_month(self):
         ts = _month_start_ts()
-        dt = datetime.fromtimestamp(ts, tz=timezone.utc)
+        dt = datetime.fromtimestamp(ts, tz=UTC)
         assert dt.day == 1
         assert dt.hour == 0
         assert dt.minute == 0
@@ -148,7 +148,7 @@ class TestTrackerByHour:
         t = ConsumerUsageTracker()
         t.record("key-1", "/test", 200)
         usage = t.get_usage("key-1")
-        now_hour = f"{datetime.now(timezone.utc).hour:02d}"
+        now_hour = f"{datetime.now(UTC).hour:02d}"
         assert usage["by_hour"].get(now_hour, 0) >= 1
 
     def test_by_hour_multiple_calls(self):
@@ -156,7 +156,7 @@ class TestTrackerByHour:
         for _ in range(3):
             t.record("key-1", "/test", 200)
         usage = t.get_usage("key-1")
-        now_hour = f"{datetime.now(timezone.utc).hour:02d}"
+        now_hour = f"{datetime.now(UTC).hour:02d}"
         assert usage["by_hour"][now_hour] == 3
 
 

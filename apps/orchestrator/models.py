@@ -7,7 +7,7 @@ and Pydantic models for API validation.
 from __future__ import annotations
 
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import Boolean, Float, ForeignKey, Index, Integer, JSON, String
@@ -30,18 +30,18 @@ class User(Base):
     created_at: Mapped[float] = mapped_column(Float, nullable=False)
     updated_at: Mapped[float] = mapped_column(Float, nullable=False)
 
-    refresh_tokens: Mapped[List["RefreshToken"]] = relationship(
+    refresh_tokens: Mapped[list[RefreshToken]] = relationship(
         "RefreshToken",
         back_populates="user",
         cascade="all, delete-orphan",
     )
-    api_keys: Mapped[List["UserAPIKey"]] = relationship(
+    api_keys: Mapped[list[UserAPIKey]] = relationship(
         "UserAPIKey",
         back_populates="user",
         cascade="all, delete-orphan",
     )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert ORM model to dictionary."""
         return {
             "id": self.id,
@@ -68,9 +68,9 @@ class RefreshToken(Base):
     expires_at: Mapped[float] = mapped_column(Float, nullable=False)
     revoked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[float] = mapped_column(Float, nullable=False)
-    last_used_at: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    last_used_at: Mapped[float | None] = mapped_column(Float, nullable=True)
 
-    user: Mapped["User"] = relationship("User", back_populates="refresh_tokens")
+    user: Mapped[User] = relationship("User", back_populates="refresh_tokens")
 
 
 class UserAPIKey(Base):
@@ -90,11 +90,11 @@ class UserAPIKey(Base):
     encrypted_key: Mapped[str] = mapped_column(String, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[float] = mapped_column(Float, nullable=False)
-    last_used_at: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    last_used_at: Mapped[float | None] = mapped_column(Float, nullable=True)
 
-    user: Mapped["User"] = relationship("User", back_populates="api_keys")
+    user: Mapped[User] = relationship("User", back_populates="api_keys")
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert ORM model to dictionary."""
         return {
             "id": self.id,
@@ -115,18 +115,18 @@ class Flow(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
 
-    nodes: Mapped[List["FlowNode"]] = relationship(
+    nodes: Mapped[list[FlowNode]] = relationship(
         "FlowNode",
         back_populates="flow",
         cascade="all, delete-orphan",
     )
-    edges: Mapped[List["FlowEdge"]] = relationship(
+    edges: Mapped[list[FlowEdge]] = relationship(
         "FlowEdge",
         back_populates="flow",
         cascade="all, delete-orphan",
     )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert ORM model to dictionary."""
         return {
             "id": self.id,
@@ -151,11 +151,11 @@ class FlowNode(Base):
     type: Mapped[str] = mapped_column(String, nullable=False)
     position_x: Mapped[float] = mapped_column(Float, nullable=False)
     position_y: Mapped[float] = mapped_column(Float, nullable=False)
-    data: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    data: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
-    flow: Mapped["Flow"] = relationship("Flow", back_populates="nodes")
+    flow: Mapped[Flow] = relationship("Flow", back_populates="nodes")
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert ORM model to dictionary."""
         return {
             "id": self.id,
@@ -184,9 +184,9 @@ class FlowEdge(Base):
     target: Mapped[str] = mapped_column(String, nullable=False)
     animated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
-    flow: Mapped["Flow"] = relationship("Flow", back_populates="edges")
+    flow: Mapped[Flow] = relationship("Flow", back_populates="edges")
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert ORM model to dictionary."""
         return {
             "id": self.id,
@@ -207,25 +207,25 @@ class WorkflowRun(Base):
     )
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
-    flow_id: Mapped[Optional[str]] = mapped_column(
+    flow_id: Mapped[str | None] = mapped_column(
         String,
         ForeignKey("flows.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
     status: Mapped[str] = mapped_column(String, nullable=False, default="idle", index=True)
-    current_applet: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    current_applet: Mapped[str | None] = mapped_column(String, nullable=True)
     progress: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     total_steps: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     start_time: Mapped[float] = mapped_column(Float, nullable=False)
-    end_time: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    results: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
-    error: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    error_details: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
-    input_data: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
-    completed_applets: Mapped[Optional[List[str]]] = mapped_column(JSON, nullable=True)
+    end_time: Mapped[float | None] = mapped_column(Float, nullable=True)
+    results: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    error: Mapped[str | None] = mapped_column(String, nullable=True)
+    error_details: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    input_data: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    completed_applets: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert ORM model to dictionary."""
         return {
             "run_id": self.id,
@@ -249,8 +249,8 @@ class FlowNodeModel(BaseModel):
 
     id: str
     type: str
-    position: Dict[str, float]
-    data: Dict[str, Any] = Field(default_factory=dict)
+    position: dict[str, float]
+    data: dict[str, Any] = Field(default_factory=dict)
 
 
 class FlowEdgeModel(BaseModel):
@@ -265,10 +265,10 @@ class FlowEdgeModel(BaseModel):
 class FlowModel(BaseModel):
     """API model for flows."""
 
-    id: Optional[str] = None
+    id: str | None = None
     name: str
-    nodes: List[FlowNodeModel] = Field(default_factory=list)
-    edges: List[FlowEdgeModel] = Field(default_factory=list)
+    nodes: list[FlowNodeModel] = Field(default_factory=list)
+    edges: list[FlowEdgeModel] = Field(default_factory=list)
 
 
 class WorkflowRunStatusModel(BaseModel):
@@ -277,18 +277,18 @@ class WorkflowRunStatusModel(BaseModel):
     run_id: str
     flow_id: str
     status: str = "idle"
-    current_applet: Optional[str] = None
+    current_applet: str | None = None
     progress: int = 0
     total_steps: int = 0
     start_time: float = Field(default_factory=lambda: time.time())
-    end_time: Optional[float] = None
-    results: Dict[str, Any] = Field(default_factory=dict)
-    error: Optional[str] = None
-    error_details: Dict[str, Any] = Field(default_factory=dict)
-    input_data: Optional[Dict[str, Any]] = None
-    completed_applets: List[str] = Field(default_factory=list)
+    end_time: float | None = None
+    results: dict[str, Any] = Field(default_factory=dict)
+    error: str | None = None
+    error_details: dict[str, Any] = Field(default_factory=dict)
+    input_data: dict[str, Any] | None = None
+    completed_applets: list[str] = Field(default_factory=list)
 
-    def model_dump(self, *args: Any, **kwargs: Any) -> Dict[str, Any]:
+    def model_dump(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
         """Ensure `results` remains a dictionary in serialized output."""
         result = super().model_dump(*args, **kwargs)
         if result.get("results") is None:
@@ -367,7 +367,7 @@ class APIKeyResponseModel(BaseModel):
     key_prefix: str
     is_active: bool
     created_at: float
-    last_used_at: Optional[float] = None
+    last_used_at: float | None = None
 
 
 class APIKeyCreateResponseModel(APIKeyResponseModel):
@@ -401,20 +401,20 @@ class LLMNodeConfigModel(BaseModel):
 
     label: str = Field("LLM", max_length=100)
     provider: str = Field("openai")
-    model: Optional[str] = None
+    model: str | None = None
     system_prompt: str = ""
     temperature: float = Field(0.7, ge=0.0, le=2.0)
     max_tokens: int = Field(1024, ge=1, le=32768)
     top_p: float = Field(1.0, ge=0.0, le=1.0)
-    stop_sequences: List[str] = Field(default_factory=list)
+    stop_sequences: list[str] = Field(default_factory=list)
     stream: bool = False
     structured_output: bool = False
-    json_schema: Optional[Dict[str, Any]] = None
-    api_key: Optional[str] = None
-    base_url: Optional[str] = None
+    json_schema: dict[str, Any] | None = None
+    api_key: str | None = None
+    base_url: str | None = None
     timeout_seconds: float = Field(120.0, gt=0.0, le=600.0)
-    headers: Dict[str, str] = Field(default_factory=dict)
-    extra: Dict[str, Any] = Field(default_factory=dict)
+    headers: dict[str, str] = Field(default_factory=dict)
+    extra: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("provider")
     @classmethod
@@ -430,16 +430,16 @@ class LLMNodeConfigModel(BaseModel):
 class LLMRequestModel(BaseModel):
     """Provider-agnostic LLM completion request."""
 
-    messages: List[LLMMessageModel] = Field(default_factory=list)
+    messages: list[LLMMessageModel] = Field(default_factory=list)
     model: str = Field(..., min_length=1)
     temperature: float = Field(0.7, ge=0.0, le=2.0)
     max_tokens: int = Field(1024, ge=1, le=32768)
     top_p: float = Field(1.0, ge=0.0, le=1.0)
-    stop_sequences: List[str] = Field(default_factory=list)
+    stop_sequences: list[str] = Field(default_factory=list)
     stream: bool = False
     structured_output: bool = False
-    json_schema: Optional[Dict[str, Any]] = None
-    extra: Dict[str, Any] = Field(default_factory=dict)
+    json_schema: dict[str, Any] | None = None
+    extra: dict[str, Any] = Field(default_factory=dict)
 
 
 class LLMUsageModel(BaseModel):
@@ -455,7 +455,7 @@ class LLMStreamChunkModel(BaseModel):
 
     content: str = ""
     done: bool = False
-    usage: Optional[LLMUsageModel] = None
+    usage: LLMUsageModel | None = None
 
 
 class LLMResponseModel(BaseModel):
@@ -466,7 +466,7 @@ class LLMResponseModel(BaseModel):
     provider: str
     usage: LLMUsageModel = Field(default_factory=LLMUsageModel)
     finish_reason: str = "stop"
-    raw: Dict[str, Any] = Field(default_factory=dict)
+    raw: dict[str, Any] = Field(default_factory=dict)
 
 
 class LLMModelInfoModel(BaseModel):
@@ -478,7 +478,7 @@ class LLMModelInfoModel(BaseModel):
     context_window: int = 0
     supports_streaming: bool = True
     supports_vision: bool = False
-    max_output_tokens: Optional[int] = None
+    max_output_tokens: int | None = None
 
 
 class LLMProviderInfoModel(BaseModel):
@@ -487,7 +487,7 @@ class LLMProviderInfoModel(BaseModel):
     name: str
     configured: bool
     reason: str = ""
-    models: List[LLMModelInfoModel] = Field(default_factory=list)
+    models: list[LLMModelInfoModel] = Field(default_factory=list)
 
 
 SUPPORTED_IMAGE_PROVIDERS = ("openai", "stability", "flux")
@@ -500,17 +500,17 @@ class ImageGenNodeConfigModel(BaseModel):
 
     label: str = Field("Image Gen", max_length=100)
     provider: str = Field("openai")
-    model: Optional[str] = None
+    model: str | None = None
     size: str = Field("1024x1024")
     style: str = Field("photorealistic")
     quality: str = Field("standard")
     n: int = Field(1, ge=1, le=4)
     response_format: str = Field("b64_json")
-    api_key: Optional[str] = None
-    base_url: Optional[str] = None
+    api_key: str | None = None
+    base_url: str | None = None
     timeout_seconds: float = Field(120.0, gt=0.0, le=600.0)
-    headers: Dict[str, str] = Field(default_factory=dict)
-    extra: Dict[str, Any] = Field(default_factory=dict)
+    headers: dict[str, str] = Field(default_factory=dict)
+    extra: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("provider")
     @classmethod
@@ -542,7 +542,7 @@ class ImageGenRequestModel(BaseModel):
     quality: str = "standard"
     n: int = Field(1, ge=1, le=4)
     response_format: str = Field("b64_json")
-    extra: Dict[str, Any] = Field(default_factory=dict)
+    extra: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("response_format")
     @classmethod
@@ -556,11 +556,11 @@ class ImageGenRequestModel(BaseModel):
 class ImageGenResponseModel(BaseModel):
     """Provider-agnostic image generation response."""
 
-    images: List[str] = Field(default_factory=list)
+    images: list[str] = Field(default_factory=list)
     model: str
     provider: str
-    revised_prompt: Optional[str] = None
-    raw: Dict[str, Any] = Field(default_factory=dict)
+    revised_prompt: str | None = None
+    raw: dict[str, Any] = Field(default_factory=dict)
 
 
 class ImageModelInfoModel(BaseModel):
@@ -580,7 +580,7 @@ class ImageProviderInfoModel(BaseModel):
     name: str
     configured: bool
     reason: str = ""
-    models: List[ImageModelInfoModel] = Field(default_factory=list)
+    models: list[ImageModelInfoModel] = Field(default_factory=list)
 
 
 SUPPORTED_MEMORY_BACKENDS = ("sqlite_fts", "chroma")
@@ -595,14 +595,14 @@ class MemoryNodeConfigModel(BaseModel):
     operation: str = Field("store")
     backend: str = Field("sqlite_fts")
     namespace: str = Field("default", min_length=1, max_length=200)
-    key: Optional[str] = Field(None, max_length=200)
-    query: Optional[str] = None
-    tags: List[str] = Field(default_factory=list)
+    key: str | None = Field(None, max_length=200)
+    query: str | None = None
+    tags: list[str] = Field(default_factory=list)
     top_k: int = Field(5, ge=1, le=50)
-    persist_path: Optional[str] = None
+    persist_path: str | None = None
     collection: str = Field("synapps_memory", min_length=1, max_length=200)
     include_metadata: bool = True
-    extra: Dict[str, Any] = Field(default_factory=dict)
+    extra: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("operation")
     @classmethod
@@ -624,7 +624,7 @@ class MemoryNodeConfigModel(BaseModel):
 
     @field_validator("query")
     @classmethod
-    def normalize_query(cls, value: Optional[str]) -> Optional[str]:
+    def normalize_query(cls, value: str | None) -> str | None:
         if value is None:
             return None
         normalized = value.strip()
@@ -632,8 +632,8 @@ class MemoryNodeConfigModel(BaseModel):
 
     @field_validator("tags")
     @classmethod
-    def normalize_tags(cls, value: List[str]) -> List[str]:
-        unique: List[str] = []
+    def normalize_tags(cls, value: list[str]) -> list[str]:
+        unique: list[str] = []
         for item in value:
             cleaned = item.strip()
             if cleaned and cleaned not in unique:
@@ -647,7 +647,7 @@ class MemorySearchResultModel(BaseModel):
     key: str
     data: Any
     score: float = 0.0
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 SUPPORTED_HTTP_METHODS = ("GET", "POST", "PUT", "DELETE")
@@ -661,15 +661,15 @@ class HTTPRequestNodeConfigModel(BaseModel):
     label: str = Field("HTTP Request", max_length=100)
     url: str = Field(..., min_length=1, max_length=5000)
     method: str = Field("GET")
-    headers: Dict[str, str] = Field(default_factory=dict)
-    query_params: Dict[str, Any] = Field(default_factory=dict)
-    body_template: Optional[Any] = None
+    headers: dict[str, str] = Field(default_factory=dict)
+    query_params: dict[str, Any] = Field(default_factory=dict)
+    body_template: Any | None = None
     body_type: str = Field("auto")
     timeout_seconds: float = Field(30.0, gt=0.0, le=600.0)
     allow_redirects: bool = True
     verify_ssl: bool = True
     include_response_headers: bool = True
-    extra: Dict[str, Any] = Field(default_factory=dict)
+    extra: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("url")
     @classmethod
@@ -714,8 +714,8 @@ class CodeNodeConfigModel(BaseModel):
     memory_limit_mb: int = Field(256, ge=64, le=2048)
     max_output_bytes: int = Field(262144, ge=1024, le=1048576)
     working_dir: str = Field("/tmp")
-    env: Dict[str, str] = Field(default_factory=dict)
-    extra: Dict[str, Any] = Field(default_factory=dict)
+    env: dict[str, str] = Field(default_factory=dict)
+    extra: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("language")
     @classmethod
@@ -768,12 +768,12 @@ class TransformNodeConfigModel(BaseModel):
     regex_count: int = Field(0, ge=0, le=10000)
     split_delimiter: str = Field(",")
     split_maxsplit: int = Field(-1, ge=-1, le=10000)
-    split_index: Optional[int] = Field(None, ge=0, le=100000)
+    split_index: int | None = Field(None, ge=0, le=100000)
     join_delimiter: str = Field(",")
     return_list: bool = False
     strip_items: bool = False
     drop_empty: bool = False
-    extra: Dict[str, Any] = Field(default_factory=dict)
+    extra: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("operation")
     @classmethod
@@ -837,15 +837,15 @@ class IfElseNodeConfigModel(BaseModel):
     label: str = Field("If / Else", max_length=100)
     operation: str = Field("equals")
     source: Any = Field(default="{{content}}")
-    value: Optional[Any] = None
+    value: Any | None = None
     case_sensitive: bool = False
     negate: bool = False
     regex_pattern: str = Field("", max_length=5000)
     regex_flags: str = Field("")
     json_path: str = Field("$")
-    true_target: Optional[str] = Field(None, max_length=200)
-    false_target: Optional[str] = Field(None, max_length=200)
-    extra: Dict[str, Any] = Field(default_factory=dict)
+    true_target: str | None = Field(None, max_length=200)
+    false_target: str | None = Field(None, max_length=200)
+    extra: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("operation")
     @classmethod
@@ -892,7 +892,7 @@ class IfElseNodeConfigModel(BaseModel):
 
     @field_validator("true_target", "false_target")
     @classmethod
-    def normalize_targets(cls, value: Optional[str]) -> Optional[str]:
+    def normalize_targets(cls, value: str | None) -> str | None:
         if value is None:
             return None
         normalized = value.strip()
@@ -914,7 +914,7 @@ class MergeNodeConfigModel(BaseModel):
     label: str = Field("Merge", max_length=100)
     strategy: str = Field("array")
     delimiter: str = Field("\n", max_length=1000)
-    extra: Dict[str, Any] = Field(default_factory=dict)
+    extra: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("strategy")
     @classmethod
@@ -961,4 +961,4 @@ class ForEachNodeConfigModel(BaseModel):
         le=100,
         description="Maximum concurrent iterations when parallel is enabled.",
     )
-    extra: Dict[str, Any] = Field(default_factory=dict)
+    extra: dict[str, Any] = Field(default_factory=dict)

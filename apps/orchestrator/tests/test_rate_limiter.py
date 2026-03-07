@@ -1,16 +1,12 @@
 """Tests for the rate limiter middleware."""
 
-import time
 
 import pytest
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from apps.orchestrator.middleware.rate_limiter import (
-    EXEMPT_PATHS,
-    RateLimiterMiddleware,
     _SlidingWindowCounter,
-    _counter,
     add_rate_limiter,
 )
 

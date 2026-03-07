@@ -6,24 +6,15 @@ pagination, helper functions (trace, diff, json path, template rendering),
 orchestrator static methods, API endpoints with auth, and node applets.
 """
 import asyncio
-import base64
-import hashlib
-import hmac
-import importlib
 import json
-import math
-import os
-import re
-import secrets
 import time
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio
 from fastapi.testclient import TestClient
 
-import apps.orchestrator.db as db_module
 from apps.orchestrator.db import init_db, close_db_connections
 from apps.orchestrator.main import (
     _build_json_diff,
@@ -66,7 +57,6 @@ from apps.orchestrator.main import (
     TRACE_RESULTS_KEY,
     JWT_SECRET_KEY,
     JWT_ALGORITHM,
-    ACCESS_TOKEN_EXPIRE_MINUTES,
 )
 from apps.orchestrator.repositories import FlowRepository, WorkflowRunRepository
 
@@ -1015,7 +1005,6 @@ class TestLegacyMigrations:
     @pytest.mark.asyncio
     async def test_load_applet_all_types(self):
         """Test that load_applet resolves all built-in node types."""
-        from apps.orchestrator.main import applet_registry
 
         # Clear registry for clean test
         with patch.dict("apps.orchestrator.main.applet_registry", {}, clear=True):

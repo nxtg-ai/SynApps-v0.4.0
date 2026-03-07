@@ -1,11 +1,9 @@
 import pytest
 import os
-import json
-import asyncio
 from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock, AsyncMock
 from apps.orchestrator.main import (
-    app, broadcast_status, connected_clients, Orchestrator, 
+    app, broadcast_status, Orchestrator, 
     BaseApplet, AppletMessage, _ws_message
 )
 from apps.applets.writer.applet import WriterApplet

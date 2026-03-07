@@ -4,7 +4,7 @@ Basic tests for the SynApps Orchestrator
 import pytest
 from fastapi.testclient import TestClient
 
-from apps.orchestrator.main import app, Flow, AppletMessage
+from apps.orchestrator.main import app
 
 
 @pytest.fixture

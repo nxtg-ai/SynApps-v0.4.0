@@ -25,7 +25,8 @@ import tempfile
 import uuid
 from enum import Enum
 import threading
-from typing import Any, AsyncIterator, Dict, List, Optional, Type
+from typing import Any
+from collections.abc import AsyncIterator
 from pathlib import Path
 
 # Load environment variables: .env takes priority, falls back to .env.development
@@ -39,7 +40,7 @@ load_dotenv(dotenv_path=env_path)
 
 from fastapi import (
     Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect,
-    BackgroundTasks, APIRouter, Query, Request, Header,
+    APIRouter, Query, Request, Header,
 )
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -64,13 +65,9 @@ from apps.orchestrator.models import (
     AuthRegisterRequestModel,
     AuthTokenResponseModel,
     CodeNodeConfigModel,
-    FlowModel,
-    FlowNodeModel,
-    FlowEdgeModel,
     IfElseNodeConfigModel,
     MergeNodeConfigModel,
     ForEachNodeConfigModel,
-    WorkflowRunStatusModel,
     ImageGenNodeConfigModel,
     ImageGenRequestModel,
     ImageGenResponseModel,
@@ -265,9 +262,9 @@ class AppConfig:
         self.memory_sqlite_path: str = g("MEMORY_SQLITE_PATH", "")
         self.memory_collection: str = g("MEMORY_COLLECTION", "synapps_memory").strip() or "synapps_memory"
 
-    def validate(self) -> List[str]:
+    def validate(self) -> list[str]:
         """Validate configuration. Returns list of error messages (empty = valid)."""
-        errors: List[str] = []
+        errors: list[str] = []
 
         # In production, certain vars are required
         if self.production:
@@ -297,9 +294,9 @@ class AppConfig:
 
         return errors
 
-    def to_dict(self, redact_secrets: bool = True) -> Dict[str, Any]:
+    def to_dict(self, redact_secrets: bool = True) -> dict[str, Any]:
         """Return config as a dictionary, optionally redacting secrets."""
-        result: Dict[str, Any] = {}
+        result: dict[str, Any] = {}
         for key, value in self.__dict__.items():
             if key.startswith("_"):
                 continue
@@ -327,7 +324,7 @@ class _MetricsRingBuffer:
 
     def __init__(self, capacity: int = 10_000) -> None:
         self._capacity = capacity
-        self._buf: List[Optional[tuple]] = [None] * capacity
+        self._buf: list[tuple | None] = [None] * capacity
         self._head: int = 0  # next write position
         self._count: int = 0
 
@@ -335,17 +332,17 @@ class _MetricsRingBuffer:
     def capacity(self) -> int:
         return self._capacity
 
-    def push(self, value: float, ts: Optional[float] = None) -> None:
+    def push(self, value: float, ts: float | None = None) -> None:
         ts = ts if ts is not None else time.time()
         self._buf[self._head] = (ts, value)
         self._head = (self._head + 1) % self._capacity
         if self._count < self._capacity:
             self._count += 1
 
-    def query(self, window_seconds: float) -> List[float]:
+    def query(self, window_seconds: float) -> list[float]:
         """Return values recorded within the last *window_seconds*."""
         cutoff = time.time() - window_seconds
-        result: List[float] = []
+        result: list[float] = []
         for i in range(self._count):
             idx = (self._head - self._count + i) % self._capacity
             entry = self._buf[idx]
@@ -353,9 +350,9 @@ class _MetricsRingBuffer:
                 result.append(entry[1])
         return result
 
-    def all_values(self) -> List[float]:
+    def all_values(self) -> list[float]:
         """Return all stored values (oldest first)."""
-        result: List[float] = []
+        result: list[float] = []
         for i in range(self._count):
             idx = (self._head - self._count + i) % self._capacity
             entry = self._buf[idx]
@@ -386,10 +383,10 @@ class _MetricsCollector:
         self.total_errors: int = 0
         self._response_times = _MetricsRingBuffer(ring_capacity)
         self._error_times = _MetricsRingBuffer(ring_capacity)
-        self._provider_usage: Dict[str, int] = {}
-        self._provider_times: Dict[str, _MetricsRingBuffer] = {}
-        self._template_runs: Dict[str, int] = {}
-        self._last_template_run_time: Optional[float] = None
+        self._provider_usage: dict[str, int] = {}
+        self._provider_times: dict[str, _MetricsRingBuffer] = {}
+        self._template_runs: dict[str, int] = {}
+        self._last_template_run_time: float | None = None
         self._ring_capacity = ring_capacity
 
     def record_request(self, duration_ms: float, status_code: int, path: str) -> None:
@@ -414,7 +411,7 @@ class _MetricsCollector:
             self._template_runs[template_name] = self._template_runs.get(template_name, 0) + 1
             self._last_template_run_time = time.time()
 
-    def _window_stats(self, buf: _MetricsRingBuffer, window_seconds: float) -> Dict[str, Any]:
+    def _window_stats(self, buf: _MetricsRingBuffer, window_seconds: float) -> dict[str, Any]:
         """Compute count, avg, p50, p95, p99 for a time window."""
         values = buf.query(window_seconds)
         if not values:
@@ -429,7 +426,7 @@ class _MetricsCollector:
             "p99_ms": round(values[min(int(n * 0.99), n - 1)], 2),
         }
 
-    def snapshot(self) -> Dict[str, Any]:
+    def snapshot(self) -> dict[str, Any]:
         with self._lock:
             all_times = self._response_times.all_values()
             avg_ms = sum(all_times) / len(all_times) if all_times else 0.0
@@ -448,7 +445,7 @@ class _MetricsCollector:
             errors_24h = len(self._error_times.query(86400))
 
             # Per-connector (provider) stats
-            connector_stats: Dict[str, Any] = {}
+            connector_stats: dict[str, Any] = {}
             for prov, total in self._provider_usage.items():
                 prov_buf = self._provider_times.get(prov)
                 connector_stats[prov] = {
@@ -511,14 +508,14 @@ class FailedRequestStore:
     def __init__(self, capacity: int = 100) -> None:
         self._capacity = max(1, capacity)
         self._lock = threading.Lock()
-        self._entries: Dict[str, Dict[str, Any]] = {}
-        self._order: List[str] = []  # oldest first
+        self._entries: dict[str, dict[str, Any]] = {}
+        self._order: list[str] = []  # oldest first
 
     @property
     def capacity(self) -> int:
         return self._capacity
 
-    def add(self, entry: Dict[str, Any]) -> None:
+    def add(self, entry: dict[str, Any]) -> None:
         """Add a failed request entry.  Evicts oldest if at capacity."""
         rid = entry.get("request_id", "")
         if not rid:
@@ -532,11 +529,11 @@ class FailedRequestStore:
             self._entries[rid] = entry
             self._order.append(rid)
 
-    def get(self, request_id: str) -> Optional[Dict[str, Any]]:
+    def get(self, request_id: str) -> dict[str, Any] | None:
         with self._lock:
             return self._entries.get(request_id)
 
-    def list_recent(self, limit: int = 50) -> List[Dict[str, Any]]:
+    def list_recent(self, limit: int = 50) -> list[dict[str, Any]]:
         """Return most-recent failed requests (newest first)."""
         with self._lock:
             if limit <= 0:
@@ -554,7 +551,7 @@ class FailedRequestStore:
             return len(self._order)
 
     @staticmethod
-    def redact_headers(headers: Dict[str, str]) -> Dict[str, str]:
+    def redact_headers(headers: dict[str, str]) -> dict[str, str]:
         """Return a copy of *headers* with sensitive values replaced by '[REDACTED]'."""
         return {
             k: ("[REDACTED]" if k.lower() in _SENSITIVE_HEADERS else v)
@@ -569,22 +566,21 @@ failed_request_store = FailedRequestStore(capacity=_FAILED_REQUEST_CAP)
 # Consumer Usage Tracker + Quota System
 # ============================================================
 
-import calendar
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 
 
 def _month_start_ts() -> float:
     """Return Unix timestamp for midnight UTC on the 1st of the current month."""
-    now = datetime.now(timezone.utc)
-    return datetime(now.year, now.month, 1, tzinfo=timezone.utc).timestamp()
+    now = datetime.now(UTC)
+    return datetime(now.year, now.month, 1, tzinfo=UTC).timestamp()
 
 
 def _next_month_start_ts() -> float:
     """Return Unix timestamp for midnight UTC on the 1st of the **next** month."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if now.month == 12:
-        return datetime(now.year + 1, 1, 1, tzinfo=timezone.utc).timestamp()
-    return datetime(now.year, now.month + 1, 1, tzinfo=timezone.utc).timestamp()
+        return datetime(now.year + 1, 1, 1, tzinfo=UTC).timestamp()
+    return datetime(now.year, now.month + 1, 1, tzinfo=UTC).timestamp()
 
 
 class ConsumerUsageTracker:
@@ -603,12 +599,12 @@ class ConsumerUsageTracker:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         # key_id -> usage record
-        self._usage: Dict[str, Dict[str, Any]] = {}
+        self._usage: dict[str, dict[str, Any]] = {}
         # key_id -> monthly request quota (None = unlimited)
-        self._quotas: Dict[str, Optional[int]] = {}
+        self._quotas: dict[str, int | None] = {}
         self._month_start = _month_start_ts()
 
-    def _ensure_key(self, key_id: str) -> Dict[str, Any]:
+    def _ensure_key(self, key_id: str) -> dict[str, Any]:
         """Return (or create) the usage record for *key_id*.  Caller holds lock."""
         self._maybe_reset_month()
         if key_id not in self._usage:
@@ -616,8 +612,8 @@ class ConsumerUsageTracker:
         return self._usage[key_id]
 
     @staticmethod
-    def _blank_record() -> Dict[str, Any]:
-        now = datetime.now(timezone.utc)
+    def _blank_record() -> dict[str, Any]:
+        now = datetime.now(UTC)
         return {
             "month": now.month,
             "year": now.year,
@@ -640,9 +636,9 @@ class ConsumerUsageTracker:
             self._month_start = current_start
             self._usage.clear()  # full reset
 
-    def _maybe_roll_day(self, rec: Dict[str, Any]) -> None:
+    def _maybe_roll_day(self, rec: dict[str, Any]) -> None:
         """Reset daily / weekly counters if the day or week changed."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if rec["_day"] != now.day:
             rec["requests_today"] = 0
             rec["by_hour"] = {}
@@ -660,7 +656,7 @@ class ConsumerUsageTracker:
         response_size: int = 0,
     ) -> None:
         """Record a request for *key_id*."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         with self._lock:
             rec = self._ensure_key(key_id)
             self._maybe_roll_day(rec)
@@ -677,17 +673,17 @@ class ConsumerUsageTracker:
             rec["by_hour"][hour_key] = rec["by_hour"].get(hour_key, 0) + 1
             rec["last_request_at"] = now.timestamp()
 
-    def set_quota(self, key_id: str, monthly_limit: Optional[int]) -> None:
+    def set_quota(self, key_id: str, monthly_limit: int | None) -> None:
         """Set or clear the monthly request quota for *key_id*."""
         with self._lock:
             self._quotas[key_id] = monthly_limit
 
-    def get_quota(self, key_id: str) -> Optional[int]:
+    def get_quota(self, key_id: str) -> int | None:
         """Return the monthly quota for *key_id* (None = unlimited)."""
         with self._lock:
             return self._quotas.get(key_id)
 
-    def check_quota(self, key_id: str) -> Dict[str, Any]:
+    def check_quota(self, key_id: str) -> dict[str, Any]:
         """Return quota status for *key_id*.
 
         Returns dict with:
@@ -731,7 +727,7 @@ class ConsumerUsageTracker:
             "retry_after": retry_after,
         }
 
-    def get_usage(self, key_id: str) -> Optional[Dict[str, Any]]:
+    def get_usage(self, key_id: str) -> dict[str, Any] | None:
         """Return the usage record for a single key."""
         with self._lock:
             self._maybe_reset_month()
@@ -742,7 +738,7 @@ class ConsumerUsageTracker:
             quota = self._quotas.get(key_id)
             return {**rec, "quota": quota, "key_id": key_id}
 
-    def all_usage(self) -> List[Dict[str, Any]]:
+    def all_usage(self) -> list[dict[str, Any]]:
         """Return usage summaries for all tracked keys."""
         with self._lock:
             self._maybe_reset_month()
@@ -767,7 +763,7 @@ class ConsumerUsageTracker:
                 })
             return result
 
-    def all_quotas(self) -> List[Dict[str, Any]]:
+    def all_quotas(self) -> list[dict[str, Any]]:
         """Return quota status for all keys that have a quota set."""
         with self._lock:
             self._maybe_reset_month()
@@ -813,28 +809,28 @@ class DeprecationRegistry:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         # (method_upper, path) -> {"sunset": "YYYY-MM-DD", "successor": optional_path}
-        self._entries: Dict[tuple, Dict[str, str]] = {}
+        self._entries: dict[tuple, dict[str, str]] = {}
 
     def deprecate(
         self,
         method: str,
         path: str,
         sunset: str,
-        successor: Optional[str] = None,
+        successor: str | None = None,
     ) -> None:
         """Mark an endpoint as deprecated with a sunset date."""
         with self._lock:
-            entry: Dict[str, str] = {"sunset": sunset}
+            entry: dict[str, str] = {"sunset": sunset}
             if successor:
                 entry["successor"] = successor
             self._entries[(method.upper(), path)] = entry
 
-    def lookup(self, method: str, path: str) -> Optional[Dict[str, str]]:
+    def lookup(self, method: str, path: str) -> dict[str, str] | None:
         """Return deprecation info if (method, path) is deprecated, else None."""
         with self._lock:
             return self._entries.get((method.upper(), path))
 
-    def all_deprecated(self) -> List[Dict[str, str]]:
+    def all_deprecated(self) -> list[dict[str, str]]:
         """Return all deprecated endpoints."""
         with self._lock:
             result = []
@@ -871,7 +867,7 @@ class ErrorCategory(str, Enum):
 
 
 # HTTP status → category mapping
-_STATUS_CATEGORY: Dict[int, ErrorCategory] = {
+_STATUS_CATEGORY: dict[int, ErrorCategory] = {
     429: ErrorCategory.RATE_LIMITED,
     500: ErrorCategory.TRANSIENT,
     502: ErrorCategory.TRANSIENT,
@@ -898,8 +894,8 @@ _TRANSIENT_EXCEPTIONS: tuple = (
 
 
 def classify_error(
-    exc: Optional[Exception] = None,
-    status_code: Optional[int] = None,
+    exc: Exception | None = None,
+    status_code: int | None = None,
 ) -> ErrorCategory:
     """Classify an error as TRANSIENT, RATE_LIMITED, or PERMANENT.
 
@@ -932,7 +928,7 @@ class RetryPolicy:
         max_retries: int = 3,
         base_delay: float = 1.0,
         backoff_factor: float = 2.0,
-        retryable_categories: Optional[set] = None,
+        retryable_categories: set | None = None,
     ):
         self.max_retries = max_retries
         self.base_delay = base_delay
@@ -952,7 +948,7 @@ class RetryPolicy:
         """Exponential backoff delay for the given attempt (0-indexed)."""
         return self.base_delay * (self.backoff_factor ** attempt)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "max_retries": self.max_retries,
             "base_delay": self.base_delay,
@@ -964,7 +960,7 @@ class RetryPolicy:
 # Default policies per connector
 DEFAULT_RETRY_POLICY = RetryPolicy(max_retries=3, base_delay=1.0, backoff_factor=2.0)
 
-CONNECTOR_RETRY_POLICIES: Dict[str, RetryPolicy] = {
+CONNECTOR_RETRY_POLICIES: dict[str, RetryPolicy] = {
     "openai": RetryPolicy(max_retries=3, base_delay=1.0, backoff_factor=2.0),
     "anthropic": RetryPolicy(max_retries=3, base_delay=1.5, backoff_factor=2.0),
     "google": RetryPolicy(max_retries=3, base_delay=1.0, backoff_factor=2.0),
@@ -987,7 +983,7 @@ class ConnectorError(Exception):
         message: str,
         category: ErrorCategory,
         connector: str = "",
-        status_code: Optional[int] = None,
+        status_code: int | None = None,
         attempt: int = 0,
         max_retries: int = 0,
     ):
@@ -1003,7 +999,7 @@ async def execute_with_retry(
     func,
     *,
     connector: str = "",
-    policy: Optional[RetryPolicy] = None,
+    policy: RetryPolicy | None = None,
 ) -> Any:
     """Execute *func* (an async callable) with retry logic.
 
@@ -1011,7 +1007,7 @@ async def execute_with_retry(
     Returns the result on success or raises ``ConnectorError`` on exhaustion.
     """
     retry_policy = policy or get_retry_policy(connector)
-    last_exc: Optional[Exception] = None
+    last_exc: Exception | None = None
 
     for attempt in range(retry_policy.max_retries + 1):
         try:
@@ -1020,7 +1016,7 @@ async def execute_with_retry(
             last_exc = exc
 
             # Extract status code if available
-            status_code: Optional[int] = None
+            status_code: int | None = None
             if isinstance(exc, httpx.HTTPStatusError):
                 status_code = exc.response.status_code
             elif hasattr(exc, "status_code"):
@@ -1092,9 +1088,9 @@ class ConnectorHealthTracker:
         self._lock = threading.Lock()
         self._disable_threshold = disable_threshold
         # connector name → state dict
-        self._state: Dict[str, Dict[str, Any]] = {}
+        self._state: dict[str, dict[str, Any]] = {}
 
-    def _ensure(self, connector: str) -> Dict[str, Any]:
+    def _ensure(self, connector: str) -> dict[str, Any]:
         if connector not in self._state:
             self._state[connector] = {
                 "status": ConnectorStatus.HEALTHY,
@@ -1110,7 +1106,7 @@ class ConnectorHealthTracker:
             }
         return self._state[connector]
 
-    def _prune_window(self, s: Dict[str, Any], now: float) -> None:
+    def _prune_window(self, s: dict[str, Any], now: float) -> None:
         """Drop samples older than HEALTH_WINDOW_SECONDS."""
         cutoff = now - HEALTH_WINDOW_SECONDS
         s["latency_samples"] = [
@@ -1152,13 +1148,13 @@ class ConnectorHealthTracker:
             elif s["consecutive_failures"] >= 1:
                 s["status"] = ConnectorStatus.DEGRADED
 
-    def get_status(self, connector: str) -> Dict[str, Any]:
+    def get_status(self, connector: str) -> dict[str, Any]:
         """Get the current health state for a connector."""
         with self._lock:
             s = self._ensure(connector)
             return dict(s)
 
-    def get_dashboard_status(self, connector: str) -> Dict[str, Any]:
+    def get_dashboard_status(self, connector: str) -> dict[str, Any]:
         """Return dashboard-oriented status with windowed metrics.
 
         Derives a ``dashboard_status`` according to the directive thresholds:
@@ -1204,13 +1200,13 @@ class ConnectorHealthTracker:
             s = self._ensure(connector)
             return s["status"] == ConnectorStatus.DISABLED
 
-    def all_statuses(self) -> Dict[str, Dict[str, Any]]:
+    def all_statuses(self) -> dict[str, dict[str, Any]]:
         with self._lock:
             return {name: dict(s) for name, s in self._state.items()}
 
-    def all_dashboard_statuses(self) -> Dict[str, Dict[str, Any]]:
+    def all_dashboard_statuses(self) -> dict[str, dict[str, Any]]:
         """Return dashboard-oriented statuses for every tracked connector."""
-        result: Dict[str, Dict[str, Any]] = {}
+        result: dict[str, dict[str, Any]] = {}
         for name in list(self._state.keys()):
             result[name] = self.get_dashboard_status(name)
         return result
@@ -1227,10 +1223,10 @@ class ConnectorHealthTracker:
 connector_health = ConnectorHealthTracker(disable_threshold=3)
 
 # Cache for probe_all_connectors results
-_health_cache: Dict[str, Any] = {"results": None, "timestamp": 0.0}
+_health_cache: dict[str, Any] = {"results": None, "timestamp": 0.0}
 
 
-async def probe_connector(connector_name: str) -> Dict[str, Any]:
+async def probe_connector(connector_name: str) -> dict[str, Any]:
     """Run a lightweight health probe for a connector.
 
     Uses a HEAD/GET ping against the provider's base URL when possible,
@@ -1327,7 +1323,7 @@ async def probe_connector(connector_name: str) -> Dict[str, Any]:
         return result
 
 
-async def _maybe_emit_status_change(connector_name: str, old_status: Optional[str]) -> None:
+async def _maybe_emit_status_change(connector_name: str, old_status: str | None) -> None:
     """Emit ``connector.status_changed`` if dashboard status transitioned."""
     new_ds = connector_health.get_dashboard_status(connector_name).get("dashboard_status")
     if new_ds != old_status:
@@ -1338,7 +1334,7 @@ async def _maybe_emit_status_change(connector_name: str, old_status: Optional[st
         })
 
 
-async def probe_all_connectors() -> List[Dict[str, Any]]:
+async def probe_all_connectors() -> list[dict[str, Any]]:
     """Probe all known connectors and return their statuses.
 
     Results are cached for ``HEALTH_CACHE_TTL_SECONDS`` seconds to avoid
@@ -1351,7 +1347,7 @@ async def probe_all_connectors() -> List[Dict[str, Any]]:
     ):
         return _health_cache["results"]
 
-    results: List[Dict[str, Any]] = []
+    results: list[dict[str, Any]] = []
     for name in LLMProviderRegistry._providers:
         probe_result = await probe_connector(name)
         state = connector_health.get_dashboard_status(name)
@@ -1377,14 +1373,9 @@ async def probe_all_connectors() -> List[Dict[str, Any]]:
 # ============================================================
 
 from apps.orchestrator.webhooks.manager import (
-    WEBHOOK_DELIVERY_TIMEOUT,
     WEBHOOK_EVENTS,
-    WEBHOOK_MAX_RETRIES,
-    WEBHOOK_RETRY_DELAYS,
     WebhookManager,
-    deliver_webhook as _deliver_webhook,
     emit_webhook_event,
-    sign_payload as _sign_payload,
 )
 
 # Legacy alias kept for backwards-compat in existing tests
@@ -1396,7 +1387,7 @@ def _get_fernet_encrypt():
     def _enc(plain: str) -> str:
         return FERNET_CIPHER.encrypt(plain.encode("utf-8")).decode("utf-8")
 
-    def _dec(cipher: str) -> Optional[str]:
+    def _dec(cipher: str) -> str | None:
         try:
             return FERNET_CIPHER.decrypt(cipher.encode("utf-8")).decode("utf-8")
         except Exception:
@@ -1417,7 +1408,7 @@ def _init_webhook_manager() -> None:
     webhook_registry = WebhookManager(encrypt_fn=enc, decrypt_fn=dec)
 
 
-async def emit_event(event: str, data: Dict[str, Any]) -> None:
+async def emit_event(event: str, data: dict[str, Any]) -> None:
     """Fire-and-forget delivery to all webhooks registered for *event*."""
     await emit_webhook_event(event, data, webhook_registry)
 
@@ -1433,7 +1424,7 @@ class TaskQueue:
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._tasks: Dict[str, Dict[str, Any]] = {}
+        self._tasks: dict[str, dict[str, Any]] = {}
 
     def create(self, template_id: str, flow_name: str) -> str:
         task_id = str(uuid.uuid4())
@@ -1453,12 +1444,12 @@ class TaskQueue:
             }
         return task_id
 
-    def get(self, task_id: str) -> Optional[Dict[str, Any]]:
+    def get(self, task_id: str) -> dict[str, Any] | None:
         with self._lock:
             t = self._tasks.get(task_id)
             return dict(t) if t else None
 
-    def list_tasks(self, status: Optional[str] = None) -> List[Dict[str, Any]]:
+    def list_tasks(self, status: str | None = None) -> list[dict[str, Any]]:
         with self._lock:
             tasks = list(self._tasks.values())
         if status:
@@ -1494,14 +1485,14 @@ class AdminKeyRegistry:
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._keys: Dict[str, Dict[str, Any]] = {}  # id -> key data
+        self._keys: dict[str, dict[str, Any]] = {}  # id -> key data
 
     def create(
         self,
         name: str,
-        scopes: Optional[List[str]] = None,
-        rate_limit: Optional[int] = None,
-    ) -> Dict[str, Any]:
+        scopes: list[str] | None = None,
+        rate_limit: int | None = None,
+    ) -> dict[str, Any]:
         key_id = str(uuid.uuid4())
         plain_key = f"sk-{uuid.uuid4().hex}"
         key_prefix = plain_key[:12]
@@ -1519,14 +1510,14 @@ class AdminKeyRegistry:
             self._keys[key_id] = {**entry, "_plain_key": plain_key}
         return {**entry, "api_key": plain_key}
 
-    def get(self, key_id: str) -> Optional[Dict[str, Any]]:
+    def get(self, key_id: str) -> dict[str, Any] | None:
         with self._lock:
             k = self._keys.get(key_id)
             if not k:
                 return None
             return {kk: vv for kk, vv in k.items() if kk != "_plain_key"}
 
-    def list_keys(self) -> List[Dict[str, Any]]:
+    def list_keys(self) -> list[dict[str, Any]]:
         with self._lock:
             return [
                 {kk: vv for kk, vv in k.items() if kk != "_plain_key"}
@@ -1545,7 +1536,7 @@ class AdminKeyRegistry:
         with self._lock:
             return self._keys.pop(key_id, None) is not None
 
-    def validate_key(self, plain_key: str) -> Optional[Dict[str, Any]]:
+    def validate_key(self, plain_key: str) -> dict[str, Any] | None:
         """Validate a plain API key and return its data if active."""
         with self._lock:
             for k in self._keys.values():
@@ -1563,8 +1554,8 @@ admin_key_registry = AdminKeyRegistry()
 
 
 def require_master_key(
-    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
-    authorization: Optional[str] = Header(None, alias="Authorization"),
+    x_api_key: str | None = Header(None, alias="X-API-Key"),
+    authorization: str | None = Header(None, alias="Authorization"),
 ) -> str:
     """Dependency that requires the SYNAPPS_MASTER_KEY for admin operations."""
     master = SYNAPPS_MASTER_KEY
@@ -1597,14 +1588,14 @@ DEFAULT_MEMORY_CHROMA_PATH = str(
     Path(os.environ.get("MEMORY_CHROMA_PATH", project_root / ".chroma")).expanduser()
 )
 DEFAULT_MEMORY_COLLECTION = os.environ.get("MEMORY_COLLECTION", "synapps_memory").strip() or "synapps_memory"
-LEGACY_WRITER_LLM_PRESET: Dict[str, Any] = {
+LEGACY_WRITER_LLM_PRESET: dict[str, Any] = {
     "label": "Writer",
     "provider": "openai",
     "model": "gpt-4o",
     "temperature": 0.7,
     "max_tokens": 1000,
 }
-LEGACY_ARTIST_IMAGE_PRESET: Dict[str, Any] = {
+LEGACY_ARTIST_IMAGE_PRESET: dict[str, Any] = {
     "label": "Image Gen",
     "provider": "stability",
     "model": "stable-diffusion-xl-1024-v1-0",
@@ -1614,7 +1605,7 @@ LEGACY_ARTIST_IMAGE_PRESET: Dict[str, Any] = {
     "n": 1,
     "response_format": "b64_json",
 }
-LEGACY_MEMORY_BACKEND_ALIASES: Dict[str, str] = {
+LEGACY_MEMORY_BACKEND_ALIASES: dict[str, str] = {
     "sqlite": "sqlite_fts",
     "sqlite_fts": "sqlite_fts",
     "sqlite-fts": "sqlite_fts",
@@ -1839,7 +1830,7 @@ add_rate_limiter(app)
 from apps.orchestrator.api_keys.manager import api_key_manager  # noqa: E402
 
 
-async def _resolve_rate_limit_user(request: Request) -> Optional[Dict[str, Any]]:
+async def _resolve_rate_limit_user(request: Request) -> dict[str, Any] | None:
     """Best-effort auth parsing for per-user rate-limit keys."""
     x_api_key = request.headers.get("X-API-Key")
     authorization = request.headers.get("Authorization")
@@ -1881,7 +1872,7 @@ async def _resolve_rate_limit_user(request: Request) -> Optional[Dict[str, Any]]
     return None
 
 
-def _anonymous_rate_limit_principal(request: Request) -> Dict[str, Any]:
+def _anonymous_rate_limit_principal(request: Request) -> dict[str, Any]:
     """Build a stable anonymous principal from the direct socket client."""
     client_host = request.client.host if request.client else "unknown"
     return {
@@ -2035,7 +2026,7 @@ async def request_id_tracing(request: Request, call_next):
         # Capture failed requests for replay/debug
         if response.status_code >= 400:
             # Read response body from the streaming response
-            resp_body_parts: List[bytes] = []
+            resp_body_parts: list[bytes] = []
             async for chunk in response.body_iterator:  # type: ignore[union-attr]
                 if isinstance(chunk, str):
                     resp_body_parts.append(chunk.encode("utf-8"))
@@ -2103,10 +2094,10 @@ def _error_response(
     status: int,
     code: str,
     message: str,
-    details: Optional[List[Dict[str, Any]]] = None,
+    details: list[dict[str, Any]] | None = None,
 ) -> JSONResponse:
     """Create a standardized error JSONResponse."""
-    body: Dict[str, Any] = {
+    body: dict[str, Any] = {
         "error": {
             "code": code,
             "status": status,
@@ -2183,8 +2174,8 @@ class FlowNodeRequest(StrictRequestModel):
     """Strictly validated flow node for API requests."""
     id: str = Field(..., min_length=1, max_length=200)
     type: str = Field(..., min_length=1, max_length=100)
-    position: Dict[str, float]
-    data: Dict[str, Any] = Field(default_factory=dict)
+    position: dict[str, float]
+    data: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("position")
     @classmethod
@@ -2204,10 +2195,10 @@ class FlowEdgeRequest(StrictRequestModel):
 
 class CreateFlowRequest(StrictRequestModel):
     """Strictly validated flow creation/update request."""
-    id: Optional[str] = Field(None, max_length=200)
+    id: str | None = Field(None, max_length=200)
     name: str = Field(..., min_length=1, max_length=200)
-    nodes: List[FlowNodeRequest] = Field(default_factory=list)
-    edges: List[FlowEdgeRequest] = Field(default_factory=list)
+    nodes: list[FlowNodeRequest] = Field(default_factory=list)
+    edges: list[FlowEdgeRequest] = Field(default_factory=list)
 
     @field_validator("name")
     @classmethod
@@ -2226,12 +2217,12 @@ class CreateFlowRequest(StrictRequestModel):
 
 class RunFlowRequest(StrictRequestModel):
     """Strictly validated request body for running a flow."""
-    input: Dict[str, Any] = Field(default_factory=dict, description="Input data for the workflow")
+    input: dict[str, Any] = Field(default_factory=dict, description="Input data for the workflow")
 
 
 class RerunFlowRequest(StrictRequestModel):
     """Request body for re-running a previous flow execution with input overrides."""
-    input: Dict[str, Any] = Field(
+    input: dict[str, Any] = Field(
         default_factory=dict,
         description="Input overrides for the re-run",
     )
@@ -2244,7 +2235,7 @@ class RerunFlowRequest(StrictRequestModel):
 class AISuggestRequest(StrictRequestModel):
     """Strictly validated request body for AI suggestions."""
     prompt: str = Field(..., min_length=1, max_length=5000, description="The prompt for AI suggestion")
-    context: Optional[str] = Field(None, max_length=10000, description="Optional context for the suggestion")
+    context: str | None = Field(None, max_length=10000, description="Optional context for the suggestion")
 
 
 class AuthRegisterRequestStrict(AuthRegisterRequestModel):
@@ -2300,10 +2291,10 @@ def _trace_value(value: Any, depth: int = 0) -> Any:
 
 def _new_execution_trace(
     run_id: str,
-    flow_id: Optional[str],
-    input_data: Dict[str, Any],
+    flow_id: str | None,
+    input_data: dict[str, Any],
     start_time: float,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Create a baseline execution trace document for a run."""
     return {
         "version": TRACE_SCHEMA_VERSION,
@@ -2319,7 +2310,7 @@ def _new_execution_trace(
     }
 
 
-def _finalize_execution_trace(trace: Dict[str, Any], status: str, end_time: float) -> None:
+def _finalize_execution_trace(trace: dict[str, Any], status: str, end_time: float) -> None:
     """Finalize aggregate timing/status fields in a trace object."""
     trace["status"] = status
     trace["ended_at"] = float(end_time)
@@ -2328,7 +2319,7 @@ def _finalize_execution_trace(trace: Dict[str, Any], status: str, end_time: floa
         trace["duration_ms"] = max(0.0, (float(end_time) - float(started_at)) * 1000.0)
 
 
-def _extract_trace_from_run(run: Dict[str, Any]) -> Dict[str, Any]:
+def _extract_trace_from_run(run: dict[str, Any]) -> dict[str, Any]:
     """Return a normalized execution trace for any run, including legacy runs."""
     run_id = str(run.get("run_id", ""))
     flow_id = run.get("flow_id")
@@ -2351,7 +2342,7 @@ def _extract_trace_from_run(run: Dict[str, Any]) -> Dict[str, Any]:
             trace = _new_execution_trace(run_id, flow_id, input_data, float(start_time))
     else:
         trace = _new_execution_trace(run_id, flow_id, input_data, float(start_time))
-        nodes: List[Dict[str, Any]] = []
+        nodes: list[dict[str, Any]] = []
         for node_id, node_result in results.items():
             if node_id == TRACE_RESULTS_KEY:
                 continue
@@ -2417,7 +2408,7 @@ def _extract_trace_from_run(run: Dict[str, Any]) -> Dict[str, Any]:
     return trace
 
 
-def _flatten_for_diff(value: Any, path: str, out: Dict[str, Any]) -> None:
+def _flatten_for_diff(value: Any, path: str, out: dict[str, Any]) -> None:
     """Flatten nested structures into a path/value map for deterministic diffing."""
     if isinstance(value, dict):
         if not value:
@@ -2439,18 +2430,18 @@ def _flatten_for_diff(value: Any, path: str, out: Dict[str, Any]) -> None:
     out[path] = value
 
 
-def _build_json_diff(left: Any, right: Any, max_changes: int = MAX_DIFF_CHANGES) -> Dict[str, Any]:
+def _build_json_diff(left: Any, right: Any, max_changes: int = MAX_DIFF_CHANGES) -> dict[str, Any]:
     """Build a bounded structural diff between two JSON-like values."""
     left_normalized = _trace_value(left)
     right_normalized = _trace_value(right)
 
-    left_flat: Dict[str, Any] = {}
-    right_flat: Dict[str, Any] = {}
+    left_flat: dict[str, Any] = {}
+    right_flat: dict[str, Any] = {}
     _flatten_for_diff(left_normalized, "$", left_flat)
     _flatten_for_diff(right_normalized, "$", right_flat)
 
     all_paths = sorted(set(left_flat.keys()) | set(right_flat.keys()))
-    changes: List[Dict[str, Any]] = []
+    changes: list[dict[str, Any]] = []
     total_changes = 0
 
     for path in all_paths:
@@ -2487,7 +2478,7 @@ def _build_json_diff(left: Any, right: Any, max_changes: int = MAX_DIFF_CHANGES)
     }
 
 
-def _node_result_index(run: Dict[str, Any]) -> Dict[str, Any]:
+def _node_result_index(run: dict[str, Any]) -> dict[str, Any]:
     """Return run result payload keyed by node ID, excluding trace metadata."""
     results = run.get("results")
     if not isinstance(results, dict):
@@ -2499,7 +2490,7 @@ def _node_result_index(run: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _build_run_diff(base_run: Dict[str, Any], compare_run: Dict[str, Any]) -> Dict[str, Any]:
+def _build_run_diff(base_run: dict[str, Any], compare_run: dict[str, Any]) -> dict[str, Any]:
     """Compute an execution diff between two runs."""
     base_trace = _extract_trace_from_run(base_run)
     compare_trace = _extract_trace_from_run(compare_run)
@@ -2515,7 +2506,7 @@ def _build_run_diff(base_run: Dict[str, Any], compare_run: Dict[str, Any]) -> Di
         if isinstance(item, dict) and item.get("node_id") is not None
     }
 
-    node_diffs: List[Dict[str, Any]] = []
+    node_diffs: list[dict[str, Any]] = []
     for node_id in sorted(set(base_nodes.keys()) | set(compare_nodes.keys())):
         left = base_nodes.get(node_id)
         right = compare_nodes.get(node_id)
@@ -2631,7 +2622,7 @@ def _encrypt_api_key(plain_value: str) -> str:
     return FERNET_CIPHER.encrypt(plain_value.encode("utf-8")).decode("utf-8")
 
 
-def _decrypt_api_key(encrypted_value: str) -> Optional[str]:
+def _decrypt_api_key(encrypted_value: str) -> str | None:
     try:
         return FERNET_CIPHER.decrypt(encrypted_value.encode("utf-8")).decode("utf-8")
     except (InvalidToken, ValueError, TypeError):
@@ -2700,7 +2691,7 @@ def _create_refresh_token(user: AuthUser) -> tuple[str, float, int]:
     return token, float(expiry), expiry - now
 
 
-def _decode_token(token: str, expected_type: str) -> Dict[str, Any]:
+def _decode_token(token: str, expected_type: str) -> dict[str, Any]:
     try:
         payload = jwt.decode(
             token,
@@ -2739,7 +2730,7 @@ def _api_key_lookup_prefix(api_key_value: str) -> str:
     return api_key_value[:API_KEY_LOOKUP_PREFIX_LEN]
 
 
-def _user_to_principal(user: AuthUser) -> Dict[str, Any]:
+def _user_to_principal(user: AuthUser) -> dict[str, Any]:
     return {
         "id": user.id,
         "email": user.email,
@@ -2768,7 +2759,7 @@ async def _store_refresh_token(
         )
 
 
-async def _authenticate_user_by_jwt(access_token: str) -> Dict[str, Any]:
+async def _authenticate_user_by_jwt(access_token: str) -> dict[str, Any]:
     payload = _decode_token(access_token, expected_type="access")
     user_id = payload.get("sub")
     if not isinstance(user_id, str) or not user_id:
@@ -2784,7 +2775,7 @@ async def _authenticate_user_by_jwt(access_token: str) -> Dict[str, Any]:
         return _user_to_principal(user)
 
 
-async def _authenticate_user_by_api_key(api_key_value: str) -> Dict[str, Any]:
+async def _authenticate_user_by_api_key(api_key_value: str) -> dict[str, Any]:
     normalized_key = _normalize_key_header_value(api_key_value)
     if not normalized_key:
         raise HTTPException(status_code=401, detail="Invalid API key")
@@ -2833,9 +2824,9 @@ async def _can_use_anonymous_bootstrap() -> bool:
 
 
 async def get_authenticated_user(
-    authorization: Optional[str] = Header(None, alias="Authorization"),
-    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
-) -> Dict[str, Any]:
+    authorization: str | None = Header(None, alias="Authorization"),
+    x_api_key: str | None = Header(None, alias="X-API-Key"),
+) -> dict[str, Any]:
     if x_api_key:
         stripped = x_api_key.strip()
         # Recognise admin API keys (sk- prefix) from the in-memory registry
@@ -2905,8 +2896,8 @@ class NodeError(Exception):
         self,
         code: NodeErrorCode,
         message: str,
-        details: Optional[Dict[str, Any]] = None,
-        node_id: Optional[str] = None,
+        details: dict[str, Any] | None = None,
+        node_id: str | None = None,
     ):
         self.code = code
         self.message = message
@@ -2914,7 +2905,7 @@ class NodeError(Exception):
         self.node_id = node_id
         super().__init__(self.message)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "code": self.code,
             "message": self.message,
@@ -2925,8 +2916,8 @@ class NodeError(Exception):
 class FlowNode(BaseModel):
     id: str
     type: str
-    position: Dict[str, int]
-    data: Dict[str, Any] = Field(default_factory=dict)
+    position: dict[str, int]
+    data: dict[str, Any] = Field(default_factory=dict)
 
 class FlowEdge(BaseModel):
     id: str
@@ -2937,27 +2928,27 @@ class FlowEdge(BaseModel):
 class Flow(BaseModel):
     id: str
     name: str
-    nodes: List[FlowNode]
-    edges: List[FlowEdge]
+    nodes: list[FlowNode]
+    edges: list[FlowEdge]
 
 class AppletMessage(BaseModel):
     content: Any
-    context: Dict[str, Any] = Field(default_factory=dict)
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    context: dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 class WorkflowRunStatus(BaseModel):
     run_id: str
     flow_id: str
     status: str
-    current_applet: Optional[str] = None
+    current_applet: str | None = None
     progress: int = 0
     total_steps: int = 0
     start_time: float = 0
-    end_time: Optional[float] = None
-    results: Dict[str, Any] = Field(default_factory=dict)
-    error: Optional[str] = None
-    error_details: Dict[str, Any] = Field(default_factory=dict)
-    completed_applets: List[str] = Field(default_factory=list)
+    end_time: float | None = None
+    results: dict[str, Any] = Field(default_factory=dict)
+    error: str | None = None
+    error_details: dict[str, Any] = Field(default_factory=dict)
+    completed_applets: list[str] = Field(default_factory=list)
 
 
 # ============================================================
@@ -2969,14 +2960,14 @@ WS_HEARTBEAT_INTERVAL = int(os.environ.get("WS_HEARTBEAT_INTERVAL", "30"))
 WS_MESSAGE_BUFFER_SIZE = int(os.environ.get("WS_MESSAGE_BUFFER_SIZE", "200"))
 WS_SESSION_TTL_SECONDS = int(os.environ.get("WS_SESSION_TTL_SECONDS", "300"))
 
-applet_registry: Dict[str, Type['BaseApplet']] = {}
+applet_registry: dict[str, type['BaseApplet']] = {}
 
 
 def _ws_message(
     msg_type: str,
-    data: Optional[dict] = None,
+    data: dict | None = None,
     *,
-    ref_id: Optional[str] = None,
+    ref_id: str | None = None,
 ) -> dict:
     """Create a structured WebSocket message.
 
@@ -3016,7 +3007,7 @@ class _WSSession:
         self,
         session_id: str,
         user_id: str,
-        websocket: Optional[WebSocket] = None,
+        websocket: WebSocket | None = None,
     ) -> None:
         self.session_id = session_id
         self.user_id = user_id
@@ -3036,9 +3027,9 @@ class WebSocketSessionManager:
     """Manages connected WebSocket clients, sessions, and message replay."""
 
     def __init__(self, buffer_size: int = WS_MESSAGE_BUFFER_SIZE) -> None:
-        self._sessions: Dict[str, _WSSession] = {}
-        self._ws_to_session: Dict[int, str] = {}  # id(websocket) -> session_id
-        self._message_buffer: List[dict] = []
+        self._sessions: dict[str, _WSSession] = {}
+        self._ws_to_session: dict[int, str] = {}  # id(websocket) -> session_id
+        self._message_buffer: list[dict] = []
         self._buffer_size = buffer_size
         self._lock = threading.Lock()
         self._global_seq = 0
@@ -3049,7 +3040,7 @@ class WebSocketSessionManager:
         self,
         user_id: str,
         websocket: WebSocket,
-        session_id: Optional[str] = None,
+        session_id: str | None = None,
     ) -> tuple:
         """Create or resume a session.  Returns (session, reconnected)."""
         reconnected = False
@@ -3072,7 +3063,7 @@ class WebSocketSessionManager:
             self._ws_to_session[id(websocket)] = sess.session_id
         return sess, reconnected
 
-    def remove_session(self, websocket: WebSocket) -> Optional[_WSSession]:
+    def remove_session(self, websocket: WebSocket) -> _WSSession | None:
         """Mark session as disconnected and unlink the websocket."""
         with self._lock:
             ws_id = id(websocket)
@@ -3085,12 +3076,12 @@ class WebSocketSessionManager:
                 return sess
         return None
 
-    def get_session_by_ws(self, websocket: WebSocket) -> Optional[_WSSession]:
+    def get_session_by_ws(self, websocket: WebSocket) -> _WSSession | None:
         with self._lock:
             sid = self._ws_to_session.get(id(websocket))
             return self._sessions.get(sid) if sid else None
 
-    def connected_sessions(self) -> List[_WSSession]:
+    def connected_sessions(self) -> list[_WSSession]:
         """Return sessions that currently have a live websocket."""
         with self._lock:
             return [
@@ -3099,7 +3090,7 @@ class WebSocketSessionManager:
             ]
 
     @property
-    def connected_websockets(self) -> List[WebSocket]:
+    def connected_websockets(self) -> list[WebSocket]:
         """List of live websockets (backward-compatible helper)."""
         return [s.websocket for s in self.connected_sessions() if s.websocket]
 
@@ -3127,7 +3118,7 @@ class WebSocketSessionManager:
         if len(self._message_buffer) > self._buffer_size:
             self._message_buffer = self._message_buffer[-self._buffer_size:]
 
-    def get_missed_messages(self, last_seq: int) -> List[dict]:
+    def get_missed_messages(self, last_seq: int) -> list[dict]:
         """Return messages with _seq > last_seq for reconnection replay."""
         with self._lock:
             return [m for m in self._message_buffer if m.get("_seq", 0) > last_seq]
@@ -3148,7 +3139,7 @@ class WebSocketSessionManager:
                 if s.websocket and s.state == "connected"
             ]
 
-        disconnected: List[WebSocket] = []
+        disconnected: list[WebSocket] = []
         for sess in sessions:
             try:
                 if sess.websocket:
@@ -3166,10 +3157,10 @@ class WebSocketSessionManager:
 ws_manager = WebSocketSessionManager()
 
 # Backward-compatible accessor (returns a fresh snapshot each call)
-connected_clients: List[WebSocket] = []  # legacy shim – use ws_manager directly
+connected_clients: list[WebSocket] = []  # legacy shim – use ws_manager directly
 
 
-async def broadcast_status(status: Dict[str, Any]):
+async def broadcast_status(status: dict[str, Any]):
     """Broadcast workflow status to all connected clients using structured messages."""
     broadcast_data = status.copy()
     if "completed_applets" not in broadcast_data:
@@ -3206,7 +3197,7 @@ class BaseApplet:
     """Base class that all applets must implement."""
 
     @classmethod
-    def get_metadata(cls) -> Dict[str, Any]:
+    def get_metadata(cls) -> dict[str, Any]:
         """Return applet metadata."""
         return {
             "name": cls.__name__,
@@ -3224,7 +3215,7 @@ class BaseApplet:
 # LLM Providers / Adapters
 # ============================================================
 
-def _safe_json_loads(payload: str) -> Optional[Dict[str, Any]]:
+def _safe_json_loads(payload: str) -> dict[str, Any] | None:
     """Parse JSON string safely."""
     try:
         data = json.loads(payload)
@@ -3266,7 +3257,7 @@ def _as_serialized_text(content: Any) -> str:
     return str(content)
 
 
-def _parse_json_or_default(raw: Optional[str], default: Any) -> Any:
+def _parse_json_or_default(raw: str | None, default: Any) -> Any:
     """Parse JSON content and return a fallback value if parsing fails."""
     if not raw:
         return default
@@ -3276,7 +3267,7 @@ def _parse_json_or_default(raw: Optional[str], default: Any) -> Any:
         return default
 
 
-def _normalize_memory_tags(raw_tags: Any) -> List[str]:
+def _normalize_memory_tags(raw_tags: Any) -> list[str]:
     """Normalize memory tag payloads into a de-duplicated list of strings."""
     if raw_tags is None:
         return []
@@ -3287,7 +3278,7 @@ def _normalize_memory_tags(raw_tags: Any) -> List[str]:
     else:
         return []
 
-    tags: List[str] = []
+    tags: list[str] = []
     for item in candidates:
         cleaned = str(item).strip()
         if cleaned and cleaned not in tags:
@@ -3295,7 +3286,7 @@ def _normalize_memory_tags(raw_tags: Any) -> List[str]:
     return tags
 
 
-def _fts_terms(text: str) -> List[str]:
+def _fts_terms(text: str) -> list[str]:
     """Build safe FTS terms from arbitrary free text."""
     cleaned = "".join(char if char.isalnum() else " " for char in text.lower())
     return [term for term in cleaned.split() if term]
@@ -3325,7 +3316,7 @@ def _resolve_template_path(data: Any, path: str) -> tuple[Any, bool]:
     return current, True
 
 
-def _render_template_string(template: str, data: Dict[str, Any]) -> Any:
+def _render_template_string(template: str, data: dict[str, Any]) -> Any:
     """Render {{path}} tokens in a string template."""
     matches = list(_TEMPLATE_PATTERN.finditer(template))
     if not matches:
@@ -3347,7 +3338,7 @@ def _render_template_string(template: str, data: Dict[str, Any]) -> Any:
     return _TEMPLATE_PATTERN.sub(replace_token, template)
 
 
-def _render_template_payload(template: Any, data: Dict[str, Any]) -> Any:
+def _render_template_payload(template: Any, data: dict[str, Any]) -> Any:
     """Render templates recursively for strings/dicts/lists."""
     if isinstance(template, str):
         return _render_template_string(template, data)
@@ -3363,7 +3354,7 @@ _JSON_PATH_SEGMENT_PATTERN = re.compile(
 )
 
 
-def _parse_json_path(path: str) -> Optional[List[Any]]:
+def _parse_json_path(path: str) -> list[Any] | None:
     """Parse a restricted JSON path expression into key/index segments."""
     normalized = path.strip() or "$"
     if not normalized.startswith("$"):
@@ -3372,7 +3363,7 @@ def _parse_json_path(path: str) -> Optional[List[Any]]:
     if normalized == "$":
         return []
 
-    segments: List[Any] = []
+    segments: list[Any] = []
     index = 1
     while index < len(normalized):
         match = _JSON_PATH_SEGMENT_PATTERN.match(normalized, index)
@@ -3478,14 +3469,14 @@ def _sandbox_preexec_fn(
 
 
 async def _read_stream_limited(
-    stream: Optional[asyncio.StreamReader],
+    stream: asyncio.StreamReader | None,
     max_bytes: int,
 ) -> tuple[bytes, bool]:
     """Read an async stream and cap captured bytes."""
     if stream is None:
         return b"", False
 
-    chunks: List[bytes] = []
+    chunks: list[bytes] = []
     total = 0
     truncated = False
 
@@ -3505,7 +3496,7 @@ async def _read_stream_limited(
     return b"".join(chunks), truncated
 
 
-def _extract_sandbox_result(stdout_text: str) -> tuple[str, Optional[Dict[str, Any]]]:
+def _extract_sandbox_result(stdout_text: str) -> tuple[str, dict[str, Any] | None]:
     """Extract structured wrapper result markers from stdout."""
     start_marker = "__SYNAPPS_RESULT_START__"
     end_marker = "__SYNAPPS_RESULT_END__"
@@ -3800,12 +3791,12 @@ class MemoryStoreBackend(ABC):
         namespace: str,
         content: str,
         payload: Any,
-        metadata: Dict[str, Any],
+        metadata: dict[str, Any],
     ) -> None:
         """Persist or replace one memory record."""
 
     @abstractmethod
-    def get(self, key: str, namespace: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    def get(self, key: str, namespace: str | None = None) -> dict[str, Any] | None:
         """Fetch one memory record by key."""
 
     @abstractmethod
@@ -3813,13 +3804,13 @@ class MemoryStoreBackend(ABC):
         self,
         namespace: str,
         query: str,
-        tags: List[str],
+        tags: list[str],
         top_k: int,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Search memory records in a namespace."""
 
     @abstractmethod
-    def delete(self, key: str, namespace: Optional[str] = None) -> bool:
+    def delete(self, key: str, namespace: str | None = None) -> bool:
         """Delete one memory record."""
 
     @abstractmethod
@@ -3911,7 +3902,7 @@ class SQLiteFTSMemoryStoreBackend(MemoryStoreBackend):
                 conn.commit()
             self._initialized = True
 
-    def _row_to_result(self, row: sqlite3.Row, score: float) -> Dict[str, Any]:
+    def _row_to_result(self, row: sqlite3.Row, score: float) -> dict[str, Any]:
         payload = _parse_json_or_default(row["payload_json"], row["content"])
         metadata = _parse_json_or_default(row["metadata_json"], {})
         if not isinstance(metadata, dict):
@@ -3930,7 +3921,7 @@ class SQLiteFTSMemoryStoreBackend(MemoryStoreBackend):
         namespace: str,
         content: str,
         payload: Any,
-        metadata: Dict[str, Any],
+        metadata: dict[str, Any],
     ) -> None:
         self._ensure_schema()
         now = float(metadata.get("timestamp", time.time()))
@@ -3988,7 +3979,7 @@ class SQLiteFTSMemoryStoreBackend(MemoryStoreBackend):
                 )
             conn.commit()
 
-    def get(self, key: str, namespace: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    def get(self, key: str, namespace: str | None = None) -> dict[str, Any] | None:
         self._ensure_schema()
         with self._connect() as conn:
             if namespace:
@@ -4019,14 +4010,14 @@ class SQLiteFTSMemoryStoreBackend(MemoryStoreBackend):
         self,
         namespace: str,
         query: str,
-        tags: List[str],
+        tags: list[str],
         top_k: int,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         self._ensure_schema()
         normalized_tags = _normalize_memory_tags(tags)
         query_text = (query or "").strip()
 
-        rows: List[sqlite3.Row] = []
+        rows: list[sqlite3.Row] = []
         if self._fts_enabled:
             terms = _fts_terms(query_text or " ".join(normalized_tags))
             if terms:
@@ -4059,7 +4050,7 @@ class SQLiteFTSMemoryStoreBackend(MemoryStoreBackend):
                 "SELECT id, content, payload_json, metadata_json, created_at "
                 "FROM memories WHERE namespace = ?"
             )
-            params: List[Any] = [namespace]
+            params: list[Any] = [namespace]
             search_text = query_text or " ".join(normalized_tags)
             if search_text:
                 sql += " AND (content LIKE ? OR payload_json LIKE ? OR metadata_json LIKE ?)"
@@ -4073,7 +4064,7 @@ class SQLiteFTSMemoryStoreBackend(MemoryStoreBackend):
             with self._connect() as conn:
                 rows = conn.execute(sql, tuple(params)).fetchall()
 
-        results: List[Dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
         for row in rows:
             rank = row["rank"] if "rank" in row.keys() else None
             score = 0.8
@@ -4085,7 +4076,7 @@ class SQLiteFTSMemoryStoreBackend(MemoryStoreBackend):
             results.append(self._row_to_result(row, score=score))
 
         if normalized_tags:
-            filtered_results: List[Dict[str, Any]] = []
+            filtered_results: list[dict[str, Any]] = []
             for result in results:
                 metadata = result.get("metadata", {})
                 memory_tags = _normalize_memory_tags(metadata.get("tags", []))
@@ -4095,7 +4086,7 @@ class SQLiteFTSMemoryStoreBackend(MemoryStoreBackend):
 
         return results[:top_k]
 
-    def delete(self, key: str, namespace: Optional[str] = None) -> bool:
+    def delete(self, key: str, namespace: str | None = None) -> bool:
         self._ensure_schema()
         with self._connect() as conn:
             if namespace:
@@ -4153,9 +4144,9 @@ class ChromaMemoryStoreBackend(MemoryStoreBackend):
         self,
         memory_id: str,
         document: str,
-        metadata: Optional[Dict[str, Any]],
+        metadata: dict[str, Any] | None,
         score: float,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         raw_metadata = metadata or {}
         payload = _parse_json_or_default(raw_metadata.get("payload_json"), document)
         stored_metadata = _parse_json_or_default(raw_metadata.get("metadata_json"), {})
@@ -4176,10 +4167,10 @@ class ChromaMemoryStoreBackend(MemoryStoreBackend):
         namespace: str,
         content: str,
         payload: Any,
-        metadata: Dict[str, Any],
+        metadata: dict[str, Any],
     ) -> None:
         now = float(metadata.get("timestamp", time.time()))
-        safe_metadata: Dict[str, Any] = {
+        safe_metadata: dict[str, Any] = {
             "namespace": namespace,
             "created_at": now,
             "payload_json": json.dumps(payload, ensure_ascii=False),
@@ -4192,7 +4183,7 @@ class ChromaMemoryStoreBackend(MemoryStoreBackend):
             safe_metadata["node_id"] = str(metadata["node_id"])
         self._collection.upsert(ids=[key], documents=[content], metadatas=[safe_metadata])
 
-    def get(self, key: str, namespace: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    def get(self, key: str, namespace: str | None = None) -> dict[str, Any] | None:
         payload = self._collection.get(ids=[key], include=["documents", "metadatas"])
         ids = payload.get("ids") or []
         if not ids:
@@ -4211,12 +4202,12 @@ class ChromaMemoryStoreBackend(MemoryStoreBackend):
         self,
         namespace: str,
         query: str,
-        tags: List[str],
+        tags: list[str],
         top_k: int,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         normalized_tags = _normalize_memory_tags(tags)
         query_text = (query or "").strip() or " ".join(normalized_tags)
-        results: List[Dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
 
         if query_text:
             payload = self._collection.query(
@@ -4253,7 +4244,7 @@ class ChromaMemoryStoreBackend(MemoryStoreBackend):
                 results.append(self._entry_to_result(memory_id, document, metadata, score=0.7))
 
         if normalized_tags:
-            filtered: List[Dict[str, Any]] = []
+            filtered: list[dict[str, Any]] = []
             for result in results:
                 memory_tags = _normalize_memory_tags(result.get("metadata", {}).get("tags", []))
                 if any(tag in memory_tags for tag in normalized_tags):
@@ -4262,7 +4253,7 @@ class ChromaMemoryStoreBackend(MemoryStoreBackend):
 
         return results[:top_k]
 
-    def delete(self, key: str, namespace: Optional[str] = None) -> bool:
+    def delete(self, key: str, namespace: str | None = None) -> bool:
         record = self.get(key, namespace=namespace)
         if not record:
             return False
@@ -4280,7 +4271,7 @@ class ChromaMemoryStoreBackend(MemoryStoreBackend):
 class MemoryStoreFactory:
     """Factory and cache for memory backends."""
 
-    _stores: Dict[str, MemoryStoreBackend] = {}
+    _stores: dict[str, MemoryStoreBackend] = {}
     _lock = threading.Lock()
 
     @classmethod
@@ -4436,8 +4427,8 @@ class MemoryNodeApplet(BaseApplet):
         message: AppletMessage,
         config: MemoryNodeConfigModel,
         default_generate: bool = False,
-    ) -> Optional[str]:
-        key: Optional[str] = config.key
+    ) -> str | None:
+        key: str | None = config.key
         if isinstance(message.context.get("memory_key"), str):
             raw_context_key = message.context["memory_key"].strip()
             if raw_context_key:
@@ -4462,12 +4453,12 @@ class MemoryNodeApplet(BaseApplet):
                     break
         return query.strip()
 
-    def _resolve_tags(self, message: AppletMessage, config: MemoryNodeConfigModel) -> List[str]:
+    def _resolve_tags(self, message: AppletMessage, config: MemoryNodeConfigModel) -> list[str]:
         tags = _normalize_memory_tags(config.tags)
         tags.extend(_normalize_memory_tags(message.context.get("memory_tags")))
         if isinstance(message.content, dict):
             tags.extend(_normalize_memory_tags(message.content.get("tags")))
-        deduped: List[str] = []
+        deduped: list[str] = []
         for tag in tags:
             if tag not in deduped:
                 deduped.append(tag)
@@ -4510,7 +4501,7 @@ class MemoryNodeApplet(BaseApplet):
             raise ValueError("key could not be resolved for store operation")
 
         tags = self._resolve_tags(message, config)
-        metadata: Dict[str, Any] = {
+        metadata: dict[str, Any] = {
             "timestamp": message.context.get("timestamp", time.time()),
             "run_id": message.context.get("run_id", message.metadata.get("run_id")),
             "flow_id": message.context.get("flow_id", message.metadata.get("flow_id")),
@@ -4590,7 +4581,7 @@ class MemoryNodeApplet(BaseApplet):
         query = self._resolve_query(message, config)
         results = await asyncio.to_thread(store.search, namespace, query, tags, config.top_k)
         if results:
-            response_content: Dict[str, Any] = {
+            response_content: dict[str, Any] = {
                 "memories": {item["key"]: item["data"] for item in results},
                 "status": "retrieved",
             }
@@ -4704,7 +4695,7 @@ class LLMProviderAdapter(ABC):
         """Run a streaming completion call."""
 
     @abstractmethod
-    def get_models(self) -> List[LLMModelInfoModel]:
+    def get_models(self) -> list[LLMModelInfoModel]:
         """List known models for this provider."""
 
     @abstractmethod
@@ -4731,7 +4722,7 @@ class OpenAIProviderAdapter(LLMProviderAdapter):
             return False, "OPENAI_API_KEY not set"
         return True, ""
 
-    def get_models(self) -> List[LLMModelInfoModel]:
+    def get_models(self) -> list[LLMModelInfoModel]:
         return [
             LLMModelInfoModel(id="gpt-4o", name="GPT-4o", provider=self.name, context_window=128000, supports_vision=True, max_output_tokens=16384),
             LLMModelInfoModel(id="gpt-4o-mini", name="GPT-4o Mini", provider=self.name, context_window=128000, supports_vision=True, max_output_tokens=16384),
@@ -4739,8 +4730,8 @@ class OpenAIProviderAdapter(LLMProviderAdapter):
             LLMModelInfoModel(id="o3-mini", name="o3-mini", provider=self.name, context_window=200000, max_output_tokens=100000),
         ]
 
-    def _build_payload(self, request: LLMRequestModel, stream: bool) -> Dict[str, Any]:
-        payload: Dict[str, Any] = {
+    def _build_payload(self, request: LLMRequestModel, stream: bool) -> dict[str, Any]:
+        payload: dict[str, Any] = {
             "model": request.model,
             "messages": [m.model_dump() for m in request.messages],
             "temperature": request.temperature,
@@ -4766,7 +4757,7 @@ class OpenAIProviderAdapter(LLMProviderAdapter):
         payload.update(request.extra)
         return payload
 
-    def _headers(self) -> Dict[str, str]:
+    def _headers(self) -> dict[str, str]:
         return {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
@@ -4852,13 +4843,13 @@ class CustomProviderAdapter(OpenAIProviderAdapter):
             return False, "base_url is required for custom provider"
         return True, ""
 
-    def _headers(self) -> Dict[str, str]:
+    def _headers(self) -> dict[str, str]:
         headers = {"Content-Type": "application/json", **self.config.headers}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
         return headers
 
-    def get_models(self) -> List[LLMModelInfoModel]:
+    def get_models(self) -> list[LLMModelInfoModel]:
         model_id = self.config.model or "custom-model"
         return [LLMModelInfoModel(id=model_id, name=model_id, provider=self.name)]
 
@@ -4878,14 +4869,14 @@ class AnthropicProviderAdapter(LLMProviderAdapter):
             return False, "ANTHROPIC_API_KEY not set"
         return True, ""
 
-    def get_models(self) -> List[LLMModelInfoModel]:
+    def get_models(self) -> list[LLMModelInfoModel]:
         return [
             LLMModelInfoModel(id="claude-sonnet-4-6", name="Claude Sonnet 4.6", provider=self.name, context_window=200000, supports_vision=True, max_output_tokens=16000),
             LLMModelInfoModel(id="claude-haiku-4-5-20251001", name="Claude Haiku 4.5", provider=self.name, context_window=200000, supports_vision=True, max_output_tokens=8192),
             LLMModelInfoModel(id="claude-opus-4-6", name="Claude Opus 4.6", provider=self.name, context_window=200000, supports_vision=True, max_output_tokens=32000),
         ]
 
-    def _headers(self) -> Dict[str, str]:
+    def _headers(self) -> dict[str, str]:
         return {
             "x-api-key": self.api_key or "",
             "anthropic-version": "2023-06-01",
@@ -4893,14 +4884,14 @@ class AnthropicProviderAdapter(LLMProviderAdapter):
             **self.config.headers,
         }
 
-    def _build_payload(self, request: LLMRequestModel, stream: bool) -> Dict[str, Any]:
+    def _build_payload(self, request: LLMRequestModel, stream: bool) -> dict[str, Any]:
         system_messages = [m.content for m in request.messages if m.role == "system"]
         normal_messages = [
             {"role": m.role, "content": m.content}
             for m in request.messages
             if m.role != "system"
         ]
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "model": request.model,
             "messages": normal_messages,
             "max_tokens": request.max_tokens,
@@ -4999,14 +4990,14 @@ class GoogleProviderAdapter(LLMProviderAdapter):
             return False, "GOOGLE_API_KEY not set"
         return True, ""
 
-    def get_models(self) -> List[LLMModelInfoModel]:
+    def get_models(self) -> list[LLMModelInfoModel]:
         return [
             LLMModelInfoModel(id="gemini-2.5-flash", name="Gemini 2.5 Flash", provider=self.name, context_window=1048576, supports_vision=True, max_output_tokens=65536),
             LLMModelInfoModel(id="gemini-2.5-pro", name="Gemini 2.5 Pro", provider=self.name, context_window=1048576, supports_vision=True, max_output_tokens=65536),
         ]
 
-    def _build_payload(self, request: LLMRequestModel) -> Dict[str, Any]:
-        contents: List[Dict[str, Any]] = []
+    def _build_payload(self, request: LLMRequestModel) -> dict[str, Any]:
+        contents: list[dict[str, Any]] = []
         system_messages = []
         for message in request.messages:
             if message.role == "system":
@@ -5015,7 +5006,7 @@ class GoogleProviderAdapter(LLMProviderAdapter):
             role = "model" if message.role == "assistant" else "user"
             contents.append({"role": role, "parts": [{"text": message.content}]})
 
-        generation_config: Dict[str, Any] = {
+        generation_config: dict[str, Any] = {
             "temperature": request.temperature,
             "topP": request.top_p,
             "maxOutputTokens": request.max_tokens,
@@ -5027,7 +5018,7 @@ class GoogleProviderAdapter(LLMProviderAdapter):
             if request.json_schema:
                 generation_config["responseSchema"] = request.json_schema
 
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "contents": contents or [{"role": "user", "parts": [{"text": ""}]}],
             "generationConfig": generation_config,
             **request.extra,
@@ -5115,15 +5106,15 @@ class OllamaProviderAdapter(LLMProviderAdapter):
             return False, "base_url is required for ollama"
         return True, ""
 
-    def get_models(self) -> List[LLMModelInfoModel]:
+    def get_models(self) -> list[LLMModelInfoModel]:
         return [
             LLMModelInfoModel(id="llama3.1", name="Llama 3.1", provider=self.name, context_window=131072, max_output_tokens=4096),
             LLMModelInfoModel(id="mistral", name="Mistral", provider=self.name, context_window=32768, max_output_tokens=4096),
             LLMModelInfoModel(id="codellama", name="Code Llama", provider=self.name, context_window=16384, max_output_tokens=4096),
         ]
 
-    def _build_payload(self, request: LLMRequestModel, stream: bool) -> Dict[str, Any]:
-        payload: Dict[str, Any] = {
+    def _build_payload(self, request: LLMRequestModel, stream: bool) -> dict[str, Any]:
+        payload: dict[str, Any] = {
             "model": request.model,
             "messages": [m.model_dump() for m in request.messages],
             "stream": stream,
@@ -5197,7 +5188,7 @@ class OllamaProviderAdapter(LLMProviderAdapter):
 class LLMProviderRegistry:
     """Runtime registry for provider adapters."""
 
-    _providers: Dict[str, Type[LLMProviderAdapter]] = {
+    _providers: dict[str, type[LLMProviderAdapter]] = {
         "openai": OpenAIProviderAdapter,
         "anthropic": AnthropicProviderAdapter,
         "google": GoogleProviderAdapter,
@@ -5214,8 +5205,8 @@ class LLMProviderRegistry:
         return provider_cls(config)
 
     @classmethod
-    def list_providers(cls) -> List[LLMProviderInfoModel]:
-        providers: List[LLMProviderInfoModel] = []
+    def list_providers(cls) -> list[LLMProviderInfoModel]:
+        providers: list[LLMProviderInfoModel] = []
         for name in SUPPORTED_LLM_PROVIDERS:
             provider_cls = cls._providers.get(name)
             if provider_cls is None:
@@ -5277,7 +5268,7 @@ class LLMNodeApplet(BaseApplet):
         output_context["llm_provider"] = response.provider
         output_context["llm_model"] = response.model
 
-        metadata: Dict[str, Any] = {
+        metadata: dict[str, Any] = {
             "applet": "llm",
             "provider": response.provider,
             "model": response.model,
@@ -5337,8 +5328,8 @@ class LLMNodeApplet(BaseApplet):
 
     async def _broadcast_stream(
         self,
-        node_id: Optional[str],
-        run_id: Optional[str],
+        node_id: str | None,
+        run_id: str | None,
         provider_name: str,
         model: str,
         chunk: str,
@@ -5402,7 +5393,7 @@ class LLMNodeApplet(BaseApplet):
         config: LLMNodeConfigModel,
         provider: LLMProviderAdapter,
     ) -> LLMRequestModel:
-        messages: List[LLMMessageModel] = []
+        messages: list[LLMMessageModel] = []
 
         raw_history = message.context.get("messages", [])
         if isinstance(raw_history, list):
@@ -5456,9 +5447,9 @@ def _parse_image_size(size: str) -> tuple[int, int]:
     return width, height
 
 
-def _extract_openai_style_images(payload: Dict[str, Any]) -> List[str]:
+def _extract_openai_style_images(payload: dict[str, Any]) -> list[str]:
     """Extract image payload values from OpenAI-compatible image responses."""
-    images: List[str] = []
+    images: list[str] = []
     for item in payload.get("data") or []:
         if not isinstance(item, dict):
             continue
@@ -5485,7 +5476,7 @@ class ImageProviderAdapter(ABC):
         """Generate one or more images from the request prompt."""
 
     @abstractmethod
-    def get_models(self) -> List[ImageModelInfoModel]:
+    def get_models(self) -> list[ImageModelInfoModel]:
         """List known models for this provider."""
 
     @abstractmethod
@@ -5512,7 +5503,7 @@ class OpenAIImageProviderAdapter(ImageProviderAdapter):
             return False, "OPENAI_API_KEY not set"
         return True, ""
 
-    def get_models(self) -> List[ImageModelInfoModel]:
+    def get_models(self) -> list[ImageModelInfoModel]:
         return [
             ImageModelInfoModel(
                 id="dall-e-3",
@@ -5524,19 +5515,19 @@ class OpenAIImageProviderAdapter(ImageProviderAdapter):
             ),
         ]
 
-    def _headers(self) -> Dict[str, str]:
+    def _headers(self) -> dict[str, str]:
         return {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
             **self.config.headers,
         }
 
-    def _build_payload(self, request: ImageGenRequestModel) -> Dict[str, Any]:
+    def _build_payload(self, request: ImageGenRequestModel) -> dict[str, Any]:
         prompt_text = request.prompt
         if request.style:
             prompt_text = f"{prompt_text}, {request.style} style"
 
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "model": request.model,
             "prompt": prompt_text,
             "n": 1 if request.model == "dall-e-3" else request.n,
@@ -5593,7 +5584,7 @@ class StabilityImageProviderAdapter(ImageProviderAdapter):
             return False, "STABILITY_API_KEY not set"
         return True, ""
 
-    def get_models(self) -> List[ImageModelInfoModel]:
+    def get_models(self) -> list[ImageModelInfoModel]:
         return [
             ImageModelInfoModel(
                 id="stable-diffusion-xl-1024-v1-0",
@@ -5613,7 +5604,7 @@ class StabilityImageProviderAdapter(ImageProviderAdapter):
             ),
         ]
 
-    def _headers(self) -> Dict[str, str]:
+    def _headers(self) -> dict[str, str]:
         return {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
@@ -5621,17 +5612,17 @@ class StabilityImageProviderAdapter(ImageProviderAdapter):
             **self.config.headers,
         }
 
-    def _build_payload(self, request: ImageGenRequestModel) -> Dict[str, Any]:
+    def _build_payload(self, request: ImageGenRequestModel) -> dict[str, Any]:
         width, height = _parse_image_size(request.size)
         prompt_text = request.prompt
         if request.style:
             prompt_text = f"{prompt_text}, {request.style} style"
 
-        text_prompts: List[Dict[str, Any]] = [{"text": prompt_text, "weight": 1.0}]
+        text_prompts: list[dict[str, Any]] = [{"text": prompt_text, "weight": 1.0}]
         if request.negative_prompt:
             text_prompts.append({"text": request.negative_prompt, "weight": -1.0})
 
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "text_prompts": text_prompts,
             "cfg_scale": float(request.extra.get("cfg_scale", 7)),
             "height": height,
@@ -5687,7 +5678,7 @@ class FluxImageProviderAdapter(ImageProviderAdapter):
             return False, "FLUX_API_KEY not set"
         return True, ""
 
-    def get_models(self) -> List[ImageModelInfoModel]:
+    def get_models(self) -> list[ImageModelInfoModel]:
         return [
             ImageModelInfoModel(
                 id="flux-1.1-pro",
@@ -5707,7 +5698,7 @@ class FluxImageProviderAdapter(ImageProviderAdapter):
             ),
         ]
 
-    def _headers(self) -> Dict[str, str]:
+    def _headers(self) -> dict[str, str]:
         headers = {"Content-Type": "application/json", **self.config.headers}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
@@ -5721,8 +5712,8 @@ class FluxImageProviderAdapter(ImageProviderAdapter):
             endpoint = f"/{endpoint}"
         return endpoint
 
-    def _build_payload(self, request: ImageGenRequestModel) -> Dict[str, Any]:
-        payload: Dict[str, Any] = {
+    def _build_payload(self, request: ImageGenRequestModel) -> dict[str, Any]:
+        payload: dict[str, Any] = {
             "model": request.model,
             "prompt": request.prompt,
             "size": request.size,
@@ -5772,7 +5763,7 @@ class FluxImageProviderAdapter(ImageProviderAdapter):
 class ImageProviderRegistry:
     """Runtime registry for image provider adapters."""
 
-    _providers: Dict[str, Type[ImageProviderAdapter]] = {
+    _providers: dict[str, type[ImageProviderAdapter]] = {
         "openai": OpenAIImageProviderAdapter,
         "stability": StabilityImageProviderAdapter,
         "flux": FluxImageProviderAdapter,
@@ -5787,8 +5778,8 @@ class ImageProviderRegistry:
         return provider_cls(config)
 
     @classmethod
-    def list_providers(cls) -> List[ImageProviderInfoModel]:
-        providers: List[ImageProviderInfoModel] = []
+    def list_providers(cls) -> list[ImageProviderInfoModel]:
+        providers: list[ImageProviderInfoModel] = []
         for name in SUPPORTED_IMAGE_PROVIDERS:
             provider_cls = cls._providers.get(name)
             if provider_cls is None:
@@ -5837,7 +5828,7 @@ class ImageGenNodeApplet(BaseApplet):
         output_context["image_provider"] = response.provider
         output_context["image_model"] = response.model
 
-        content: Dict[str, Any] = {
+        content: dict[str, Any] = {
             "image": first_image,
             "images": response.images,
             "prompt": request.prompt,
@@ -5964,7 +5955,7 @@ class HTTPRequestNodeApplet(BaseApplet):
             else None
         )
 
-        request_kwargs: Dict[str, Any] = {"headers": rendered_headers}
+        request_kwargs: dict[str, Any] = {"headers": rendered_headers}
         if rendered_query_params:
             request_kwargs["params"] = rendered_query_params
         if config.body_type != "none" and rendered_body is not None:
@@ -5996,13 +5987,13 @@ class HTTPRequestNodeApplet(BaseApplet):
             )
 
         parsed_data = self._parse_response_data(response)
-        response_headers: Dict[str, str] = (
+        response_headers: dict[str, str] = (
             {key: value for key, value in response.headers.items()}
             if config.include_response_headers
             else {}
         )
 
-        output_content: Dict[str, Any] = {
+        output_content: dict[str, Any] = {
             "status_code": response.status_code,
             "ok": response.is_success,
             "url": str(response.url),
@@ -6070,7 +6061,7 @@ class HTTPRequestNodeApplet(BaseApplet):
         }
         return HTTPRequestNodeConfigModel.model_validate(config_payload)
 
-    def _template_data(self, message: AppletMessage) -> Dict[str, Any]:
+    def _template_data(self, message: AppletMessage) -> dict[str, Any]:
         context = message.context if isinstance(message.context, dict) else {}
         results = context.get("results", {})
         if not isinstance(results, dict):
@@ -6084,10 +6075,10 @@ class HTTPRequestNodeApplet(BaseApplet):
             "node_id": message.metadata.get("node_id"),
         }
 
-    def _normalize_headers(self, raw_headers: Any) -> Dict[str, str]:
+    def _normalize_headers(self, raw_headers: Any) -> dict[str, str]:
         if not isinstance(raw_headers, dict):
             return {}
-        headers: Dict[str, str] = {}
+        headers: dict[str, str] = {}
         for key, value in raw_headers.items():
             if value is None:
                 continue
@@ -6100,10 +6091,10 @@ class HTTPRequestNodeApplet(BaseApplet):
                 headers[key_str] = str(value)
         return headers
 
-    def _normalize_query_params(self, raw_query_params: Any) -> Dict[str, Any]:
+    def _normalize_query_params(self, raw_query_params: Any) -> dict[str, Any]:
         if not isinstance(raw_query_params, dict):
             return {}
-        query_params: Dict[str, Any] = {}
+        query_params: dict[str, Any] = {}
         for key, value in raw_query_params.items():
             key_str = str(key).strip()
             if not key_str or value is None:
@@ -6111,7 +6102,7 @@ class HTTPRequestNodeApplet(BaseApplet):
             query_params[key_str] = value
         return query_params
 
-    def _default_body_template(self, message: AppletMessage, method: str) -> Optional[Any]:
+    def _default_body_template(self, message: AppletMessage, method: str) -> Any | None:
         if method not in {"POST", "PUT", "DELETE"}:
             return None
         if message.content is None:
@@ -6122,7 +6113,7 @@ class HTTPRequestNodeApplet(BaseApplet):
         self,
         body_type: str,
         body: Any,
-        request_kwargs: Dict[str, Any],
+        request_kwargs: dict[str, Any],
     ) -> None:
         if body_type == "json" or (body_type == "auto" and isinstance(body, (dict, list))):
             request_kwargs["json"] = body
@@ -6284,7 +6275,7 @@ class TransformNodeApplet(BaseApplet):
         }
         return TransformNodeConfigModel.model_validate(config_payload)
 
-    def _template_data(self, message: AppletMessage) -> Dict[str, Any]:
+    def _template_data(self, message: AppletMessage) -> dict[str, Any]:
         context = message.context if isinstance(message.context, dict) else {}
         results = context.get("results", {})
         if not isinstance(results, dict):
@@ -6303,7 +6294,7 @@ class TransformNodeApplet(BaseApplet):
         self,
         config: TransformNodeConfigModel,
         source_value: Any,
-        template_data: Dict[str, Any],
+        template_data: dict[str, Any],
     ) -> Any:
         if config.operation == "json_path":
             return self._transform_json_path(source_value, config.json_path)
@@ -6331,7 +6322,7 @@ class TransformNodeApplet(BaseApplet):
         self,
         template: str,
         source_value: Any,
-        template_data: Dict[str, Any],
+        template_data: dict[str, Any],
     ) -> Any:
         scope = {
             **template_data,
@@ -6380,7 +6371,7 @@ class TransformNodeApplet(BaseApplet):
                 maxsplit = config.split_maxsplit
                 parts = source_text.split(config.split_delimiter, maxsplit)
 
-        normalized: List[str] = []
+        normalized: list[str] = []
         for item in parts:
             value = item.strip() if config.strip_items else item
             if config.drop_empty and value == "":
@@ -6496,13 +6487,13 @@ class IfElseNodeApplet(BaseApplet):
         if not isinstance(node_data, dict):
             node_data = {}
 
-        context_config: Dict[str, Any] = {}
+        context_config: dict[str, Any] = {}
         for key in ("if_else_config", "ifelse_config", "condition_config", "if_config"):
             candidate = context.get(key)
             if isinstance(candidate, dict):
                 context_config = {**context_config, **candidate}
 
-        metadata_config: Dict[str, Any] = {}
+        metadata_config: dict[str, Any] = {}
         for key in ("if_else_config", "ifelse_config", "condition_config", "if_config"):
             candidate = message.metadata.get(key)
             if isinstance(candidate, dict):
@@ -6546,7 +6537,7 @@ class IfElseNodeApplet(BaseApplet):
         }
         return IfElseNodeConfigModel.model_validate(config_payload)
 
-    def _template_data(self, message: AppletMessage) -> Dict[str, Any]:
+    def _template_data(self, message: AppletMessage) -> dict[str, Any]:
         context = message.context if isinstance(message.context, dict) else {}
         results = context.get("results", {})
         if not isinstance(results, dict):
@@ -6566,7 +6557,7 @@ class IfElseNodeApplet(BaseApplet):
         config: IfElseNodeConfigModel,
         source_value: Any,
         expected_value: Any,
-    ) -> tuple[bool, Dict[str, Any]]:
+    ) -> tuple[bool, dict[str, Any]]:
         if config.operation == "contains":
             matched = self._evaluate_contains(
                 source_value=source_value,
@@ -6737,7 +6728,7 @@ class MergeNodeApplet(BaseApplet):
         }
         return MergeNodeConfigModel.model_validate(config_payload)
 
-    def _normalize_inputs(self, content: Any) -> List[Any]:
+    def _normalize_inputs(self, content: Any) -> list[Any]:
         if isinstance(content, dict):
             raw_inputs = content.get("inputs")
             if isinstance(raw_inputs, list):
@@ -6757,7 +6748,7 @@ class MergeNodeApplet(BaseApplet):
     def _merge_inputs(
         self,
         strategy: str,
-        inputs: List[Any],
+        inputs: list[Any],
         delimiter: str,
     ) -> Any:
         if strategy == "first_wins":
@@ -6855,7 +6846,7 @@ class CodeNodeApplet(BaseApplet):
         message: AppletMessage,
         config: CodeNodeConfigModel,
         code_text: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         sandbox_dir = tempfile.mkdtemp(prefix="synapps-code-", dir="/tmp")
         requested_workdir = _safe_tmp_dir(config.working_dir)
         if requested_workdir == "/tmp":
@@ -6912,7 +6903,7 @@ class CodeNodeApplet(BaseApplet):
         stderr_text = ""
         stdout_truncated = False
         stderr_truncated = False
-        return_code: Optional[int] = None
+        return_code: int | None = None
 
         try:
             process = await asyncio.create_subprocess_exec(
@@ -6948,7 +6939,7 @@ class CodeNodeApplet(BaseApplet):
 
             await asyncio.wait_for(process.wait(), timeout=config.timeout_seconds)
             return_code = process.returncode
-        except asyncio.TimeoutError:
+        except TimeoutError:
             timed_out = True
             process.kill()
             await process.wait()
@@ -7104,7 +7095,7 @@ class ForEachNodeApplet(BaseApplet):
         }
         return ForEachNodeConfigModel.model_validate(config_payload)
 
-    def _template_data(self, message: AppletMessage) -> Dict[str, Any]:
+    def _template_data(self, message: AppletMessage) -> dict[str, Any]:
         context = message.context if isinstance(message.context, dict) else {}
         results = context.get("results", {})
         if not isinstance(results, dict):
@@ -7120,7 +7111,7 @@ class ForEachNodeApplet(BaseApplet):
         }
 
     @staticmethod
-    def _coerce_to_list(value: Any) -> Optional[List[Any]]:
+    def _coerce_to_list(value: Any) -> list[Any] | None:
         if isinstance(value, list):
             return value
         if isinstance(value, str):
@@ -7146,7 +7137,7 @@ class ForEachNodeApplet(BaseApplet):
         index: int,
         message: AppletMessage,
         node_id: str,
-        run_id: Optional[str],
+        run_id: str | None,
     ) -> AppletMessage:
         iteration_context = {
             **message.context,
@@ -7172,8 +7163,8 @@ class ForEachNodeApplet(BaseApplet):
         index: int,
         message: AppletMessage,
         node_id: str,
-        run_id: Optional[str],
-    ) -> Dict[str, Any]:
+        run_id: str | None,
+    ) -> dict[str, Any]:
         iteration_msg = self._build_iteration_message(item, index, message, node_id, run_id)
 
         downstream_nodes = self._get_downstream_nodes(message)
@@ -7208,7 +7199,7 @@ class ForEachNodeApplet(BaseApplet):
 
         return {"index": index, "item": item, "output": current_output}
 
-    def _get_downstream_nodes(self, message: AppletMessage) -> List[Dict[str, Any]]:
+    def _get_downstream_nodes(self, message: AppletMessage) -> list[dict[str, Any]]:
         node_data = message.metadata.get("node_data", {})
         if not isinstance(node_data, dict):
             return []
@@ -7219,12 +7210,12 @@ class ForEachNodeApplet(BaseApplet):
 
     async def _run_sequential(
         self,
-        items: List[Any],
+        items: list[Any],
         message: AppletMessage,
         node_id: str,
-        run_id: Optional[str],
-    ) -> List[Dict[str, Any]]:
-        results: List[Dict[str, Any]] = []
+        run_id: str | None,
+    ) -> list[dict[str, Any]]:
+        results: list[dict[str, Any]] = []
         for index, item in enumerate(items):
             result = await self._execute_single_iteration(
                 item, index, message, node_id, run_id
@@ -7234,15 +7225,15 @@ class ForEachNodeApplet(BaseApplet):
 
     async def _run_parallel(
         self,
-        items: List[Any],
+        items: list[Any],
         message: AppletMessage,
         config: ForEachNodeConfigModel,
         node_id: str,
-        run_id: Optional[str],
-    ) -> List[Dict[str, Any]]:
+        run_id: str | None,
+    ) -> list[dict[str, Any]]:
         semaphore = asyncio.Semaphore(config.concurrency_limit)
 
-        async def _guarded(item: Any, index: int) -> Dict[str, Any]:
+        async def _guarded(item: Any, index: int) -> dict[str, Any]:
             async with semaphore:
                 return await self._execute_single_iteration(
                     item, index, message, node_id, run_id
@@ -7370,9 +7361,9 @@ class Orchestrator:
         return str(uuid.uuid4())
 
     @staticmethod
-    def _collect_outgoing_targets(outgoing_edges: List[Dict[str, Any]]) -> List[str]:
+    def _collect_outgoing_targets(outgoing_edges: list[dict[str, Any]]) -> list[str]:
         """Collect unique target ids from outgoing edges while preserving order."""
-        targets: List[str] = []
+        targets: list[str] = []
         for edge in outgoing_edges:
             target = edge.get("target")
             if isinstance(target, str) and target and target not in targets:
@@ -7380,7 +7371,7 @@ class Orchestrator:
         return targets
 
     @staticmethod
-    def _branch_from_hint(hint: Any) -> Optional[str]:
+    def _branch_from_hint(hint: Any) -> str | None:
         """Infer a branch from an arbitrary string hint."""
         if hint is None:
             return None
@@ -7404,7 +7395,7 @@ class Orchestrator:
         return None
 
     @staticmethod
-    def _extract_if_else_branch(response: Optional[AppletMessage]) -> str:
+    def _extract_if_else_branch(response: AppletMessage | None) -> str:
         """Resolve true/false routing branch from an if/else applet response."""
         if response is None:
             return "false"
@@ -7438,7 +7429,7 @@ class Orchestrator:
         return "false"
 
     @staticmethod
-    def _branch_target_from_node_data(node: Dict[str, Any], branch: str) -> Optional[str]:
+    def _branch_target_from_node_data(node: dict[str, Any], branch: str) -> str | None:
         """Read explicit branch target ids from if/else node data."""
         node_data = node.get("data", {})
         if not isinstance(node_data, dict):
@@ -7456,9 +7447,9 @@ class Orchestrator:
         return None
 
     @staticmethod
-    def _infer_edge_branch(edge: Dict[str, Any]) -> Optional[str]:
+    def _infer_edge_branch(edge: dict[str, Any]) -> str | None:
         """Infer true/false branch from edge metadata."""
-        candidates: List[Any] = [
+        candidates: list[Any] = [
             edge.get("branch"),
             edge.get("label"),
             edge.get("sourceHandle"),
@@ -7489,10 +7480,10 @@ class Orchestrator:
 
     @staticmethod
     def _resolve_next_targets(
-        node: Dict[str, Any],
-        outgoing_edges: List[Dict[str, Any]],
-        response: Optional[AppletMessage] = None,
-    ) -> List[str]:
+        node: dict[str, Any],
+        outgoing_edges: list[dict[str, Any]],
+        response: AppletMessage | None = None,
+    ) -> list[str]:
         """Resolve outgoing targets, applying conditional routing for if/else nodes."""
         default_targets = Orchestrator._collect_outgoing_targets(outgoing_edges)
         node_type = str(node.get("type", "")).strip().lower()
@@ -7507,7 +7498,7 @@ class Orchestrator:
         if explicit_target and explicit_target in default_targets:
             return [explicit_target]
 
-        branch_targets: List[str] = []
+        branch_targets: list[str] = []
         for index, edge in enumerate(outgoing_edges):
             inferred_branch = Orchestrator._infer_edge_branch(edge)
             if inferred_branch is None:
@@ -7534,9 +7525,9 @@ class Orchestrator:
 
     @staticmethod
     def _mark_animated_edges(
-        flow_edges: List[Dict[str, Any]],
+        flow_edges: list[dict[str, Any]],
         source_node_id: str,
-        selected_targets: List[str],
+        selected_targets: list[str],
     ) -> None:
         """Mark selected edges as animated for runtime visualization."""
         if not selected_targets:
@@ -7549,7 +7540,7 @@ class Orchestrator:
                 edge["animated"] = True
 
     @staticmethod
-    def migrate_legacy_writer_nodes(flow: Dict[str, Any]) -> tuple[Dict[str, Any], bool]:
+    def migrate_legacy_writer_nodes(flow: dict[str, Any]) -> tuple[dict[str, Any], bool]:
         """Convert legacy writer nodes into LLM nodes with OpenAI GPT-4o defaults."""
         if not isinstance(flow, dict):
             return flow, False
@@ -7559,7 +7550,7 @@ class Orchestrator:
             return flow, False
 
         migrated = False
-        migrated_nodes: List[Any] = []
+        migrated_nodes: list[Any] = []
 
         for node in nodes:
             if not isinstance(node, dict):
@@ -7599,7 +7590,7 @@ class Orchestrator:
         return migrated_flow, True
 
     @staticmethod
-    def _resolve_legacy_artist_defaults(generator: Any) -> Dict[str, str]:
+    def _resolve_legacy_artist_defaults(generator: Any) -> dict[str, str]:
         """Map legacy artist generator values to image-provider defaults."""
         if isinstance(generator, str):
             value = generator.strip().lower()
@@ -7610,7 +7601,7 @@ class Orchestrator:
         return {"provider": "stability", "model": "stable-diffusion-xl-1024-v1-0"}
 
     @staticmethod
-    def migrate_legacy_artist_nodes(flow: Dict[str, Any]) -> tuple[Dict[str, Any], bool]:
+    def migrate_legacy_artist_nodes(flow: dict[str, Any]) -> tuple[dict[str, Any], bool]:
         """Convert legacy artist nodes into image nodes with provider presets."""
         if not isinstance(flow, dict):
             return flow, False
@@ -7620,7 +7611,7 @@ class Orchestrator:
             return flow, False
 
         migrated = False
-        migrated_nodes: List[Any] = []
+        migrated_nodes: list[Any] = []
 
         for node in nodes:
             if not isinstance(node, dict):
@@ -7674,7 +7665,7 @@ class Orchestrator:
         return LEGACY_MEMORY_BACKEND_ALIASES.get(normalized, "sqlite_fts")
 
     @staticmethod
-    def migrate_legacy_memory_nodes(flow: Dict[str, Any]) -> tuple[Dict[str, Any], bool]:
+    def migrate_legacy_memory_nodes(flow: dict[str, Any]) -> tuple[dict[str, Any], bool]:
         """Convert legacy memory applet nodes into memory nodes with persistent defaults."""
         if not isinstance(flow, dict):
             return flow, False
@@ -7684,7 +7675,7 @@ class Orchestrator:
             return flow, False
 
         migrated = False
-        migrated_nodes: List[Any] = []
+        migrated_nodes: list[Any] = []
 
         for node in nodes:
             if not isinstance(node, dict):
@@ -7767,7 +7758,7 @@ class Orchestrator:
         return migrated_flow, True
 
     @staticmethod
-    def migrate_legacy_nodes(flow: Dict[str, Any]) -> tuple[Dict[str, Any], bool]:
+    def migrate_legacy_nodes(flow: dict[str, Any]) -> tuple[dict[str, Any], bool]:
         """Apply all known legacy node migrations."""
         writer_migrated_flow, writer_migrated = Orchestrator.migrate_legacy_writer_nodes(flow)
         artist_migrated_flow, artist_migrated = Orchestrator.migrate_legacy_artist_nodes(writer_migrated_flow)
@@ -7776,9 +7767,9 @@ class Orchestrator:
 
     @staticmethod
     async def auto_migrate_legacy_nodes(
-        flow: Optional[Dict[str, Any]],
+        flow: dict[str, Any] | None,
         persist: bool = False,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Apply known legacy node migrations and optionally persist migrated flow."""
         if not flow:
             return flow
@@ -7795,34 +7786,34 @@ class Orchestrator:
 
     @staticmethod
     async def auto_migrate_legacy_writer_nodes(
-        flow: Optional[Dict[str, Any]],
+        flow: dict[str, Any] | None,
         persist: bool = False,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Backward-compatible alias for legacy migration helper."""
         return await Orchestrator.auto_migrate_legacy_nodes(flow, persist=persist)
 
     @staticmethod
     def _topological_layers(
-        nodes_by_id: Dict[str, Dict[str, Any]],
-        edges_by_source: Dict[str, List[Dict[str, Any]]],
-        incoming_sources_by_target: Dict[str, List[str]],
-    ) -> List[List[str]]:
+        nodes_by_id: dict[str, dict[str, Any]],
+        edges_by_source: dict[str, list[dict[str, Any]]],
+        incoming_sources_by_target: dict[str, list[str]],
+    ) -> list[list[str]]:
         """Compute topological layers (Kahn's algorithm).
 
         Returns a list of layers, where each layer contains node IDs that
         have no unresolved dependencies and can execute in parallel.
         """
-        in_degree: Dict[str, int] = {nid: 0 for nid in nodes_by_id}
+        in_degree: dict[str, int] = {nid: 0 for nid in nodes_by_id}
         for target_id, sources in incoming_sources_by_target.items():
             if target_id in in_degree:
                 in_degree[target_id] = len(sources)
 
         queue = [nid for nid, deg in in_degree.items() if deg == 0]
-        layers: List[List[str]] = []
+        layers: list[list[str]] = []
 
         while queue:
             layers.append(list(queue))
-            next_queue: List[str] = []
+            next_queue: list[str] = []
             for nid in queue:
                 for edge in edges_by_source.get(nid, []):
                     target = edge.get("target")
@@ -7842,16 +7833,16 @@ class Orchestrator:
 
     @staticmethod
     def _detect_parallel_groups(
-        layer: List[str],
-        nodes_by_id: Dict[str, Dict[str, Any]],
-    ) -> List[List[str]]:
+        layer: list[str],
+        nodes_by_id: dict[str, dict[str, Any]],
+    ) -> list[list[str]]:
         """Split a topological layer into parallel-safe groups.
 
         Merge nodes and nodes with order dependencies are isolated;
         all other independent nodes are grouped together for parallel execution.
         """
-        parallel_group: List[str] = []
-        sequential: List[List[str]] = []
+        parallel_group: list[str] = []
+        sequential: list[list[str]] = []
 
         for nid in layer:
             node = nodes_by_id.get(nid)
@@ -7864,14 +7855,14 @@ class Orchestrator:
             else:
                 parallel_group.append(nid)
 
-        groups: List[List[str]] = []
+        groups: list[list[str]] = []
         if parallel_group:
             groups.append(parallel_group)
         groups.extend(sequential)
         return groups
 
     @staticmethod
-    async def execute_flow(flow: dict, input_data: Dict[str, Any]) -> str:
+    async def execute_flow(flow: dict, input_data: dict[str, Any]) -> str:
         """Execute a flow and return the run ID."""
         run_id = Orchestrator.create_run_id()
         start_time = time.time()
@@ -7920,7 +7911,7 @@ class Orchestrator:
     async def _execute_flow_async(
         run_id: str,
         flow: dict,
-        input_data: Dict[str, Any],
+        input_data: dict[str, Any],
         workflow_run_repo: WorkflowRunRepository,
         broadcast_status_fn,
     ):
@@ -7933,8 +7924,8 @@ class Orchestrator:
         ``asyncio.gather`` with a configurable semaphore.
         """
         status = None
-        memory_completed_applets: List[str] = []
-        context: Dict[str, Any] = {}
+        memory_completed_applets: list[str] = []
+        context: dict[str, Any] = {}
         execution_trace = _new_execution_trace(run_id, flow.get("id"), input_data, time.time())
 
         def _ensure_trace_in_context_results() -> None:
@@ -7949,7 +7940,7 @@ class Orchestrator:
             if isinstance(errors, list):
                 errors.append(_trace_value(payload))
 
-        async def _fail(error_msg: str, error_details: Optional[Dict[str, Any]] = None) -> None:
+        async def _fail(error_msg: str, error_details: dict[str, Any] | None = None) -> None:
             nonlocal status
             end_time = time.time()
             if error_details:
@@ -8000,14 +7991,14 @@ class Orchestrator:
             flow_nodes = flow.get("nodes", [])
             flow_edges = flow.get("edges", [])
 
-            nodes_by_id: Dict[str, Dict[str, Any]] = {
+            nodes_by_id: dict[str, dict[str, Any]] = {
                 node["id"]: node
                 for node in flow_nodes
                 if isinstance(node, dict) and isinstance(node.get("id"), str)
             }
 
-            edges_by_source: Dict[str, List[Dict[str, Any]]] = {}
-            incoming_sources_by_target: Dict[str, List[str]] = {}
+            edges_by_source: dict[str, list[dict[str, Any]]] = {}
+            incoming_sources_by_target: dict[str, list[str]] = {}
             for edge in flow_edges:
                 if not isinstance(edge, dict):
                     continue
@@ -8043,8 +8034,8 @@ class Orchestrator:
                 "results": {TRACE_RESULTS_KEY: execution_trace},
                 "run_id": run_id,
             }
-            merge_inputs_by_node: Dict[str, List[Any]] = {}
-            merge_input_sources_by_node: Dict[str, List[str]] = {}
+            merge_inputs_by_node: dict[str, list[Any]] = {}
+            merge_input_sources_by_node: dict[str, list[str]] = {}
             _ensure_trace_in_context_results()
 
             if status and isinstance(status, dict):
@@ -8066,12 +8057,12 @@ class Orchestrator:
             engine_semaphore = asyncio.Semaphore(flow_concurrency)
 
             visited: set = set()
-            failed_node_id: Optional[str] = None
+            failed_node_id: str | None = None
 
             # ----------------------------------------------------------------
             # _execute_single_node — extracted for reuse in parallel dispatch
             # ----------------------------------------------------------------
-            async def _execute_single_node(node_id: str) -> Optional[List[str]]:
+            async def _execute_single_node(node_id: str) -> list[str] | None:
                 """Execute one node and return its downstream target IDs.
 
                 Returns ``None`` on fatal (non-fallback) error to signal abort.
@@ -8084,7 +8075,7 @@ class Orchestrator:
                 node_type = str(node.get("type", "")).strip().lower()
                 outgoing_edges = edges_by_source.get(node_id, [])
                 node_started_at = time.time()
-                node_trace: Dict[str, Any] = {
+                node_trace: dict[str, Any] = {
                     "node_id": node_id,
                     "node_type": node.get("type"),
                     "status": "running",
@@ -8187,9 +8178,9 @@ class Orchestrator:
                 fallback_node_id_cfg = node_data.get("fallback_node_id")
 
                 attempts = 0
-                last_error: Optional[NodeError] = None
+                last_error: NodeError | None = None
                 success = False
-                response: Optional[AppletMessage] = None
+                response: AppletMessage | None = None
                 message_content_for_trace: Any = None
 
                 while attempts <= max_retries:
@@ -8217,7 +8208,7 @@ class Orchestrator:
                         if message_content_for_trace is None:
                             message_content_for_trace = _trace_value(message_content)
 
-                        message_metadata: Dict[str, Any] = {
+                        message_metadata: dict[str, Any] = {
                             "node_id": node_id,
                             "run_id": run_id,
                         }
@@ -8289,7 +8280,7 @@ class Orchestrator:
                         success = True
                         break
 
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         last_error = NodeError(
                             NodeErrorCode.TIMEOUT,
                             f"Node execution timed out after {timeout_seconds}s",
@@ -8440,11 +8431,11 @@ class Orchestrator:
             current_nodes = list(start_nodes)
 
             while current_nodes:
-                next_nodes: List[str] = []
+                next_nodes: list[str] = []
 
                 # Partition into ready and deferred (merge nodes still waiting)
-                ready: List[str] = []
-                deferred: List[str] = []
+                ready: list[str] = []
+                deferred: list[str] = []
                 for nid in current_nodes:
                     if nid in visited:
                         continue
@@ -8680,7 +8671,7 @@ async def logout(body: AuthRefreshRequestStrict):
 
 
 @v1.get("/auth/me", response_model=UserProfileModel, tags=["Auth"])
-async def auth_me(current_user: Dict[str, Any] = Depends(get_authenticated_user)):
+async def auth_me(current_user: dict[str, Any] = Depends(get_authenticated_user)):
     """Return the authenticated user's profile."""
     return UserProfileModel(
         id=current_user["id"],
@@ -8693,7 +8684,7 @@ async def auth_me(current_user: Dict[str, Any] = Depends(get_authenticated_user)
 @v1.post("/auth/api-keys", response_model=APIKeyCreateResponseModel, status_code=201, tags=["Auth"])
 async def create_api_key(
     body: APIKeyCreateRequestStrict,
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """Create an API key for X-API-Key header authentication."""
     plain_key = f"{API_KEY_VALUE_PREFIX}_{secrets.token_urlsafe(32)}"
@@ -8727,7 +8718,7 @@ async def create_api_key(
 async def list_api_keys(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """List active API keys for the authenticated user."""
     async with get_db_session() as session:
@@ -8755,7 +8746,7 @@ async def list_api_keys(
 @v1.delete("/auth/api-keys/{api_key_id}", tags=["Auth"])
 async def revoke_api_key(
     api_key_id: str,
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """Revoke a user API key."""
     async with get_db_session() as session:
@@ -8778,7 +8769,7 @@ async def revoke_api_key(
 async def list_applets(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """List all registered applets with their metadata (paginated)."""
     result = []
@@ -8811,7 +8802,7 @@ async def list_applets(
 async def list_llm_providers(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """List supported LLM providers and model catalogs."""
     providers = [provider.model_dump() for provider in LLMProviderRegistry.list_providers()]
@@ -8822,7 +8813,7 @@ async def list_llm_providers(
 async def list_image_providers(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """List supported image generation providers and model catalogs."""
     providers = [provider.model_dump() for provider in ImageProviderRegistry.list_providers()]
@@ -8845,7 +8836,7 @@ for _pname in SynappsProviderRegistry.list_global():
 
 @v1.get("/providers", tags=["Providers"])
 async def list_discovered_providers(
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """List all auto-discovered LLM providers with capabilities and status."""
     providers = _synapps_registry.all_providers_info()
@@ -8859,7 +8850,7 @@ async def list_discovered_providers(
 @v1.get("/providers/{name}/health", tags=["Providers"])
 async def provider_health_check(
     name: str,
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """Run a health check on a specific discovered provider."""
     try:
@@ -8876,7 +8867,7 @@ async def provider_health_check(
 
 @v1.get("/connectors/health", tags=["Health"])
 async def connectors_health(
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """Run health probes on all connectors and return per-connector status.
 
@@ -8914,7 +8905,7 @@ async def connectors_health(
 @v1.post("/connectors/{connector_name}/probe", tags=["Health"])
 async def probe_single_connector(
     connector_name: str,
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """Probe a single connector and return its health state."""
     probe_result = await probe_connector(connector_name)
@@ -8942,13 +8933,13 @@ KNOWN_NODE_TYPES = frozenset({
 })
 
 
-def validate_template(data: Dict[str, Any]) -> Dict[str, Any]:
+def validate_template(data: dict[str, Any]) -> dict[str, Any]:
     """Validate a template/flow definition and return a structured report.
 
     Returns ``{"valid": True/False, "errors": [...], "warnings": [...], "summary": {...}}``.
     """
-    errors: List[str] = []
-    warnings: List[str] = []
+    errors: list[str] = []
+    warnings: list[str] = []
 
     # --- Required top-level fields ---
     if not isinstance(data.get("name"), str) or not data["name"].strip():
@@ -9007,7 +8998,7 @@ def validate_template(data: Dict[str, Any]) -> Dict[str, Any]:
 
     # --- Edge validation ---
     edge_ids: set[str] = set()
-    adjacency: Dict[str, List[str]] = {nid: [] for nid in node_ids}
+    adjacency: dict[str, list[str]] = {nid: [] for nid in node_ids}
     for i, edge in enumerate(edges):
         if not isinstance(edge, dict):
             errors.append(f"edges[{i}]: must be an object")
@@ -9036,8 +9027,8 @@ def validate_template(data: Dict[str, Any]) -> Dict[str, Any]:
 
     # --- Circular dependency detection (DFS) ---
     WHITE, GRAY, BLACK = 0, 1, 2
-    color: Dict[str, int] = {nid: WHITE for nid in node_ids}
-    cycle_path: List[str] = []
+    color: dict[str, int] = {nid: WHITE for nid in node_ids}
+    cycle_path: list[str] = []
 
     def _dfs(node: str) -> bool:
         color[node] = GRAY
@@ -9078,15 +9069,15 @@ def validate_template(data: Dict[str, Any]) -> Dict[str, Any]:
 class ValidateTemplateRequest(BaseModel):
     """Request body for template validation."""
     model_config = ConfigDict(extra="allow")
-    name: Optional[str] = None
-    nodes: Optional[List[Dict[str, Any]]] = None
-    edges: Optional[List[Dict[str, Any]]] = None
+    name: str | None = None
+    nodes: list[dict[str, Any]] | None = None
+    edges: list[dict[str, Any]] | None = None
 
 
 @v1.post("/templates/validate", tags=["Dashboard"])
 async def validate_template_endpoint(
     payload: ValidateTemplateRequest,
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """Dry-run validation of a template/flow definition without execution."""
     data = payload.model_dump()
@@ -9101,8 +9092,8 @@ async def validate_template_endpoint(
 class RegisterWebhookRequest(StrictRequestModel):
     """Request body for webhook registration."""
     url: str = Field(..., min_length=1, description="Delivery URL")
-    events: List[str] = Field(..., min_length=1, description="Event names to subscribe to")
-    secret: Optional[str] = Field(None, description="HMAC-SHA256 signing secret")
+    events: list[str] = Field(..., min_length=1, description="Event names to subscribe to")
+    secret: str | None = Field(None, description="HMAC-SHA256 signing secret")
 
     @field_validator("events")
     @classmethod
@@ -9116,7 +9107,7 @@ class RegisterWebhookRequest(StrictRequestModel):
 @v1.post("/webhooks", status_code=201, tags=["Dashboard"])
 async def register_webhook(
     payload: RegisterWebhookRequest,
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """Register a new webhook for event delivery."""
     hook = webhook_registry.register(
@@ -9129,7 +9120,7 @@ async def register_webhook(
 
 @v1.get("/webhooks", tags=["Dashboard"])
 async def list_webhooks(
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """List all registered webhooks (secrets are not returned)."""
     hooks = webhook_registry.list_hooks()
@@ -9139,7 +9130,7 @@ async def list_webhooks(
 @v1.delete("/webhooks/{hook_id}", tags=["Dashboard"])
 async def delete_webhook(
     hook_id: str,
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """Delete a webhook by ID."""
     if not webhook_registry.delete(hook_id):
@@ -9157,7 +9148,7 @@ TEMPLATE_EXPORT_VERSION = "1.0.0"
 _SEMVER_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
 
 
-def _parse_semver(v: str) -> Optional[tuple]:
+def _parse_semver(v: str) -> tuple | None:
     """Parse a semver string into (major, minor, patch) or None."""
     m = _SEMVER_RE.match(v)
     return (int(m.group(1)), int(m.group(2)), int(m.group(3))) if m else None
@@ -9182,9 +9173,9 @@ class TemplateRegistry:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         # template_id -> list of version dicts (index 0 = v1, index 1 = v2, …)
-        self._templates: Dict[str, List[Dict[str, Any]]] = {}
+        self._templates: dict[str, list[dict[str, Any]]] = {}
 
-    def _next_semver(self, versions: List[Dict[str, Any]], explicit: Optional[str]) -> str:
+    def _next_semver(self, versions: list[dict[str, Any]], explicit: str | None) -> str:
         """Determine the semver for the next version."""
         if explicit:
             parsed = _parse_semver(explicit)
@@ -9199,7 +9190,7 @@ class TemplateRegistry:
             return "1.0.0"
         return _bump_patch(versions[-1].get("semver", "1.0.0"))
 
-    def import_template(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def import_template(self, data: dict[str, Any]) -> dict[str, Any]:
         """Import a template, creating a new version if the ID already exists."""
         template_id = data.get("id") or str(uuid.uuid4())
         name = data.get("name", "Unnamed Template")
@@ -9223,7 +9214,7 @@ class TemplateRegistry:
             versions.append(entry)
         return entry
 
-    def get(self, template_id: str, version: Optional[int] = None) -> Optional[Dict[str, Any]]:
+    def get(self, template_id: str, version: int | None = None) -> dict[str, Any] | None:
         """Get a template. Returns latest version unless a specific version is given."""
         with self._lock:
             versions = self._templates.get(template_id)
@@ -9236,8 +9227,8 @@ class TemplateRegistry:
             return dict(versions[-1])
 
     def get_by_semver(
-        self, template_id: str, semver: Optional[str] = None
-    ) -> Optional[Dict[str, Any]]:
+        self, template_id: str, semver: str | None = None
+    ) -> dict[str, Any] | None:
         """Get a template by semver string. Returns latest if semver is None."""
         with self._lock:
             versions = self._templates.get(template_id)
@@ -9250,7 +9241,7 @@ class TemplateRegistry:
                     return dict(v)
             return None
 
-    def rollback(self, template_id: str, target_semver: str) -> Optional[Dict[str, Any]]:
+    def rollback(self, template_id: str, target_semver: str) -> dict[str, Any] | None:
         """Rollback to a previous semver by creating a new version from that snapshot."""
         with self._lock:
             versions = self._templates.get(template_id)
@@ -9283,7 +9274,7 @@ class TemplateRegistry:
             versions.append(entry)
         return entry
 
-    def list_templates(self) -> List[Dict[str, Any]]:
+    def list_templates(self) -> list[dict[str, Any]]:
         """List all templates (latest version of each)."""
         with self._lock:
             result = []
@@ -9294,7 +9285,7 @@ class TemplateRegistry:
                     result.append(latest)
             return sorted(result, key=lambda t: t.get("imported_at", 0), reverse=True)
 
-    def list_versions(self, template_id: str) -> List[Dict[str, Any]]:
+    def list_versions(self, template_id: str) -> list[dict[str, Any]]:
         """List all versions of a template."""
         with self._lock:
             versions = self._templates.get(template_id)
@@ -9317,18 +9308,18 @@ template_registry = TemplateRegistry()
 class TemplateImportRequest(BaseModel):
     """Request body for importing a template."""
     model_config = ConfigDict(extra="allow")
-    id: Optional[str] = Field(None, description="Template ID. Auto-generated if omitted.")
+    id: str | None = Field(None, description="Template ID. Auto-generated if omitted.")
     name: str = Field(..., min_length=1, max_length=200)
-    version: Optional[Any] = Field(
+    version: Any | None = Field(
         None,
         description="Semver version string (e.g. '1.2.0'). Auto-incremented patch if omitted. "
         "Integer values from legacy exports are accepted but ignored.",
     )
-    description: Optional[str] = Field("", max_length=1000)
-    tags: Optional[List[str]] = Field(default_factory=list)
-    nodes: List[Dict[str, Any]] = Field(default_factory=list)
-    edges: List[Dict[str, Any]] = Field(default_factory=list)
-    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    description: str | None = Field("", max_length=1000)
+    tags: list[str] | None = Field(default_factory=list)
+    nodes: list[dict[str, Any]] = Field(default_factory=list)
+    edges: list[dict[str, Any]] = Field(default_factory=list)
+    metadata: dict[str, Any] | None = Field(default_factory=dict)
 
     @field_validator("version")
     @classmethod
@@ -9345,7 +9336,7 @@ class TemplateImportRequest(BaseModel):
 @v1.post("/templates/import", status_code=201, tags=["Templates"])
 async def import_template(
     body: TemplateImportRequest,
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """Import a template from JSON. Creates a new version if the ID already exists."""
     data = body.model_dump()
@@ -9359,8 +9350,8 @@ async def import_template(
 @v1.get("/templates/{template_id}/export", tags=["Templates"])
 async def export_template(
     template_id: str,
-    version: Optional[int] = Query(None, ge=1, description="Version number. Latest if omitted."),
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    version: int | None = Query(None, ge=1, description="Version number. Latest if omitted."),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """Export a template as portable JSON with metadata.
 
@@ -9403,7 +9394,7 @@ async def export_template(
 @v1.get("/templates/{template_id}/versions", tags=["Templates"])
 async def list_template_versions(
     template_id: str,
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """List all versions of a template."""
     versions = template_registry.list_versions(template_id)
@@ -9414,11 +9405,11 @@ async def list_template_versions(
 
 @v1.get("/templates", tags=["Templates"])
 async def list_templates(
-    category: Optional[str] = Query(
+    category: str | None = Query(
         None,
         description="Filter by category: notification, data-sync, monitoring, content, devops",
     ),
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """List all imported templates (latest version of each), optionally filtered by category."""
     templates = template_registry.list_templates()
@@ -9435,12 +9426,12 @@ async def list_templates(
 @v1.get("/templates/{template_id}/by-semver", tags=["Templates"])
 async def get_template_by_semver(
     template_id: str,
-    version: Optional[str] = Query(
+    version: str | None = Query(
         None,
         description="Semver version (e.g. '1.0.0'). Returns latest if omitted.",
         pattern=r"^\d+\.\d+\.\d+$",
     ),
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """Fetch a specific template version by semver string.
 
@@ -9480,7 +9471,7 @@ async def rollback_template(
         description="Semver version to rollback to (e.g. '1.0.0').",
         pattern=r"^\d+\.\d+\.\d+$",
     ),
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """Rollback a template to a previous semver version.
 
@@ -9516,7 +9507,7 @@ class PublishTemplateRequest(StrictRequestModel):
     description: str = Field("", max_length=2000, description="Template description")
     category: str = Field(..., description="One of: notification, data-sync, monitoring, content, devops")
     author: str = Field("anonymous", min_length=1, max_length=100, description="Template author")
-    version: Optional[str] = Field(
+    version: str | None = Field(
         None,
         description="Semver version string (e.g. '1.0.0'). Auto-generated if omitted.",
     )
@@ -9533,10 +9524,10 @@ class PublishTemplateRequest(StrictRequestModel):
 
 class InstantiateTemplateRequest(StrictRequestModel):
     """Request body for instantiating a flow from a template."""
-    flow_name: Optional[str] = Field(
+    flow_name: str | None = Field(
         None, max_length=200, description="Name for the new flow. Defaults to template name."
     )
-    connector_overrides: Dict[str, Any] = Field(
+    connector_overrides: dict[str, Any] = Field(
         default_factory=dict,
         description="Map of node IDs to connector config overrides.",
     )
@@ -9545,7 +9536,7 @@ class InstantiateTemplateRequest(StrictRequestModel):
 @v1.post("/templates", status_code=201, tags=["Templates"])
 async def publish_template(
     body: PublishTemplateRequest,
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """Publish an existing flow as a marketplace template.
 
@@ -9582,7 +9573,7 @@ async def publish_template(
 async def instantiate_template(
     template_id: str,
     body: InstantiateTemplateRequest,
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """Create a new flow from a marketplace template.
 
@@ -9597,7 +9588,7 @@ async def instantiate_template(
         )
 
     # Re-map node IDs
-    id_map: Dict[str, str] = {}
+    id_map: dict[str, str] = {}
     new_nodes = []
     for node in template.get("nodes", []):
         old_id = node.get("id", str(uuid.uuid4()))
@@ -9648,7 +9639,7 @@ async def instantiate_template(
 # Async Task Queue endpoints
 # ---------------------------------------------------------------------------
 
-def _load_yaml_template(template_id: str) -> Optional[Dict[str, Any]]:
+def _load_yaml_template(template_id: str) -> dict[str, Any] | None:
     """Load a YAML template by its ID (filename stem or 'id' field)."""
     import yaml
 
@@ -9670,7 +9661,7 @@ def _load_yaml_template(template_id: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-async def _run_task_background(task_id: str, template_data: Dict[str, Any], input_data: Dict[str, Any]) -> None:
+async def _run_task_background(task_id: str, template_data: dict[str, Any], input_data: dict[str, Any]) -> None:
     """Background coroutine that runs a template and updates task state."""
     task_queue.update(task_id, status="running", started_at=time.time(), progress_pct=10)
     try:
@@ -9726,14 +9717,14 @@ async def _run_task_background(task_id: str, template_data: Dict[str, Any], inpu
 class RunAsyncRequest(BaseModel):
     """Request body for async template execution."""
     model_config = ConfigDict(extra="forbid")
-    input: Dict[str, Any] = Field(default_factory=dict, description="Input data for the workflow")
+    input: dict[str, Any] = Field(default_factory=dict, description="Input data for the workflow")
 
 
 @v1.post("/templates/{template_id}/run-async", status_code=202, tags=["Runs"])
 async def run_template_async(
     template_id: str,
     body: RunAsyncRequest,
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """Run a YAML template asynchronously. Returns a task ID for polling."""
     template_data = _load_yaml_template(template_id)
@@ -9748,7 +9739,7 @@ async def run_template_async(
 @v1.get("/tasks/{task_id}", tags=["Runs"])
 async def get_task(
     task_id: str,
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """Get the status and result of an async task."""
     task = task_queue.get(task_id)
@@ -9759,8 +9750,8 @@ async def get_task(
 
 @v1.get("/tasks", tags=["Runs"])
 async def list_tasks(
-    status: Optional[str] = Query(None, description="Filter by status: pending, running, completed, failed"),
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    status: str | None = Query(None, description="Filter by status: pending, running, completed, failed"),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """List all async tasks, optionally filtered by status."""
     if status and status not in TASK_STATUSES:
@@ -9778,8 +9769,8 @@ class AdminKeyCreateRequest(BaseModel):
     """Request body for creating an admin API key."""
     model_config = ConfigDict(extra="forbid")
     name: str = Field(..., min_length=1, max_length=128, description="Key name/label")
-    scopes: Optional[List[str]] = Field(None, description="Scopes: read, write, admin")
-    rate_limit: Optional[int] = Field(
+    scopes: list[str] | None = Field(None, description="Scopes: read, write, admin")
+    rate_limit: int | None = Field(
         None,
         ge=1,
         le=10000,
@@ -9836,12 +9827,12 @@ async def delete_admin_key(
 class ManagedKeyCreateRequest(StrictRequestModel):
     """Request body for creating a managed API key."""
     name: str = Field(..., min_length=1, max_length=128)
-    scopes: Optional[List[str]] = Field(None, description="Scopes: read, write, admin")
-    expires_in: Optional[int] = Field(
+    scopes: list[str] | None = Field(None, description="Scopes: read, write, admin")
+    expires_in: int | None = Field(
         None, ge=60, le=31536000,
         description="Seconds until expiry (min 60s, max 1 year). Omit for no expiry.",
     )
-    rate_limit: Optional[int] = Field(
+    rate_limit: int | None = Field(
         None, ge=1, le=10000,
         description="Custom rate limit (requests/min).",
     )
@@ -9946,7 +9937,7 @@ async def delete_managed_key(
 @v1.post("/flows", status_code=201, tags=["Flows"])
 async def create_flow(
     flow: CreateFlowRequest,
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """Create or update a flow with strict validation."""
     flow_id = flow.id if flow.id else str(uuid.uuid4())
@@ -9964,11 +9955,11 @@ async def create_flow(
 async def list_flows(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """List all flows with pagination."""
     flows = await FlowRepository.get_all()
-    migrated_flows: List[Dict[str, Any]] = []
+    migrated_flows: list[dict[str, Any]] = []
     for flow in flows:
         migrated_flow = await Orchestrator.auto_migrate_legacy_nodes(flow, persist=True)
         if isinstance(migrated_flow, dict):
@@ -9979,7 +9970,7 @@ async def list_flows(
 @v1.get("/flows/{flow_id}", tags=["Flows"])
 async def get_flow(
     flow_id: str,
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """Get a flow by ID."""
     flow = await FlowRepository.get_by_id(flow_id)
@@ -9992,7 +9983,7 @@ async def get_flow(
 @v1.delete("/flows/{flow_id}", tags=["Flows"])
 async def delete_flow(
     flow_id: str,
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """Delete a flow."""
     flow = await FlowRepository.get_by_id(flow_id)
@@ -10005,7 +9996,7 @@ async def delete_flow(
 @v1.get("/flows/{flow_id}/export", tags=["Flows"])
 async def export_flow(
     flow_id: str,
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """Export a flow as a downloadable JSON file."""
     flow = await FlowRepository.get_by_id(flow_id)
@@ -10049,22 +10040,22 @@ class ImportFlowRequest(BaseModel):
     """Request body for importing a flow."""
     model_config = ConfigDict(strict=False)
 
-    synapps_version: Optional[str] = None
+    synapps_version: str | None = None
     name: str = Field(..., min_length=1, max_length=200)
-    nodes: List[Dict[str, Any]] = Field(default_factory=list)
-    edges: List[Dict[str, Any]] = Field(default_factory=list)
+    nodes: list[dict[str, Any]] = Field(default_factory=list)
+    edges: list[dict[str, Any]] = Field(default_factory=list)
 
 
 @v1.post("/flows/import", status_code=201, tags=["Flows"])
 async def import_flow(
     body: ImportFlowRequest,
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """Import a flow from a JSON export. Assigns a new ID to avoid collisions."""
     new_id = str(uuid.uuid4())
 
     # Re-map node and edge IDs to avoid collisions with existing flows
-    id_map: Dict[str, str] = {}
+    id_map: dict[str, str] = {}
     new_nodes = []
     for node in body.nodes:
         old_id = node.get("id", str(uuid.uuid4()))
@@ -10098,8 +10089,8 @@ async def import_flow(
 async def _run_flow_impl(
     flow_id: str,
     body: RunFlowRequest,
-    current_user: Optional[Dict[str, Any]] = None,
-) -> Dict[str, str]:
+    current_user: dict[str, Any] | None = None,
+) -> dict[str, str]:
     """Execute a flow and return a run identifier."""
     flow = await FlowRepository.get_by_id(flow_id)
     if not flow:
@@ -10113,7 +10104,7 @@ async def _run_flow_impl(
 async def create_flow_run(
     flow_id: str,
     body: RunFlowRequest,
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """RESTful run creation endpoint for a flow."""
     return await _run_flow_impl(flow_id, body, current_user)
@@ -10123,7 +10114,7 @@ async def create_flow_run(
 async def run_flow_legacy(
     flow_id: str,
     body: RunFlowRequest,
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """Backward-compatible alias for flow execution."""
     return await _run_flow_impl(flow_id, body, current_user)
@@ -10133,7 +10124,7 @@ async def run_flow_legacy(
 async def list_runs(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """List all workflow runs with pagination."""
     runs = await WorkflowRunRepository.get_all()
@@ -10143,7 +10134,7 @@ async def list_runs(
 @v1.get("/runs/{run_id}", tags=["Runs"])
 async def get_run(
     run_id: str,
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """Get a workflow run by ID."""
     run = await WorkflowRunRepository.get_by_run_id(run_id)
@@ -10155,7 +10146,7 @@ async def get_run(
 @v1.get("/runs/{run_id}/trace", tags=["Runs"])
 async def get_run_trace(
     run_id: str,
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """Return normalized full execution trace for a workflow run."""
     run = await WorkflowRunRepository.get_by_run_id(run_id)
@@ -10168,7 +10159,7 @@ async def get_run_trace(
 async def get_run_diff(
     run_id: str,
     other_run_id: str = Query(..., min_length=1, description="Run ID to compare against"),
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """Return structural execution diff between two workflow runs."""
     if run_id == other_run_id:
@@ -10191,7 +10182,7 @@ async def get_run_diff(
 async def rerun_workflow(
     run_id: str,
     body: RerunFlowRequest,
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """Re-run a previous workflow execution using original or overridden input."""
     source_run = await WorkflowRunRepository.get_by_run_id(run_id)
@@ -10218,7 +10209,7 @@ async def rerun_workflow(
 
     override_input = body.input if isinstance(body.input, dict) else {}
     if body.merge_with_original_input:
-        rerun_input: Dict[str, Any] = dict(source_input)
+        rerun_input: dict[str, Any] = dict(source_input)
         rerun_input.update(override_input)
     else:
         rerun_input = dict(override_input)
@@ -10239,7 +10230,7 @@ async def rerun_workflow(
 @v1.post("/ai/suggest", tags=["Applets"])
 async def ai_suggest(
     body: AISuggestRequest,
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """Generate code suggestions using AI."""
     raise HTTPException(
@@ -10255,7 +10246,7 @@ async def ai_suggest(
 HISTORY_VALID_STATUSES = frozenset({"idle", "running", "success", "error"})
 
 
-async def _build_history_entry(run: Dict[str, Any]) -> Dict[str, Any]:
+async def _build_history_entry(run: dict[str, Any]) -> dict[str, Any]:
     """Build a history entry from a run dict, enriched with flow name."""
     flow_id = run.get("flow_id")
     flow_name = None
@@ -10305,11 +10296,11 @@ async def _build_history_entry(run: Dict[str, Any]) -> Dict[str, Any]:
 async def list_execution_history(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
-    status: Optional[str] = Query(None, description="Filter by status: idle, running, success, error"),
-    template: Optional[str] = Query(None, description="Filter by flow/template name (substring match)"),
-    start_after: Optional[float] = Query(None, description="Filter runs started after this Unix timestamp"),
-    start_before: Optional[float] = Query(None, description="Filter runs started before this Unix timestamp"),
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    status: str | None = Query(None, description="Filter by status: idle, running, success, error"),
+    template: str | None = Query(None, description="Filter by flow/template name (substring match)"),
+    start_after: float | None = Query(None, description="Filter runs started after this Unix timestamp"),
+    start_before: float | None = Query(None, description="Filter runs started before this Unix timestamp"),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """List past workflow executions with filtering by status, date range, and template name."""
     if status and status not in HISTORY_VALID_STATUSES:
@@ -10364,7 +10355,7 @@ async def list_execution_history(
 @v1.get("/history/{run_id}", tags=["History"])
 async def get_execution_detail(
     run_id: str,
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """Get full execution detail for a past run, including step-by-step trace."""
     run = await WorkflowRunRepository.get_by_run_id(run_id)
@@ -10391,12 +10382,12 @@ async def health_v1():
 # Portfolio Dashboard
 # ============================================================
 
-def _discover_yaml_templates() -> List[Dict[str, Any]]:
+def _discover_yaml_templates() -> list[dict[str, Any]]:
     """Scan templates/ for YAML workflow definitions."""
     import yaml
 
     templates_dir = project_root / "templates"
-    results: List[Dict[str, Any]] = []
+    results: list[dict[str, Any]] = []
     if not templates_dir.is_dir():
         return results
     for path in sorted(templates_dir.glob("*.yaml")):
@@ -10420,7 +10411,7 @@ def _discover_yaml_templates() -> List[Dict[str, Any]]:
     return results
 
 
-async def _get_last_run_for_flow_name(flow_name: str) -> Optional[Dict[str, Any]]:
+async def _get_last_run_for_flow_name(flow_name: str) -> dict[str, Any] | None:
     """Find the most recent run whose flow matches *flow_name*."""
     flows = await FlowRepository.get_all()
     matching_flow_ids = [f["id"] for f in flows if f.get("name") == flow_name]
@@ -10443,7 +10434,7 @@ async def _get_last_run_for_flow_name(flow_name: str) -> Optional[Dict[str, Any]
 
 @v1.get("/dashboard/portfolio", tags=["Dashboard"])
 async def portfolio_dashboard(
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """Portfolio dogfood dashboard — template statuses, provider registry, health."""
 
@@ -10498,7 +10489,7 @@ async def portfolio_dashboard(
 
 @v1.get("/health/detailed", tags=["Health"])
 async def health_detailed(
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """Detailed health check with database, providers, and last template run."""
     uptime_seconds = max(0, int(time.time() - APP_START_TIME))
@@ -10543,7 +10534,7 @@ async def health_detailed(
 
 @v1.get("/metrics", tags=["Health"])
 async def get_metrics(
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """In-memory request metrics: counts, error rate, response time, provider usage."""
     return metrics.snapshot()
@@ -10551,7 +10542,7 @@ async def get_metrics(
 
 @v1.get("/config", tags=["Health"])
 async def get_config(
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """Return current server configuration with secrets redacted."""
     config = app_config.to_dict(redact_secrets=True)
@@ -10575,10 +10566,10 @@ class _FailedRequestSummary(BaseModel):
     client_ip: str = "unknown"
 
 
-@v1.get("/requests/failed", tags=["Debug"], response_model=List[_FailedRequestSummary])
+@v1.get("/requests/failed", tags=["Debug"], response_model=list[_FailedRequestSummary])
 async def list_failed_requests(
     limit: int = Query(50, ge=1, le=500),
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """List recent failed requests with timestamp, upstream, status code, and error."""
     entries = failed_request_store.list_recent(limit=limit)
@@ -10599,7 +10590,7 @@ async def list_failed_requests(
 @v1.post("/requests/{request_id}/replay", tags=["Debug"])
 async def replay_request(
     request_id: str,
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """Re-send the original failed request internally.
 
@@ -10654,7 +10645,7 @@ async def replay_request(
 @v1.get("/requests/{request_id}/debug", tags=["Debug"])
 async def debug_request(
     request_id: str,
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """Return the full request chain for a failed request.
 
@@ -10692,7 +10683,7 @@ async def debug_request(
 
 @v1.get("/usage", tags=["Usage"])
 async def list_usage(
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """Per-API-key usage breakdown (requests today/week/month, bandwidth, error rate)."""
     return usage_tracker.all_usage()
@@ -10701,7 +10692,7 @@ async def list_usage(
 @v1.get("/usage/{key_id:path}", tags=["Usage"])
 async def get_key_usage(
     key_id: str,
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """Detailed usage for a specific consumer (by endpoint, by hour)."""
     rec = usage_tracker.get_usage(key_id)
@@ -10726,14 +10717,14 @@ async def get_key_usage(
 
 @v1.get("/quotas", tags=["Usage"])
 async def list_quotas(
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """Show all keys with current usage vs quota, percentage consumed."""
     return usage_tracker.all_quotas()
 
 
 class _SetQuotaRequest(BaseModel):
-    monthly_limit: Optional[int] = Field(
+    monthly_limit: int | None = Field(
         None, ge=1, le=10_000_000,
         description="Monthly request limit. null = unlimited.",
     )
@@ -10743,7 +10734,7 @@ class _SetQuotaRequest(BaseModel):
 async def set_quota(
     key_id: str,
     body: _SetQuotaRequest,
-    current_user: Dict[str, Any] = Depends(get_authenticated_user),
+    current_user: dict[str, Any] = Depends(get_authenticated_user),
 ):
     """Set or clear the monthly request quota for a consumer key."""
     usage_tracker.set_quota(key_id, body.monthly_limit)
@@ -10813,7 +10804,7 @@ app.include_router(v2)
 # ============================================================
 
 
-def _health_payload() -> Dict[str, Any]:
+def _health_payload() -> dict[str, Any]:
     uptime_seconds = max(0, int(time.time() - APP_START_TIME))
     active_connectors = sum(
         1 for p in LLMProviderRegistry.list_providers() if p.configured
@@ -10861,7 +10852,7 @@ async def health_root():
 # ============================================================
 
 
-async def _ws_authenticate(websocket: WebSocket) -> Optional[Dict[str, Any]]:
+async def _ws_authenticate(websocket: WebSocket) -> dict[str, Any] | None:
     """Authenticate a WebSocket connection via JWT, API key, or legacy WS token.
 
     The client must send an ``auth`` message within ``WS_AUTH_TIMEOUT_SECONDS``.
@@ -10881,7 +10872,7 @@ async def _ws_authenticate(websocket: WebSocket) -> Optional[Dict[str, Any]]:
                 user = await _ws_try_credentials(msg)
                 if user:
                     return user
-        except (asyncio.TimeoutError, json.JSONDecodeError, Exception):
+        except (TimeoutError, json.JSONDecodeError, Exception):
             # Intentional: anonymous bootstrap allows connections without auth.
             # Timeout (no message sent), malformed JSON, or any transport error
             # all fall through to the anonymous user below — silence is correct.
@@ -10897,7 +10888,7 @@ async def _ws_authenticate(websocket: WebSocket) -> Optional[Dict[str, Any]]:
         raw = await asyncio.wait_for(
             websocket.receive_text(), timeout=float(WS_AUTH_TIMEOUT_SECONDS)
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         await websocket.send_json(_ws_message("error", {
             "code": "AUTH_TIMEOUT",
             "message": f"Send auth message within {WS_AUTH_TIMEOUT_SECONDS}s",
@@ -10942,7 +10933,7 @@ async def _ws_authenticate(websocket: WebSocket) -> Optional[Dict[str, Any]]:
     return user
 
 
-async def _ws_try_credentials(msg: dict) -> Optional[Dict[str, Any]]:
+async def _ws_try_credentials(msg: dict) -> dict[str, Any] | None:
     """Try to authenticate from an auth message payload."""
     token = msg.get("token", "")
     if token:
@@ -10987,7 +10978,7 @@ async def websocket_endpoint(websocket: WebSocket):
     # If last_seq is explicitly provided (including "0"), replay logic will use it.
     requested_session_id = websocket.query_params.get("session_id")
     last_seq_raw = websocket.query_params.get("last_seq")
-    last_seq: Optional[int] = None
+    last_seq: int | None = None
     if last_seq_raw is not None:
         try:
             last_seq = int(last_seq_raw)

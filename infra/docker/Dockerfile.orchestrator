@@ -7,7 +7,7 @@
 # =============================================================================
 
 # ---------- Stage 1: Builder ----------
-FROM python:3.11-slim AS builder
+FROM python:3.13-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
@@ -25,7 +25,7 @@ RUN pip install --prefix=/install --no-warn-script-location \
     -r /build/requirements.txt
 
 # ---------- Stage 2: Runtime ----------
-FROM python:3.11-slim AS runtime
+FROM python:3.13-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1

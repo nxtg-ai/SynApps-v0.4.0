@@ -1,12 +1,10 @@
 import pytest
 import asyncio
 import pytest_asyncio
-from fastapi import FastAPI, WebSocket
 from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock, AsyncMock
-import json
 
-from apps.orchestrator.main import app, broadcast_status, connected_clients, ws_manager, Orchestrator, FlowRepository, init_db
+from apps.orchestrator.main import app, broadcast_status, connected_clients, ws_manager, Orchestrator, init_db
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -199,7 +197,6 @@ async def test_execute_flow_with_artist_config():
     }
 
     # Mock ArtistApplet.on_message
-    from apps.applets.artist.applet import ArtistApplet
     mock_response = MagicMock()
     mock_response.content = "Image URL"
     mock_response.context = {}
