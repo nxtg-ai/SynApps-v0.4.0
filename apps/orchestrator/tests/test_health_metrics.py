@@ -5,6 +5,8 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
+_TERMINAL_STATUSES = {"success", "error", "failed"}
+
 from apps.orchestrator.main import app, metrics
 
 
@@ -122,6 +124,18 @@ def test_metrics_template_runs_after_flow_execution(client):
 
     run = client.post(f"/api/v1/flows/{flow_id}/runs", json={"input": {"x": 1}})
     assert run.status_code == 202
+    run_id = run.json()["run_id"]
+
+    # Wait for the background task to reach a terminal state before checking
+    # metrics. execute_flow() fires asyncio.create_task() and returns immediately;
+    # without this poll the TestClient teardown closes the DB while the task is
+    # still writing its final status update, causing a SQLAlchemy teardown ERROR.
+    deadline = time.time() + 5.0
+    while time.time() < deadline:
+        status_resp = client.get(f"/api/v1/history/{run_id}")
+        if status_resp.status_code == 200 and status_resp.json().get("status") in _TERMINAL_STATUSES:
+            break
+        time.sleep(0.05)
 
     data = client.get("/api/v1/metrics").json()
     assert "Test Metrics Flow" in data["template_runs"]
