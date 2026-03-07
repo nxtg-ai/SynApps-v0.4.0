@@ -615,7 +615,7 @@ Cycle 18 flagged this directly to CoS — no response yet. Repeating the signal:
 
 > Last updated: 2026-03-07 (Wolf) — cycles 23+
 
-**Extended idle.** No directives received across 8+ consecutive cycles. Nothing shipped. 1360 passed. Zero debt. This entry will not be updated further until a directive arrives or state changes.
+**Extended idle — updated 2026-03-07.** DIRECTIVE-NXTG-20260307-02 executed: converted 4 `(str, Enum)` classes to `StrEnum` in `main.py` (`a3d6ba2`). Ruff clean. 1360 passed. Zero debt. No further directives pending. Standing by.
 
 ---
 
