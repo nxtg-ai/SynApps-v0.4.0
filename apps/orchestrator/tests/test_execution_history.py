@@ -1,10 +1,11 @@
 """Tests for workflow execution history + audit trail endpoints."""
 
 import time
+
 import pytest
 from fastapi.testclient import TestClient
 
-from apps.orchestrator.main import app, HISTORY_VALID_STATUSES
+from apps.orchestrator.main import HISTORY_VALID_STATUSES, app
 from apps.orchestrator.repositories import FlowRepository, WorkflowRunRepository
 
 
@@ -263,7 +264,7 @@ def test_history_detail_not_found(client):
 async def test_history_detail_error_run(client):
     """GET /history/{run_id} for a failed run includes error info."""
     flow = await _create_flow("Error Flow")
-    run = await WorkflowRunRepository.save({
+    await WorkflowRunRepository.save({
         "run_id": "err-run-123",
         "flow_id": flow["id"],
         "status": "error",

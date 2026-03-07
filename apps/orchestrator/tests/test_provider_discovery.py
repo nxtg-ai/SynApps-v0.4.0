@@ -1,9 +1,9 @@
 """Tests for provider auto-discovery + /providers endpoints."""
 
 import pathlib
+
 import pytest
 from fastapi.testclient import TestClient
-
 from synapps.providers.llm import (
     BaseLLMProvider,
     LLMResponse,
@@ -11,7 +11,6 @@ from synapps.providers.llm import (
     ProviderNotFoundError,
     ProviderRegistry,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -138,8 +137,9 @@ def test_provider_health_ok(registry):
 
 def test_provider_health_unavailable(registry):
     """provider_health returns 'unavailable' when provider fails validation."""
-    from synapps.providers.llm.openai_provider import OpenAIProvider
     import os
+
+    from synapps.providers.llm.openai_provider import OpenAIProvider
     old = os.environ.pop("OPENAI_API_KEY", None)
     try:
         registry.register(OpenAIProvider)

@@ -13,19 +13,19 @@ import pytest
 
 from apps.orchestrator.main import (
     AppletMessage,
-    TransformNodeApplet,
-    IfElseNodeApplet,
-    MergeNodeApplet,
+    CodeNodeApplet,
     ForEachNodeApplet,
     HTTPRequestNodeApplet,
-    CodeNodeApplet,
+    IfElseNodeApplet,
     MemoryNodeApplet,
-    SQLiteFTSMemoryStoreBackend,
     MemoryStoreFactory,
-    _as_text,
+    MergeNodeApplet,
+    SQLiteFTSMemoryStoreBackend,
+    TransformNodeApplet,
     _as_serialized_text,
-    _normalize_memory_tags,
+    _as_text,
     _fts_terms,
+    _normalize_memory_tags,
     _parse_json_or_default,
 )
 
@@ -1236,7 +1236,7 @@ class TestMemoryNodeApplet:
                 context={"memory_tags": ["from_context"]},
                 metadata={"node_data": {"operation": "store", "tags": ["from_config"]}},
             )
-            result = await applet.on_message(msg)
+            await applet.on_message(msg)
         # The store was called, verify tags were merged
         call_args = mock_store.upsert.call_args
         metadata_passed = call_args[0][4]  # 5th positional arg = metadata

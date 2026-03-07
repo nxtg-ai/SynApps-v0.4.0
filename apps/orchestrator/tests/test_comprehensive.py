@@ -14,52 +14,52 @@ from unittest.mock import AsyncMock, patch
 import pytest
 import pytest_asyncio
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
-from apps.orchestrator.db import init_db, close_db_connections
+from apps.orchestrator.db import close_db_connections, init_db
 from apps.orchestrator.main import (
+    JWT_ALGORITHM,
+    JWT_SECRET_KEY,
+    TRACE_RESULTS_KEY,
+    AISuggestRequest,
+    AppletMessage,
+    AppletStatus,
+    BaseApplet,
+    CreateFlowRequest,
+    FlowEdgeRequest,
+    FlowNodeRequest,
+    NodeError,
+    NodeErrorCode,
+    Orchestrator,
+    RerunFlowRequest,
+    RunFlowRequest,
     _build_json_diff,
     _build_run_diff,
+    _decode_token,
+    _decrypt_api_key,
+    _encrypt_api_key,
     _error_response,
+    _extract_sandbox_result,
     _extract_trace_from_run,
     _finalize_execution_trace,
     _flatten_for_diff,
+    _hash_password,
     _new_execution_trace,
     _node_result_index,
     _parse_json_path,
+    _read_stream_limited,
+    _render_template_payload,
     _render_template_string,
     _resolve_json_path,
     _resolve_template_path,
-    _trace_value,
-    _hash_password,
-    _verify_password,
-    _encrypt_api_key,
-    _decrypt_api_key,
-    _decode_token,
-    _ws_message,
     _safe_tmp_dir,
-    _extract_sandbox_result,
-    _read_stream_limited,
-    _render_template_payload,
-    paginate,
+    _trace_value,
+    _verify_password,
+    _ws_message,
     app,
-    AppletMessage,
-    BaseApplet,
-    Orchestrator,
-    FlowNodeRequest,
-    FlowEdgeRequest,
-    CreateFlowRequest,
-    RunFlowRequest,
-    RerunFlowRequest,
-    AISuggestRequest,
-    AppletStatus,
-    NodeErrorCode,
-    NodeError,
-    TRACE_RESULTS_KEY,
-    JWT_SECRET_KEY,
-    JWT_ALGORITHM,
+    paginate,
 )
 from apps.orchestrator.repositories import FlowRepository, WorkflowRunRepository
-
 
 # ============================================================
 # Fixtures
@@ -735,7 +735,7 @@ class TestRequestModels:
         assert node.id == "n1"
 
     def test_flow_node_request_missing_position_keys(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             FlowNodeRequest(id="n1", type="writer", position={"z": 10.0})
 
     def test_flow_edge_request_default_animated(self):
@@ -743,7 +743,7 @@ class TestRequestModels:
         assert edge.animated is False
 
     def test_create_flow_request_blank_name(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             CreateFlowRequest(name="   ")
 
     def test_create_flow_request_blank_id_becomes_none(self):
@@ -764,7 +764,7 @@ class TestRequestModels:
         assert req.merge_with_original_input is True
 
     def test_ai_suggest_request_min_length(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             AISuggestRequest(prompt="")
 
 

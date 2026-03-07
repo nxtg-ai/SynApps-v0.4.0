@@ -4,7 +4,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from apps.orchestrator.main import (
-    app, template_registry, _load_yaml_template, MARKETPLACE_CATEGORIES,
+    MARKETPLACE_CATEGORIES,
+    _load_yaml_template,
+    app,
+    template_registry,
 )
 
 

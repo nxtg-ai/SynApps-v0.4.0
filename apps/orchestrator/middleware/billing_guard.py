@@ -7,6 +7,7 @@ for the freemium model.
 import os
 import time
 from collections.abc import Callable
+
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -121,7 +122,7 @@ class BillingGuard(BaseHTTPMiddleware):
         body = await request.json()
         
         # Get the flow ID from the request
-        flow_id = request.path_params.get("flow_id")
+        _flow_id = request.path_params.get("flow_id")
         
         # This is a placeholder for actual implementation
         # In a real scenario, we would fetch the flow and count its applets

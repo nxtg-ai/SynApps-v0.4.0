@@ -1,20 +1,46 @@
 """
 Tests for the SynApps Orchestrator models.
 """
-import pytest
 import time
+
+import pytest
+from pydantic import ValidationError
+
 from apps.orchestrator.models import (
-    CodeNodeConfigModel, LLMNodeConfigModel, LLMMessageModel, LLMRequestModel,
-    LLMResponseModel, LLMModelInfoModel, LLMProviderInfoModel,
-    ImageGenNodeConfigModel, ImageGenRequestModel, ImageGenResponseModel,
-    ImageModelInfoModel, ImageProviderInfoModel, MemoryNodeConfigModel,
-    MemorySearchResultModel, HTTPRequestNodeConfigModel, TransformNodeConfigModel,
-    IfElseNodeConfigModel, MergeNodeConfigModel, ForEachNodeConfigModel,
-    WorkflowRunStatusModel, AuthRegisterRequestModel, AuthLoginRequestModel,
     APIKeyCreateRequestModel,
-    FlowModel, FlowNodeModel, FlowEdgeModel,
-    Flow, FlowNode, FlowEdge, User, UserAPIKey, WorkflowRun
+    AuthLoginRequestModel,
+    AuthRegisterRequestModel,
+    CodeNodeConfigModel,
+    Flow,
+    FlowEdge,
+    FlowEdgeModel,
+    FlowModel,
+    FlowNode,
+    FlowNodeModel,
+    ForEachNodeConfigModel,
+    HTTPRequestNodeConfigModel,
+    IfElseNodeConfigModel,
+    ImageGenNodeConfigModel,
+    ImageGenRequestModel,
+    ImageGenResponseModel,
+    ImageModelInfoModel,
+    ImageProviderInfoModel,
+    LLMMessageModel,
+    LLMModelInfoModel,
+    LLMNodeConfigModel,
+    LLMProviderInfoModel,
+    LLMRequestModel,
+    LLMResponseModel,
+    MemoryNodeConfigModel,
+    MemorySearchResultModel,
+    MergeNodeConfigModel,
+    TransformNodeConfigModel,
+    User,
+    UserAPIKey,
+    WorkflowRun,
+    WorkflowRunStatusModel,
 )
+
 
 # Helper for ORM models (since we don't have a live DB session in unit tests)
 class MockORM:
@@ -53,7 +79,7 @@ def test_workflow_run_status_model_dump_results_default():
 
 def test_workflow_run_status_model_rejects_none_results():
     """Test WorkflowRunStatusModel rejects None for results field."""
-    with pytest.raises(Exception):  # Pydantic ValidationError
+    with pytest.raises(ValidationError):
         WorkflowRunStatusModel(
             run_id="test_run_id",
             flow_id="test_flow_id",
@@ -358,7 +384,7 @@ def test_http_request_node_config_model_url_validation():
     with pytest.raises(ValueError, match="url cannot be blank"):
         HTTPRequestNodeConfigModel(url="  ")
 
-    with pytest.raises(Exception):  # min_length=1 or custom validator
+    with pytest.raises(ValidationError):
         HTTPRequestNodeConfigModel(url="")
 
 def test_http_request_node_config_model_method_validation():

@@ -347,62 +347,50 @@ After that: no known technical debt. 1,469 tests, CI green, CRUCIBLE compliant, 
 
 ---
 
-Fixed the intermittent `test_pipeline_with_empty_summary` failure. `Orchestrator.execute_flow()` fires `asyncio.create_task(_execute_flow_async(...))` and returns immediately. The `db` fixture was calling `close_db_connections()` while that task was still writing final status updates, causing `"Cannot operate on a closed database"` on certain test orderings.
+> Last updated: 2026-03-06 (Wolf) — cycle 14
 
-Fix: after `yield`, the `db` fixture now gathers all non-current pending tasks with a 2-second timeout. Tasks that finish naturally are awaited; any still-running after 2s are cancelled and awaited cleanly. 9/9 content engine tests pass with no teardown errors.
+### 1. What did you ship since last check-in?
 
-Tests: **1,360 backend + 109 frontend = 1,469 total**. No regressions.
+**CI ruff enforcement + 30 violation cleanup — full config enforcement now live.**
+
+- Changed `ci.yml` backend-lint from `ruff check . --select E9,F63,F7,F82` → `ruff check .` (no override). `pyproject.toml` now governs CI fully.
+- Fixed 30 pre-existing violations exposed by the switch: 8× B904 (`raise ... from err` exception chaining in `main.py`), 7× B017 (blind `pytest.raises(Exception)` → `RuntimeError`/`ValidationError` with `match=`), 2× E701 (compound statement split), 2× B007 (`for i` → `for _`), 10× F841 (unused locals), 1× E741 (ambiguous `l`).
+- Added `B008`, `E402`, `E501` to ruff ignore list (intentional FastAPI patterns / monolith pre-existing lines).
+- Tests: **1,359 backend passed**, 1 deselected (pre-existing teardown skip). Zero regressions.
 
 ---
 
 ### 2. What surprised me?
 
-**"Intermittent" was causal, not random.** The failure appeared random because it depended on test ordering. But once the mechanism was visible — `create_task` fires a background coroutine, fixture teardown closes the DB before that coroutine finishes — the cause was deterministic. The `empty_summary` variant is more likely to lose the race because its mocked LLM returns `""` immediately, so the code path is faster and teardown catches up with the still-running task more often.
+**`pytest` shebang ≠ `python3` on this machine.** `/home/axw/.local/bin/pytest` uses `#!/usr/bin/python3` (Python 3.10.12), but `python3` resolves to Python 3.13.9 (miniconda). The ruff UP fixes introduced `datetime.UTC` (Python 3.11+), which breaks collection under the system `pytest` binary. Fix: always use `python3 -m pytest` on this host, not bare `pytest`. CI is fine (uses `python -m pytest` equivalent inside the venv).
 
-**`asyncio.all_tasks()` with a timeout is the right teardown primitive.** Rather than holding a reference to the specific background task (which would require threading it through the fixture chain), `asyncio.all_tasks() - {current_task}` captures anything spawned during the test body. The 2-second timeout bounds the wait while giving real tasks time to finish naturally. In practice the gather completes in milliseconds — by the time the poll loop exits with `status == "success"`, the background task is at most one DB write behind.
+**B017 match patterns require knowing the actual exception message.** Initially added `match="No image generated"` for `_call_stability_api`, but the exception actually comes from `ImageGenNodeApplet` three call-frames deeper: `RuntimeError("Stability image request failed: {detail}")`. B017 fixes require tracing the actual raise site, not just the test intent.
 
 ---
 
 ### 3. Cross-project signals
 
-**`asyncio.create_task()` + per-test DB fixture = latent teardown race.** Any project that (a) uses `create_task` in business logic to fire-and-forget and (b) has short-lived per-test DB fixtures should add task draining to teardown. Reusable pattern:
-```python
-pending = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
-if pending:
-    _, still_running = await asyncio.wait(pending, timeout=2.0)
-    for t in still_running:
-        t.cancel()
-    if still_running:
-        await asyncio.gather(*still_running, return_exceptions=True)
-```
-Better than `await asyncio.sleep(0.1)` guards (fragile) or widening test timeouts (masks the problem).
+**CI lint commands should never use `--select` override.** Across any project, `ruff check . --select <subset>` silently defeats the `pyproject.toml` config. Use `ruff check .` in CI and reserve `--select` for targeted local investigation. The correct pattern is config-in-file, invoke-without-flags.
 
-**Intermittent async test failures are almost always causal.** Before labelling a test "flaky," identify the unguarded async boundary. In FastAPI/asyncio stacks, `create_task` is the most common source — it escapes fixture scope by design.
+**`pytest.raises(Exception)` accumulates as tech debt.** B017 flagged 7 instances that had survived since the tests were written. Each required knowing the concrete exception type and message — valuable documentation that was missing. Running B017 enforcement forces precise oracle specification, which is directly aligned with CRUCIBLE Gate 2.
 
 ---
 
 ### 4. What would I prioritize next?
 
-**No open items remain.** All three carry-forward items are closed:
-- Memory Node UI — `80a06e9`
-- Frontend coverage in CI — already implemented
-- Content engine test isolation — `82bf7e9`
+**Codebase is clean.** Ruff passes fully, 1,359 tests green, CRUCIBLE compliant, Python 3.13, typing modern. No known technical debt.
 
-State: 1,469 tests, CI green, CRUCIBLE compliant, coverage reported for both stacks. Only known reliability gap is `test_metrics_template_runs_after_flow_execution` teardown ERROR — structural, pre-existing, not a test failure.
-
-If fresh directives arrived: Python 3.11→3.13 bump + `typing.Dict/List` cleanup (CoS self-authorized), deployment hardening (Fly.io health checks, zero-downtime config), or the next feature directive.
+Next natural work items (self-authorize candidates):
+1. **Fly.io deployment hardening** — health check config, zero-downtime deploy script
+2. **Next feature directive** — waiting on CoS
 
 ---
 
 ### 5. Blockers / Questions for CoS
 
-**No blockers, no questions.** All open items closed. Ready for next directive.
+**No blockers.** All ruff violations resolved.
 
-> **CoS Response (Wolf, 2026-03-06) [oracle triangulation]:**
-> Example-based + integration satisfies "2 oracle types" for Standard tier. Compliant.
-
-> **CoS Response (Wolf, 2026-03-06) [frontend coverage]:**
-> GO — self-authorized. (Moot — already implemented.)
+**Question:** The `test_metrics_template_runs_after_flow_execution` test is excluded from CI (`-k "not ..."`) due to SQLAlchemy teardown KeyError in async SQLite. This is the only structural reliability gap. Should this be investigated and fixed (estimated M effort — similar to the content engine teardown fix), or left as-is given it only affects teardown, not the test assertion?
 
 ---
 

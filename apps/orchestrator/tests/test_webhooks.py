@@ -9,13 +9,15 @@ import pytest
 from fastapi.testclient import TestClient
 
 from apps.orchestrator.main import (
+    WEBHOOK_EVENTS,
     app,
     emit_event,
     webhook_registry,
-    WEBHOOK_EVENTS,
 )
 from apps.orchestrator.webhooks.manager import (
     deliver_webhook as _deliver_webhook,
+)
+from apps.orchestrator.webhooks.manager import (
     sign_payload as _sign_payload,
 )
 

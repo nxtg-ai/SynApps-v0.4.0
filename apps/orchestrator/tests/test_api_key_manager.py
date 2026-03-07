@@ -1,21 +1,20 @@
 """Tests for API Key Manager — CRUD, Fernet encryption, rotation, scopes (DIRECTIVE-11)."""
 
 import time
+from unittest.mock import patch
 
 import pytest
-from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from apps.orchestrator.api_keys.manager import (
+    DEFAULT_GRACE_PERIOD,
     APIKeyManager,
-    _encrypt,
     _decrypt,
+    _encrypt,
     _hash_key,
     api_key_manager,
-    DEFAULT_GRACE_PERIOD,
 )
 from apps.orchestrator.main import app
-
 
 MASTER_KEY = "test-master-key-secret"
 

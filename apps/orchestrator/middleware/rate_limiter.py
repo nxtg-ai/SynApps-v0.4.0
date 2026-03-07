@@ -10,8 +10,8 @@ via environment variables and can vary by user tier.
 """
 
 import os
-import time
 import threading
+import time
 from collections import defaultdict, deque
 from collections.abc import Callable
 

@@ -1,15 +1,15 @@
 """Tests for admin API key management + auth enforcement on protected endpoints."""
 
-import pytest
 from unittest.mock import patch
+
+import pytest
 from fastapi.testclient import TestClient
 
 from apps.orchestrator.main import (
-    app,
-    admin_key_registry,
     ADMIN_KEY_SCOPES,
+    admin_key_registry,
+    app,
 )
-
 
 MASTER_KEY = "test-master-key-secret"
 

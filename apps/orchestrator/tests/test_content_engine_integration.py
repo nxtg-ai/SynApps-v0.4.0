@@ -15,14 +15,13 @@ import pytest
 import pytest_asyncio
 import yaml
 
-from apps.orchestrator.db import init_db, close_db_connections
+from apps.orchestrator.db import close_db_connections, init_db
 from apps.orchestrator.main import (
     AppletMessage,
     Orchestrator,
     app,
 )
 from apps.orchestrator.repositories import WorkflowRunRepository
-
 
 # ============================================================
 # The Content Engine Pipeline (mirrors ContentEngine.ts + content_engine.yaml)

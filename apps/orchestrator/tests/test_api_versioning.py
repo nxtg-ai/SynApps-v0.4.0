@@ -13,12 +13,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 from apps.orchestrator.main import (
-    app,
+    API_SUNSET_GRACE_DAYS,
+    API_SUPPORTED_VERSIONS,
     API_VERSION,
     API_VERSION_DATE,
-    API_SUPPORTED_VERSIONS,
-    API_SUNSET_GRACE_DAYS,
     DeprecationRegistry,
+    app,
     deprecation_registry,
 )
 
@@ -268,7 +268,7 @@ class TestCorsHeaders:
                 "Access-Control-Request-Method": "GET",
             },
         )
-        expose = resp.headers.get("access-control-expose-headers", "")
+        _expose = resp.headers.get("access-control-expose-headers", "")
         # The expose headers are set on actual responses, not preflight
         # Check on a real GET instead
         resp2 = client.get(

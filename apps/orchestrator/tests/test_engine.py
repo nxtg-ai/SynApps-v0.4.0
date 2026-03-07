@@ -1,18 +1,21 @@
-import pytest
-import os
 import asyncio
-from unittest.mock import patch, AsyncMock
+import os
 import tempfile
+from unittest.mock import AsyncMock, patch
+
+import pytest
 
 # Setup test DB
 db_fd, db_path = tempfile.mkstemp()
 os.close(db_fd)
 os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{db_path}"
 
-from apps.orchestrator.main import Orchestrator, Flow, AppletMessage, BaseApplet
-from apps.orchestrator.db import init_db, close_db_connections
-from apps.orchestrator.repositories import WorkflowRunRepository
 import pytest_asyncio
+
+from apps.orchestrator.db import close_db_connections, init_db
+from apps.orchestrator.main import AppletMessage, BaseApplet, Orchestrator
+from apps.orchestrator.repositories import WorkflowRunRepository
+
 
 @pytest_asyncio.fixture(scope="function")
 async def db():
@@ -48,10 +51,8 @@ async def test_execute_flow_basic(db):
     # Save flow first as execute_flow might need it if it was fetching from DB 
     # (actually execute_flow takes a Flow object, but get_by_id is used in run_flow)
     
-    flow_obj = Flow(**flow_data)
-    
     # Mock broadcast_status to avoid websocket issues
-    with patch("apps.orchestrator.main.broadcast_status", new_callable=AsyncMock) as mock_broadcast:
+    with patch("apps.orchestrator.main.broadcast_status", new_callable=AsyncMock):
         run_id = await Orchestrator.execute_flow(flow_data, {"input": "data"})
         assert run_id is not None
         

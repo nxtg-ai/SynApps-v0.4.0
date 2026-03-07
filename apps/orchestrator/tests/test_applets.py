@@ -1,10 +1,13 @@
-import pytest
 import os
-from unittest.mock import patch, MagicMock, AsyncMock
-from apps.applets.writer.applet import WriterApplet
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
 from apps.applets.artist.applet import ArtistApplet
 from apps.applets.memory.applet import MemoryApplet
+from apps.applets.writer.applet import WriterApplet
 from apps.orchestrator.main import AppletMessage
+
 
 @pytest.mark.asyncio
 async def test_writer_applet_success():
@@ -274,7 +277,7 @@ async def test_artist_applet_style_and_errors():
             mock_response.text = "Error"
             mock_post.return_value = mock_response
             
-            with pytest.raises(Exception):
+            with pytest.raises(RuntimeError, match="Stability image request failed"):
                 await applet._call_stability_api("prompt", "style")
 
         # Test openai API non-200
@@ -284,7 +287,7 @@ async def test_artist_applet_style_and_errors():
             mock_response.text = "Error"
             mock_post.return_value = mock_response
             
-            with pytest.raises(Exception):
+            with pytest.raises(RuntimeError, match="OpenAI image request failed"):
                 await applet._call_openai_api("prompt", "style")
 
 @pytest.mark.asyncio

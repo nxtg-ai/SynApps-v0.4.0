@@ -7,14 +7,14 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from apps.orchestrator.middleware.rate_limiter import (
+    TOKEN_BUCKET_BURST,
+    TOKEN_BUCKET_GLOBAL_BURST,
+    TOKEN_BUCKET_GLOBAL_RATE,
+    TOKEN_BUCKET_RATE,
     TokenBucket,
     TokenBucketRegistry,
     _SlidingWindowCounter,
     add_rate_limiter,
-    TOKEN_BUCKET_RATE,
-    TOKEN_BUCKET_BURST,
-    TOKEN_BUCKET_GLOBAL_RATE,
-    TOKEN_BUCKET_GLOBAL_BURST,
 )
 
 

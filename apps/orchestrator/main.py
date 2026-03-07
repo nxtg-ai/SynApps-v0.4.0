@@ -6,7 +6,6 @@ defined sequence. The orchestrator's job is purely to pass messages and data
 between applets.
 """
 import asyncio
-from abc import ABC, abstractmethod
 import base64
 import hashlib
 import hmac
@@ -20,14 +19,15 @@ import secrets
 import shutil
 import sqlite3
 import sys
-import time
 import tempfile
-import uuid
-from enum import Enum
 import threading
-from typing import Any
+import time
+import uuid
+from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
+from enum import Enum
 from pathlib import Path
+from typing import Any
 
 # Load environment variables: .env takes priority, falls back to .env.development
 from dotenv import load_dotenv
@@ -38,25 +38,35 @@ if not env_path.exists():
     env_path = project_root / ".env.development"
 load_dotenv(dotenv_path=env_path)
 
+# Import database modules
+from contextlib import asynccontextmanager
+
+import httpx
+import jwt
+from cryptography.fernet import Fernet, InvalidToken
 from fastapi import (
-    Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect,
-    APIRouter, Query, Request, Header,
+    APIRouter,
+    Depends,
+    FastAPI,
+    Header,
+    HTTPException,
+    Query,
+    Request,
+    WebSocket,
+    WebSocketDisconnect,
 )
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-import httpx
-import jwt
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import select
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-# Import database modules
-from contextlib import asynccontextmanager
-from apps.orchestrator.db import init_db, close_db_connections, get_db_session
-from apps.orchestrator.repositories import FlowRepository, WorkflowRunRepository
+from apps.orchestrator.db import close_db_connections, get_db_session, init_db
 from apps.orchestrator.models import (
+    SUPPORTED_IMAGE_PROVIDERS,
+    SUPPORTED_LLM_PROVIDERS,
+    SUPPORTED_MEMORY_BACKENDS,
     APIKeyCreateRequestModel,
     APIKeyCreateResponseModel,
     APIKeyResponseModel,
@@ -65,34 +75,38 @@ from apps.orchestrator.models import (
     AuthRegisterRequestModel,
     AuthTokenResponseModel,
     CodeNodeConfigModel,
-    IfElseNodeConfigModel,
-    MergeNodeConfigModel,
     ForEachNodeConfigModel,
+    HTTPRequestNodeConfigModel,
+    IfElseNodeConfigModel,
     ImageGenNodeConfigModel,
     ImageGenRequestModel,
     ImageGenResponseModel,
     ImageModelInfoModel,
     ImageProviderInfoModel,
-    HTTPRequestNodeConfigModel,
     LLMMessageModel,
     LLMModelInfoModel,
-    MemoryNodeConfigModel,
-    MemorySearchResultModel,
-    TransformNodeConfigModel,
     LLMNodeConfigModel,
     LLMProviderInfoModel,
     LLMRequestModel,
     LLMResponseModel,
     LLMStreamChunkModel,
     LLMUsageModel,
-    RefreshToken as AuthRefreshToken,
-    SUPPORTED_MEMORY_BACKENDS,
-    SUPPORTED_IMAGE_PROVIDERS,
-    SUPPORTED_LLM_PROVIDERS,
-    User as AuthUser,
-    UserAPIKey as AuthUserAPIKey,
+    MemoryNodeConfigModel,
+    MemorySearchResultModel,
+    MergeNodeConfigModel,
+    TransformNodeConfigModel,
     UserProfileModel,
 )
+from apps.orchestrator.models import (
+    RefreshToken as AuthRefreshToken,
+)
+from apps.orchestrator.models import (
+    User as AuthUser,
+)
+from apps.orchestrator.models import (
+    UserAPIKey as AuthUserAPIKey,
+)
+from apps.orchestrator.repositories import FlowRepository, WorkflowRunRepository
 
 try:
     import resource
@@ -566,7 +580,7 @@ failed_request_store = FailedRequestStore(capacity=_FAILED_REQUEST_CAP)
 # Consumer Usage Tracker + Quota System
 # ============================================================
 
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
 
 def _month_start_ts() -> float:
@@ -1020,7 +1034,7 @@ async def execute_with_retry(
             if isinstance(exc, httpx.HTTPStatusError):
                 status_code = exc.response.status_code
             elif hasattr(exc, "status_code"):
-                status_code = getattr(exc, "status_code")
+                status_code = exc.status_code
 
             category = classify_error(exc=exc, status_code=status_code)
 
@@ -1274,7 +1288,7 @@ async def probe_connector(connector_name: str) -> dict[str, Any]:
         if base_url:
             try:
                 async with httpx.AsyncClient(timeout=HEALTH_PROBE_TIMEOUT_SECONDS) as client:
-                    resp = await client.head(base_url)
+                    await client.head(base_url)
                 elapsed = (time.time() - start) * 1000
                 connector_health.record_success(connector_name, latency_ms=elapsed)
                 result = {
@@ -2698,10 +2712,10 @@ def _decode_token(token: str, expected_type: str) -> dict[str, Any]:
             JWT_SECRET_KEY,
             algorithms=[JWT_ALGORITHM],
         )
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    except jwt.ExpiredSignatureError as err:
+        raise HTTPException(status_code=401, detail="Token expired") from err
+    except jwt.InvalidTokenError as err:
+        raise HTTPException(status_code=401, detail="Invalid token") from err
 
     token_type = payload.get("token_type")
     if token_type != expected_type:
@@ -7353,7 +7367,7 @@ class Orchestrator:
             return applet_class()
         except (ImportError, AttributeError) as e:
             logger.error(f"Failed to load applet '{normalized_type}': {e}")
-            raise ValueError(f"Applet type '{normalized_type}' not found")
+            raise ValueError(f"Applet type '{normalized_type}' not found") from e
 
     @staticmethod
     def create_run_id() -> str:
@@ -8855,8 +8869,8 @@ async def provider_health_check(
     """Run a health check on a specific discovered provider."""
     try:
         health = _synapps_registry.provider_health(name)
-    except Exception:
-        raise HTTPException(status_code=404, detail=f"Provider '{name}' not found")
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=f"Provider '{name}' not found") from exc
     return health
 
 
@@ -9343,7 +9357,7 @@ async def import_template(
     try:
         entry = template_registry.import_template(data)
     except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc))
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return entry
 
 
@@ -9565,7 +9579,7 @@ async def publish_template(
     try:
         entry = template_registry.import_template(template_data)
     except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc))
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return entry
 
 
@@ -9869,7 +9883,7 @@ async def create_managed_key(
             rate_limit=body.rate_limit,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return result
 
 
@@ -10627,7 +10641,7 @@ async def replay_request(
         raise HTTPException(
             status_code=502,
             detail=f"Replay failed: {exc}",
-        )
+        ) from exc
 
     try:
         resp_json = resp.json()

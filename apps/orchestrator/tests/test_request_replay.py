@@ -9,17 +9,18 @@ Covers:
 - Rate limit exemption for replay/debug endpoints
 """
 
-import time
 import threading
+import time
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import patch, AsyncMock, MagicMock
 from fastapi.testclient import TestClient
 
 from apps.orchestrator.main import (
-    app,
-    FailedRequestStore,
-    failed_request_store,
     _SENSITIVE_HEADERS,
+    FailedRequestStore,
+    app,
+    failed_request_store,
 )
 
 

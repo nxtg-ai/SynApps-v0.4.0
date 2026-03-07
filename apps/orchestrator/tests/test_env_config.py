@@ -1,11 +1,12 @@
 """Tests for environment configuration, /config endpoint, and startup validation (DIRECTIVE-23-02)."""
 
 import os
-import pytest
 from unittest.mock import patch
+
+import pytest
 from fastapi.testclient import TestClient
 
-from apps.orchestrator.main import app, AppConfig, _redact, _SECRET_KEYS
+from apps.orchestrator.main import _SECRET_KEYS, AppConfig, _redact, app
 
 
 @pytest.fixture

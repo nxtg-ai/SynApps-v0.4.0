@@ -1,6 +1,7 @@
 """Tests for /health/detailed and /metrics endpoints."""
 
 import time
+
 import pytest
 from fastapi.testclient import TestClient
 

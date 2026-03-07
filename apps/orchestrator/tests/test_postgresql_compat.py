@@ -1,10 +1,13 @@
 """
 Tests for PostgreSQL compatibility and schema enhancements.
 """
-import pytest
 import time
-from apps.orchestrator.repositories import WorkflowRunRepository
+
+import pytest
+
 from apps.orchestrator.db import init_db
+from apps.orchestrator.repositories import WorkflowRunRepository
+
 
 @pytest.mark.asyncio
 async def test_workflow_run_completed_applets_persistence():

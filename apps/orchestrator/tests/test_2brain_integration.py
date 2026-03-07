@@ -13,14 +13,13 @@ from unittest.mock import AsyncMock, patch
 import pytest
 import pytest_asyncio
 
-from apps.orchestrator.db import init_db, close_db_connections
+from apps.orchestrator.db import close_db_connections, init_db
 from apps.orchestrator.main import (
     AppletMessage,
     Orchestrator,
     app,
 )
 from apps.orchestrator.repositories import WorkflowRunRepository
-
 
 # ============================================================
 # The 2Brain Inbox Triage template (mirrors TwoBrainInbox.ts)

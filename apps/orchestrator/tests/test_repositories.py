@@ -1,17 +1,18 @@
-import pytest
 import os
-
 import tempfile
+
+import pytest
 
 # Use a temporary file for the test database
 db_fd, db_path = tempfile.mkstemp()
 os.close(db_fd)
 os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{db_path}"
 
-from apps.orchestrator.db import init_db, close_db_connections
+import pytest_asyncio
+
+from apps.orchestrator.db import close_db_connections, init_db
 from apps.orchestrator.repositories import FlowRepository, WorkflowRunRepository
 
-import pytest_asyncio
 
 @pytest_asyncio.fixture(scope="function")
 async def db():

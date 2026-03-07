@@ -21,10 +21,10 @@ from fastapi.testclient import TestClient
 from apps.orchestrator.main import (
     ConnectorHealthTracker,
     ConnectorStatus,
-    connector_health,
-    probe_connector,
-    probe_all_connectors,
     app,
+    connector_health,
+    probe_all_connectors,
+    probe_connector,
 )
 
 

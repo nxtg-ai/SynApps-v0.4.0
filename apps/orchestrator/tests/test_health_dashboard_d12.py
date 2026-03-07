@@ -22,16 +22,16 @@ import pytest
 from fastapi.testclient import TestClient
 
 from apps.orchestrator.main import (
-    ConnectorHealthTracker,
-    ConnectorStatus,
     HEALTH_CACHE_TTL_SECONDS,
     HEALTH_PROBE_TIMEOUT_SECONDS,
     HEALTH_WINDOW_SECONDS,
+    ConnectorHealthTracker,
+    ConnectorStatus,
     _health_cache,
+    app,
     connector_health,
     probe_all_connectors,
     probe_connector,
-    app,
 )
 
 

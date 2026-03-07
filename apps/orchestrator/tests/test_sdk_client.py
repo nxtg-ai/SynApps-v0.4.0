@@ -30,7 +30,6 @@ from synapps_sdk.exceptions import (  # noqa: E402
 
 from apps.orchestrator.main import app  # noqa: E402
 
-
 # ---------------------------------------------------------------------------
 # Helpers — build SDK clients backed by the test app
 # ---------------------------------------------------------------------------

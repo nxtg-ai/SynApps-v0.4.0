@@ -1,15 +1,16 @@
 """Tests for structured logging + request ID tracing (DIRECTIVE-23-03)."""
 
+import io
 import json
 import logging
-import io
+
 import pytest
 from fastapi.testclient import TestClient
 
 from apps.orchestrator.main import (
-    app,
     _current_request_id,
     _JSONFormatter,
+    app,
 )
 
 
@@ -201,8 +202,7 @@ def test_contextvar_set_and_reset():
 def test_request_logging_output(client, capfd):
     """Request middleware logs structured JSON to stdout."""
     # The orchestrator logger writes to stderr/stdout via StreamHandler
-    resp = client.get("/api/v1/health")
-    request_id = resp.headers["X-Request-ID"]
+    client.get("/api/v1/health")
 
     # Capture the logger output — get the orchestrator logger's handler
     orch_logger = logging.getLogger("orchestrator")
@@ -220,7 +220,7 @@ def test_request_logging_output(client, capfd):
         orch_logger.removeHandler(test_handler)
 
     # Parse the last JSON line from the log
-    lines = [l for l in output.strip().split("\n") if l.strip()]
+    lines = [ln for ln in output.strip().split("\n") if ln.strip()]
     assert len(lines) >= 1
     last_log = json.loads(lines[-1])
     assert last_log["request_id"] == request_id2

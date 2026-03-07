@@ -20,16 +20,15 @@ import httpx
 import pytest
 
 from apps.orchestrator.main import (
-    ErrorCategory,
-    RetryPolicy,
-    ConnectorError,
-    classify_error,
-    get_retry_policy,
-    execute_with_retry,
     CONNECTOR_RETRY_POLICIES,
     DEFAULT_RETRY_POLICY,
+    ConnectorError,
+    ErrorCategory,
+    RetryPolicy,
+    classify_error,
+    execute_with_retry,
+    get_retry_policy,
 )
-
 
 # ---------------------------------------------------------------------------
 # ErrorCategory enum

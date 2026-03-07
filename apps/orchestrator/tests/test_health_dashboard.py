@@ -14,8 +14,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from apps.orchestrator.main import (
-    _MetricsRingBuffer,
     _MetricsCollector,
+    _MetricsRingBuffer,
     app,
 )
 
@@ -85,9 +85,9 @@ class TestMetricsRingBuffer:
     def test_query_excludes_old_entries(self):
         buf = _MetricsRingBuffer(capacity=100)
         now = time.time()
-        for i in range(50):
+        for _ in range(50):
             buf.push(1.0, ts=now - 90000)  # 25h ago
-        for i in range(10):
+        for _ in range(10):
             buf.push(2.0, ts=now)  # now
         one_hour = buf.query(3600)
         assert len(one_hour) == 10
@@ -210,7 +210,6 @@ class TestMetricsCollector:
     def test_ring_buffer_overflow_in_collector(self):
         """When ring buffer overflows, only recent data remains."""
         m = _MetricsCollector(ring_capacity=5)
-        now = time.time()
         for i in range(10):
             m.record_request(float(i), 200, "/x")
         snap = m.snapshot()

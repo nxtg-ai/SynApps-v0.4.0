@@ -210,8 +210,9 @@ def test_node_types_in_summary():
 
 def test_content_engine_template_validates():
     """The real content_engine.yaml template passes validation."""
-    import yaml
     import pathlib
+
+    import yaml
     template_path = pathlib.Path(__file__).resolve().parent.parent.parent.parent / "templates" / "content_engine.yaml"
     if not template_path.exists():
         pytest.skip("content_engine.yaml not found")

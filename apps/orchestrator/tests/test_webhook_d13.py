@@ -28,14 +28,15 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from apps.orchestrator.api_keys.manager import api_key_manager
 from apps.orchestrator.main import (
+    KEY_EXPIRY_CHECK_INTERVAL,
+    KEY_EXPIRY_WARNING_WINDOW,
+    _health_cache,
+    _maybe_emit_status_change,
     app,
     connector_health,
     webhook_registry,
-    _health_cache,
-    _maybe_emit_status_change,
-    KEY_EXPIRY_CHECK_INTERVAL,
-    KEY_EXPIRY_WARNING_WINDOW,
 )
 from apps.orchestrator.webhooks.manager import (
     WEBHOOK_DELIVERY_TIMEOUT,
@@ -47,7 +48,6 @@ from apps.orchestrator.webhooks.manager import (
     emit_webhook_event,
     sign_payload,
 )
-from apps.orchestrator.api_keys.manager import api_key_manager
 
 
 @pytest.fixture()

@@ -1,10 +1,18 @@
-import pytest
 import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 import pytest_asyncio
 from fastapi.testclient import TestClient
-from unittest.mock import patch, MagicMock, AsyncMock
 
-from apps.orchestrator.main import app, broadcast_status, connected_clients, ws_manager, Orchestrator, init_db
+from apps.orchestrator.main import (
+    Orchestrator,
+    app,
+    broadcast_status,
+    connected_clients,
+    init_db,
+    ws_manager,
+)
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -286,8 +294,10 @@ async def test_orchestrator_execute_flow_full():
             mock_artist.on_message = AsyncMock(return_value=MagicMock(content="drawn", context={}))
 
             async def mock_load_applet(applet_type):
-                if applet_type == "writer": return mock_writer
-                if applet_type == "artist": return mock_artist
+                if applet_type == "writer":
+                    return mock_writer
+                if applet_type == "artist":
+                    return mock_artist
                 raise ValueError("Unknown")
 
             with patch("apps.orchestrator.main.Orchestrator.load_applet", side_effect=mock_load_applet):

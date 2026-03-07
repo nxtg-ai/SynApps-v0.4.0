@@ -11,19 +11,20 @@ Covers:
 - PUT /api/v1/quotas/{key_id} — set quota
 """
 
-import time
 import threading
-import pytest
-from datetime import datetime, UTC
+import time
+from datetime import UTC, datetime
 from unittest.mock import patch
+
+import pytest
 from fastapi.testclient import TestClient
 
 from apps.orchestrator.main import (
-    app,
     ConsumerUsageTracker,
-    usage_tracker,
     _month_start_ts,
     _next_month_start_ts,
+    app,
+    usage_tracker,
 )
 
 

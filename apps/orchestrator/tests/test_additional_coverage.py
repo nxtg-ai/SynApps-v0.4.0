@@ -1,12 +1,19 @@
-import pytest
 import os
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import patch, MagicMock, AsyncMock
-from apps.orchestrator.main import (
-    app, broadcast_status, Orchestrator, 
-    BaseApplet, AppletMessage, _ws_message
-)
+
 from apps.applets.writer.applet import WriterApplet
+from apps.orchestrator.main import (
+    AppletMessage,
+    BaseApplet,
+    Orchestrator,
+    _ws_message,
+    app,
+    broadcast_status,
+)
+
 
 @pytest.mark.asyncio
 async def test_no_cors_origins():
@@ -58,7 +65,7 @@ async def test_orchestrator_load_applet_caching():
         # Load once
         applet1 = await Orchestrator.load_applet("writer")
         # Load twice - should come from registry
-        applet2 = await Orchestrator.load_applet("writer")
+        _applet2 = await Orchestrator.load_applet("writer")
         
         from apps.orchestrator.main import applet_registry
         assert "writer" in applet_registry

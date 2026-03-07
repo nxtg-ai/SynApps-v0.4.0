@@ -3,7 +3,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from apps.orchestrator.main import app, task_queue, _load_yaml_template
+from apps.orchestrator.main import _load_yaml_template, app, task_queue
 
 
 @pytest.fixture

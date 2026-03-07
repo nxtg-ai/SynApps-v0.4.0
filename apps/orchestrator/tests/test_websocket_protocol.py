@@ -1,21 +1,20 @@
 """Tests for the WebSocket protocol: auth, structured messages, reconnection, and state recovery."""
 
 import time
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
 from fastapi.testclient import TestClient
-from unittest.mock import patch, MagicMock, AsyncMock
 
 from apps.orchestrator.main import (
-    app,
-    ws_manager,
-    broadcast_status,
-    _ws_message,
     WebSocketSessionManager,
+    _ws_message,
+    app,
+    broadcast_status,
     init_db,
+    ws_manager,
 )
-
 
 
 @pytest_asyncio.fixture(autouse=True)

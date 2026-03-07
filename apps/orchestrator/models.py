@@ -10,7 +10,7 @@ import time
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import Boolean, Float, ForeignKey, Index, Integer, JSON, String
+from sqlalchemy import JSON, Boolean, Float, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 

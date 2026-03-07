@@ -13,7 +13,6 @@ from typing import Any
 from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("db_migration")
 

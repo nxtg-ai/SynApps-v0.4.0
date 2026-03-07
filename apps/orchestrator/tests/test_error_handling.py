@@ -1,11 +1,14 @@
 
-import pytest
 import asyncio
+from unittest.mock import AsyncMock, patch
+
+import pytest
 import pytest_asyncio
-from unittest.mock import patch, AsyncMock
-from apps.orchestrator.main import Orchestrator, AppletMessage
-from apps.orchestrator.db import init_db, close_db_connections
+
+from apps.orchestrator.db import close_db_connections, init_db
+from apps.orchestrator.main import AppletMessage, Orchestrator
 from apps.orchestrator.repositories import WorkflowRunRepository
+
 
 @pytest_asyncio.fixture(scope="function")
 async def db():

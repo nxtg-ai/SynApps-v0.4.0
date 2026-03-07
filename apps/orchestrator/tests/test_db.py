@@ -1,10 +1,11 @@
-import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
-from sqlalchemy.exc import SQLAlchemyError
-from apps.orchestrator.db import get_db_session, init_db, Base, close_db_connections
 import importlib
-import apps.orchestrator.db as db_module_to_patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+from sqlalchemy.exc import SQLAlchemyError
+
+import apps.orchestrator.db as db_module_to_patch
+from apps.orchestrator.db import Base, close_db_connections, get_db_session, init_db
 
 
 @pytest.mark.asyncio

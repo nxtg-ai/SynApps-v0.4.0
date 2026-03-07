@@ -2,7 +2,13 @@
 import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
-from apps.orchestrator.middleware.billing_guard import add_billing_guard, FREE_TIER_MAX_RUNS, FREE_TIER_MAX_APPLETS
+
+from apps.orchestrator.middleware.billing_guard import (
+    FREE_TIER_MAX_APPLETS,
+    FREE_TIER_MAX_RUNS,
+    add_billing_guard,
+)
+
 
 def test_billing_guard_free_tier_limits():
     app = FastAPI()

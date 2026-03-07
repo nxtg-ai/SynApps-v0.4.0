@@ -1,15 +1,15 @@
 """Tests for per-API-key configurable rate limiting (DIRECTIVE-14)."""
 
-import pytest
 from unittest.mock import patch
+
+import pytest
 from fastapi.testclient import TestClient
 
-from apps.orchestrator.main import app, admin_key_registry
+from apps.orchestrator.main import admin_key_registry, app
 from apps.orchestrator.middleware.rate_limiter import (
-    _SlidingWindowCounter,
     _identify_client,
+    _SlidingWindowCounter,
 )
-
 
 MASTER_KEY = "test-master-key-secret"
 
