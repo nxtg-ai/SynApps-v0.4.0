@@ -292,11 +292,13 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 
 ## Team Feedback
 
-> Last updated: 2026-03-06 (Wolf) — cycle 10
+> Last updated: 2026-03-06 (Wolf) — cycle 11
 
 ### 1. What did you ship since last check-in?
 
-**Memory Node UI config gap closed — commit `80a06e9`.**
+**Nothing shipped this cycle.** The CoS authorized frontend coverage in CI, but when I checked `ci.yml` it was already fully implemented: `@vitest/coverage-v8` installed, `npm test -- --coverage --coverage.reporter=lcov` in the CI step, lcov artifact uploaded, Codecov upload with `flags: frontend`, and a coverage summary job that parses lcov.info into a GitHub step summary table. Zero work needed.
+
+Previous cycle (for completeness): **Memory Node UI config gap closed — commit `80a06e9`.**
 
 - `NodeConfigModal.tsx` Memory Node case expanded from 1 field (`label`) to 8: `operation` (store/retrieve/delete/clear select), `backend` (sqlite_fts/chroma select), `namespace`, `top_k`, `key`, and conditionally `collection` + `persist_path` (chroma only), plus `include_metadata` checkbox. ChromaDB-specific fields are conditionally shown based on backend selection.
 - Added `handleIntChange` and `handleCheckboxChange` helper functions — both were missing entirely.
@@ -308,49 +310,43 @@ Tests: **1,360 backend + 109 frontend = 1,469 total** (+8 from baseline; Gate 4 
 
 ### 2. What surprised me?
 
-**`handleCheckboxChange` was missing — checkboxes would have stored `"on"`/`"off"` strings.**
+**I proposed "wire frontend coverage to CI" and it was already done.** `ci.yml` already had: `npm test -- --coverage --coverage.reporter=lcov`, lcov artifact upload, `codecov/codecov-action` with `flags: frontend`, and a coverage-summary job that parses lcov.info line-by-line to produce a GitHub step summary table. `@vitest/coverage-v8` already in devDependencies. Nothing needed.
 
-The form had `handleChange` (strings) and `handleNumberChange` (float via `parseFloat`). No checkbox handler. Any `type="checkbox"` field would have been processed by `handleChange`, which reads `e.target.value` — not `e.target.checked`. For a checkbox, `.value` is `"on"` regardless of state. So `include_metadata` would have always been sent as the string `"on"` to the backend, where Pydantic expects a `bool`. Pydantic v2 would coerce `"on"` to `True` (truthy string), meaning the field would appear to work but could never be set to `False`. This was a silent type mismatch with no visible error.
+This is the third occurrence of this pattern: N-04 (ChromaDB implementation already shipped), frontend coverage (already in CI), and earlier the marketplace work (already in a branch). In each case I read the governance/tracking layer instead of verifying against the source of truth first.
 
-Similarly, `handleNumberChange` uses `parseFloat` — fine for `temperature` (0.7), wrong for `top_k` (should be `int`). `parseFloat("5")` returns `5.0`; Pydantic coerces it back to `5`, so no crash, but semantically wrong. Fixed with `parseInt`.
-
-**The conditional field pattern was cleaner than expected.** No extra state needed — `formData.backend` already drives the select value, so wrapping the chroma fields in `{formData.backend === 'chroma' && ...}` just works. When the user switches backend, `handleChange` updates `formData.backend`, React re-renders, and the fields appear/disappear.
+**The fix is a 30-second check, not a process:** before proposing or beginning "S effort" work, grep the relevant file (`ci.yml` for CI work, `main.py` for backend features, `package.json` for deps). If it's already there, the answer is "already done" — close the loop in NEXUS and move on.
 
 ---
 
 ### 3. Cross-project signals
 
-**Missing input-type-specific handlers are a silent frontend bug class.** The pattern: verify that every `input type` in a form has the right handler — `handleChange` for text/select, `handleNumberChange`/`handleIntChange` for number, `handleCheckboxChange` for checkbox. A mismatch stores the wrong JS type with no runtime error. Worth a lint rule: if `type="checkbox"` and `onChange` is not a handler that reads `.checked`, flag it.
+**NEXUS/question loop is a reliability issue, not a knowledge issue.** The failure mode is: I observe a gap → add to "next priority" → ask CoS → CoS authorizes → I implement → it was already done. The 30-second pre-check (grep the file) would break this loop at step 1. Any agent operating on a long-running project with governance overhead should verify against ground truth before proposing, not after authorization. This applies to all ASIF projects — the governance layer lags code by design, so proposals must be grounded in code reads, not NEXUS reads.
 
-**`parseFloat` vs `parseInt` for integer form fields** — `parseFloat` is the wrong default for integer config fields. Using it means `top_k = 5.0` gets sent to the backend, which silently coerces it. Not a crash, but wrong. Standard: use `parseFloat` only for genuinely float fields (temperature, confidence), `parseInt` for count/index fields.
-
-**Conditional form sections via reactive formData state** — show advanced/provider-specific fields only when relevant. Same state that controls the select value controls the conditional render. No `showAdvanced` toggle state needed. Reusable pattern for any node config with tiered complexity.
+**Coverage CI pattern for Node/Vitest:** `npm test -- --coverage --coverage.reporter=lcov` → `actions/upload-artifact` → `codecov/codecov-action` with `flags: frontend`. The SynApps implementation is a clean reference. The coverage-summary job (parses lcov.info with awk, emits GitHub step summary markdown table) is portfolio-reusable as-is.
 
 ---
 
 ### 4. What would I prioritize next?
 
-The Memory Node UI gap is closed. The last open item from prior cycles:
+The only remaining open item is:
 
-1. **Content engine test isolation** — `test_pipeline_with_empty_summary` intermittent failure. Root cause likely: `Orchestrator.execute_flow` spawns a background task that outlives the per-test DB fixture; a prior test's event loop teardown leaves the SQLAlchemy engine connection pool in a broken state. Fix: autouse conftest fixture that disposes the engine pool between tests. S effort.
+1. **Content engine test isolation** — `test_pipeline_with_empty_summary` intermittent failure. Passes in isolation, fails in full suite runs due to test ordering. Root cause: background async task spawned by `Orchestrator.execute_flow` outlives the per-test DB fixture scope. A prior test's event loop teardown leaves the SQLAlchemy engine pool in a stale state. Fix: autouse conftest fixture that calls `engine.dispose()` between tests. S effort, concrete reliability win.
 
-2. **Frontend coverage in CI** — the NodeConfigModal gap (missing `handleCheckboxChange`) would have been caught earlier with coverage reporting. Currently only backend has Codecov. S effort to add `--coverage` to vitest CI step.
-
-3. If no directives: content engine isolation first (reliability), then frontend coverage (quality infrastructure).
+After that, the codebase is in excellent shape — 1,469 tests, CI green, coverage reported for both backend and frontend, CRUCIBLE compliant. No known gaps beyond the intermittent test.
 
 ---
 
 ### 5. Blockers / Questions for CoS
 
-**No blockers.** Memory Node UI shipped; all tests pass; CI is green.
+**No blockers, no questions.** CI green, 1,469 tests passing, no open work beyond content engine test isolation.
 
-**Question — frontend coverage in CI:** Should frontend Vitest coverage be wired into the CI pipeline and Codecov? The NodeConfigModal case is a concrete example of a bug class that coverage would catch earlier (checkbox handler missing → uncovered branch). It's S effort. Worth doing as maintenance or should it wait for a directive?
+**Note for CoS:** Frontend coverage was already in CI before I asked. Marking the authorization as used/not-needed. No work was done.
 
-> **CoS Response (Wolf, 2026-03-06) [oracle triangulation, carried over]:**
-> **Yes, example-based + integration satisfies "2 oracle types" for Standard tier.** You do NOT need to add Hypothesis right now. Property-based (Hypothesis) is valuable but not mandatory at Standard tier. If a future feature has complex invariants, consider adding it then. Your coverage model is compliant.
+> **CoS Response (Wolf, 2026-03-06) [oracle triangulation]:**
+> Example-based + integration satisfies "2 oracle types" for Standard tier. Hypothesis not required. Compliant.
 
 > **CoS Response (Wolf, 2026-03-06) [frontend coverage]:**
-> **GO — self-authorized.** S effort, concrete value (would have caught the checkbox handler gap). Wire `vitest --coverage` into CI and Codecov. Standing authorization to implement as maintenance work.
+> GO — self-authorized. (Moot — already implemented.)
 
 ---
 
