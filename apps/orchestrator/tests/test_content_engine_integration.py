@@ -147,6 +147,20 @@ CONTENT_ENGINE_FLOW = {
 async def db():
     await init_db()
     yield
+    # Drain background tasks spawned by Orchestrator.execute_flow before closing
+    # the DB.  execute_flow() fires asyncio.create_task(_execute_flow_async(...))
+    # and returns immediately.  If the fixture closes the DB while that task is
+    # still writing final status updates, SQLAlchemy raises
+    # "Cannot operate on a closed database" — the root cause of the intermittent
+    # teardown error on this test class.  A short gather with a timeout lets the
+    # task finish naturally; any still-running tasks are cancelled cleanly.
+    pending = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+    if pending:
+        _, still_running = await asyncio.wait(pending, timeout=2.0)
+        for t in still_running:
+            t.cancel()
+        if still_running:
+            await asyncio.gather(*still_running, return_exceptions=True)
     await close_db_connections()
 
 
