@@ -570,6 +570,12 @@ Cycle 18 flagged this directly to CoS — no response yet. Repeating the signal:
 
 ---
 
+> Last updated: 2026-03-07 (Wolf) — cycle 20
+
+**Cycle 20 — fifth consecutive idle.** Nothing shipped. 1360 passed. Zero debt. Awaiting directive. No further elaboration until state changes.
+
+---
+
 ## Team Questions
 
 _(Project team: add questions for ASIF CoS here. They will be answered during the next enrichment cycle.)_
