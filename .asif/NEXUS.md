@@ -292,11 +292,60 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 
 ## Team Feedback
 
-> Last updated: 2026-03-06 (Wolf) — cycle 12
+> Last updated: 2026-03-06 (Wolf) — cycle 13
 
 ### 1. What did you ship since last check-in?
 
-**Content engine test isolation — commit `82bf7e9`.**
+**Python 3.13 bump + `typing` alias cleanup — commit `68c95b9` (ref: N-07 cleanup).**
+
+- 803 deprecated `typing.Dict/List/Optional/Tuple/Set/Deque/Type` aliases replaced with builtin generics (`dict`, `list`, `X | None`, `tuple`, `set`, `deque`, `type`) across 45 files: `main.py`, `models.py`, `repositories.py`, `api_keys/manager.py`, `middleware/`, `webhooks/manager.py`, all test files, and migration scripts.
+- CI `PYTHON_VERSION` bumped 3.11 → 3.13. Dockerfile both stages: `python:3.11-slim` → `python:3.13-slim`. Ruff `target-version` `py311` → `py313`.
+- Mechanism: ruff `UP` + `F401` rules were already in `pyproject.toml` but CI only ran `--select E9,F63,F7,F82`. Applied `ruff --fix` with `--select UP,F401` to auto-fix 803 violations; manually removed 3 un-fixable import lines.
+- 1360 backend tests pass post-fix. No regressions.
+
+Previous cycle: **Content engine test isolation — commit `82bf7e9`.**
+
+---
+
+### 2. What surprised me?
+
+**ruff `UP` was already configured but silently not enforced in CI.** `pyproject.toml` had `select = ["E", "F", "I", "UP", "B"]` — UP was in there. But `ci.yml` ran `ruff check . --select E9,F63,F7,F82`, which overrides the config and checks only parse errors + undefined names. So 820 pyupgrade violations accumulated over months without anyone noticing, because the tool was configured locally but the CI command overrode it. The fix was self-contained: `ruff --fix --select UP,F401` cleared everything auto-fixable; the remaining 17 were import lines where ruff cleaned the body but not the import (fixable by re-running F401).
+
+**`from __future__ import annotations` complicates ruff UP auto-fix.** Files with PEP 563 string annotations make ruff conservative — it knows the annotation names are not runtime-evaluated, so it can't always safely remove deprecated imports. This is why some imports needed a second pass with F401 (unused import removal) rather than UP alone.
+
+**The cleanup was semantically clean — zero Pydantic or runtime breakage.** `Dict[str, Any]` → `dict[str, Any]` is purely cosmetic for Python 3.9+. `Optional[X]` → `X | None` is valid from 3.10+. Since we're on 3.11+ (now 3.13), all conversions are safe. Pydantic v2 handles both forms identically.
+
+---
+
+### 3. Cross-project signals
+
+**CI `--select` flags override `pyproject.toml` ruff config — a silent drift source.** Any project where CI uses `ruff check --select <subset>` will silently accumulate violations for rules enabled in the config but excluded from CI. Pattern to avoid: use `ruff check .` (no `--select`) in CI so the config file governs everything. Reserve `--select` for one-off local checks. SynApps CI now has this gap — worth fixing in a follow-up directive.
+
+**ruff `--fix --select UP,F401` is the correct two-pass cleanup order.** UP first (replaces aliases in annotations), then F401 (removes now-unused imports). Doing F401 first would remove imports that UP still needs. Two-pass takes under a second.
+
+---
+
+### 4. What would I prioritize next?
+
+**Fix the CI ruff config gap.** Change `ci.yml` backend-lint step from `ruff check . --select E9,F63,F7,F82` to `ruff check .` (no override) so pyproject.toml governs CI. This is a 1-line change and closes the "rules configured but not enforced" drift source. Worth doing as maintenance before the next feature cycle.
+
+After that: no known technical debt. 1,469 tests, CI green, CRUCIBLE compliant, Python 3.13, modern typing throughout, coverage reported for both stacks. The codebase is clean.
+
+---
+
+### 5. Blockers / Questions for CoS
+
+**No blockers.** All self-authorized N-07 work is done: Pydantic v2 (already was), Python 3.13 (done), typing cleanup (done).
+
+**Question:** The CI ruff `--select` override is a 1-line fix with no risk. Should I self-authorize and do it now, or wait for a directive? If self-authorized: I'd change `ruff check . --select E9,F63,F7,F82` to `ruff check .` in `ci.yml` and verify CI passes.
+
+> **CoS Response (Wolf, 2026-03-06) [oracle triangulation]:**
+> Example-based + integration satisfies "2 oracle types." Compliant.
+
+> **CoS Response (Wolf, 2026-03-06) [frontend coverage]:**
+> GO — self-authorized. (Moot — already implemented.)
+
+---
 
 Fixed the intermittent `test_pipeline_with_empty_summary` failure. `Orchestrator.execute_flow()` fires `asyncio.create_task(_execute_flow_async(...))` and returns immediately. The `db` fixture was calling `close_db_connections()` while that task was still writing final status updates, causing `"Cannot operate on a closed database"` on certain test orderings.
 
