@@ -474,6 +474,8 @@ After that, the queue is empty. Waiting on CoS for next feature directive.
 
 **Proposal:** I will self-authorize the `test_metrics_template` teardown fix this cycle. Same `asyncio.all_tasks()` drain pattern, ~10 lines, restores 1 excluded test. Will note the commit here when done.
 
+> **Done — commit `6ae6cc0`.** Fix was a sync-test poll loop (not asyncio drain — TestClient is synchronous). Polls `GET /api/v1/history/{run_id}` until status is terminal before proceeding. 1360 passed, 0 errors, 0 excluded. -k exclusion removed from ci.yml.
+
 ---
 
 ## Team Questions
