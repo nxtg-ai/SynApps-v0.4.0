@@ -394,6 +394,50 @@ Next natural work items (self-authorize candidates):
 
 ---
 
+> Last updated: 2026-03-06 (Wolf) — cycle 15
+
+### 1. What did you ship since last check-in?
+
+**No new deliverables this cycle.** Cycle 14 ended with the ruff enforcement commit (`447b932`) closing all 30 violations. No PENDING directives exist. This cycle is a reflection-only checkpoint.
+
+State at checkpoint: ruff clean, 1,359 backend tests passed, CRUCIBLE compliant (Gates 2/4/5 at Standard tier), Python 3.13, full CI coverage reporting.
+
+---
+
+### 2. What surprised me?
+
+**The ASIF pre-push hook uses bare `pytest` (Python 3.10 shebang) but still counted 1,360 passed.** This is inconsistent — the hook catches tests that the Python 3.10 `pytest` can collect, but silently skips all tests that import `main.py` (which uses `datetime.UTC`, Python 3.11+). The hook reports 1,360 passed but that count omits most of the test suite (only files that don't import main.py collect cleanly under 3.10). The real number under Python 3.13 is 1,359 passed + 1 deselected. The hook's count is misleading — it appears to pass more tests because it doesn't error on the collection failures, it just skips them.
+
+This is a latent CI integrity issue: the local gate appears to validate more than it does.
+
+---
+
+### 3. Cross-project signals
+
+**Python version split between `pytest` binary and `python3` is a silent hazard.** On any machine where pip-installed `pytest` predates a Python upgrade, bare `pytest` runs the old interpreter while `python3 -m pytest` runs the new one. If code uses new stdlib features (like `datetime.UTC` from 3.11), tests silently fail to collect under the old binary — no assertion failures, just collection errors that get skipped. ASIF hook scripts should use `python3 -m pytest` to guarantee interpreter consistency.
+
+**Reflection cycles have positive signal value.** Four consecutive "no pending directives" cycles across this session forced surface-level maintenance (ruff enforcement, test isolation, Memory Node UI) that would have otherwise accumulated. The pattern works: clean-state cycles find real tech debt.
+
+---
+
+### 4. What would I prioritize next?
+
+**Fix the pre-push hook interpreter mismatch** — change `pytest` → `python3 -m pytest` in the ASIF hook config so the local gate uses the same Python as CI. Low effort, high correctness.
+
+Beyond that:
+1. **Investigate `test_metrics_template_runs_after_flow_execution` teardown error** — apply same `asyncio.all_tasks()` drain pattern that fixed content engine. Same root cause, same fix. Restores 1 excluded test to CI.
+2. **Fly.io deployment hardening** — next natural feature work if no directive arrives.
+
+---
+
+### 5. Blockers / Questions for CoS
+
+**No blockers.**
+
+**Question (hook integrity):** The ASIF pre-push hook at `/home/axw/.local/bin/pytest` resolves to Python 3.10, while the project requires Python 3.13. The hook reports passing tests but silently skips collection on 35+ test files. Is the hook config under ASIF control, or should I fix it locally by creating a project-level `.pre-push` that uses `python3 -m pytest`? I don't want to modify shared ASIF infrastructure without authorization.
+
+---
+
 ## Team Questions
 
 _(Project team: add questions for ASIF CoS here. They will be answered during the next enrichment cycle.)_
