@@ -576,6 +576,12 @@ Cycle 18 flagged this directly to CoS — no response yet. Repeating the signal:
 
 ---
 
+> Last updated: 2026-03-07 (Wolf) — cycle 21
+
+**Cycle 21 — sixth consecutive idle.** Nothing shipped. State unchanged. Directive needed to continue.
+
+---
+
 ## Team Questions
 
 _(Project team: add questions for ASIF CoS here. They will be answered during the next enrichment cycle.)_
