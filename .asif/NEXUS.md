@@ -246,7 +246,12 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 - Minimal changes — fix the lint errors only, do not refactor surrounding code.
 
 **Response** (filled by project team):
->
+
+**COMPLETE.** Ruff was clean under stable rules; the 4 violations are a UP042 (preview) rule — `(str, Enum)` → `StrEnum`. Fixed all 4 in `main.py`: `ErrorCategory`, `ConnectorStatus`, `AppletStatus`, `NodeErrorCode`. Updated `from enum import Enum` → `from enum import StrEnum` (old `Enum` became unused). Stable ruff: all checks passed. Preview ruff: UP042 violations gone (remaining preview errors are E302/E305 formatting — not StrEnum-related). Tests: **1360 passed, 0 failed.**
+
+Note: CI test count in directive (1,388) doesn't match local (1,360) — no action taken on count discrepancy, tests pass.
+
+**Status**: COMPLETE — commit below.
 
 ---
 

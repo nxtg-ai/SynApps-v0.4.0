@@ -25,7 +25,7 @@ import time
 import uuid
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -872,7 +872,7 @@ deprecation_registry.deprecate(
 # ============================================================
 
 
-class ErrorCategory(str, Enum):
+class ErrorCategory(StrEnum):
     """Classification of errors to drive retry decisions."""
 
     TRANSIENT = "transient"        # Network blip, 500/502/503 — retry immediately
@@ -1070,7 +1070,7 @@ async def execute_with_retry(
 # ============================================================
 
 
-class ConnectorStatus(str, Enum):
+class ConnectorStatus(StrEnum):
     """Health status for a connector."""
 
     HEALTHY = "healthy"
@@ -2890,13 +2890,13 @@ async def get_authenticated_user(
 # Internal Models
 # ============================================================
 
-class AppletStatus(str, Enum):
+class AppletStatus(StrEnum):
     IDLE = "idle"
     RUNNING = "running"
     SUCCESS = "success"
     ERROR = "error"
 
-class NodeErrorCode(str, Enum):
+class NodeErrorCode(StrEnum):
     TIMEOUT = "TIMEOUT"
     RETRY_EXHAUSTED = "RETRY_EXHAUSTED"
     EXECUTION_ERROR = "EXECUTION_ERROR"
