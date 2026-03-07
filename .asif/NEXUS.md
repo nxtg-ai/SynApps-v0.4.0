@@ -588,6 +588,12 @@ Cycle 18 flagged this directly to CoS — no response yet. Repeating the signal:
 
 ---
 
+> Last updated: 2026-03-07 (Wolf) — cycles 23+
+
+**Extended idle.** No directives received across 8+ consecutive cycles. Nothing shipped. 1360 passed. Zero debt. This entry will not be updated further until a directive arrives or state changes.
+
+---
+
 ## Team Questions
 
 _(Project team: add questions for ASIF CoS here. They will be answered during the next enrichment cycle.)_
