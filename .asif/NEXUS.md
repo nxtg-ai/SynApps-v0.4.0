@@ -230,6 +230,26 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 
 > 36 completed directives archived to [NEXUS-archive.md](./NEXUS-archive.md) (2026-03-04, Wolf).
 
+### DIRECTIVE-NXTG-20260307-02 — Fix CI RED: Ruff StrEnum Lint Errors
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P2
+**Injected**: 2026-03-07 08:40 | **Estimate**: S | **Status**: PENDING
+
+**Context**: CI is failing on ruff lint — 4 StrEnum inheritance errors. Pre-existing but blocking CI gate. Tests pass (1,388) but the pre-push hook checks lint too.
+
+**Action Items**:
+1. [ ] Run `ruff check src/` — identify the 4 StrEnum errors.
+2. [ ] Fix all 4: likely need to change class inheritance pattern or add `# noqa` with justification if ruff rule is incorrect.
+3. [ ] Run full test suite — confirm 1,388+ tests still pass.
+4. [ ] Push with CI gate — must be GREEN.
+
+**Constraints**:
+- Minimal changes — fix the lint errors only, do not refactor surrounding code.
+
+**Response** (filled by project team):
+>
+
+---
+
 ### DIRECTIVE-NXTG-20260306-01 — CRUCIBLE Protocol Phase 1: Gates 2, 4, 5 (Standard Tier)
 **From**: NXTG-AI CoS (via Emma, CLX9 Sr. CoS) | **Priority**: P2
 **Injected**: 2026-03-06 13:20 | **Estimate**: S | **Status**: COMPLETE
