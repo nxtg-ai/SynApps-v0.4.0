@@ -232,7 +232,7 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 
 ### DIRECTIVE-NXTG-20260307-02 — Fix CI RED: Ruff StrEnum Lint Errors
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P2
-**Injected**: 2026-03-07 08:40 | **Estimate**: S | **Status**: PENDING
+**Injected**: 2026-03-07 08:40 | **Estimate**: S | **Status**: COMPLETE
 
 **Context**: CI is failing on ruff lint — 4 StrEnum inheritance errors. Pre-existing but blocking CI gate. Tests pass (1,388) but the pre-push hook checks lint too.
 
