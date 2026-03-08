@@ -230,6 +230,25 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 
 > 36 completed directives archived to [NEXUS-archive.md](./NEXUS-archive.md) (2026-03-04, Wolf).
 
+### DIRECTIVE-NXTG-20260308-03 — Generate OpenAPI Spec for Dx3 Integration
+**From**: NXTG-AI CoS | **Priority**: P2
+**Injected**: 2026-03-08 09:55 | **Estimate**: S | **Status**: PENDING
+
+**Action Items**:
+1. [ ] Generate the OpenAPI JSON spec from the running FastAPI app. Use `python -c "from app.main import app; import json; print(json.dumps(app.openapi(), indent=2))" > docs/openapi.json` or the equivalent import path for this project's FastAPI instance.
+2. [ ] Verify the spec is complete: all routes present, request/response schemas populated, no `null` descriptions on critical endpoints. Spot-check at least 5 endpoints against actual behavior.
+3. [ ] Commit `docs/openapi.json` to the repo so it is version-controlled and available for cross-project consumers (Dx3 integration layer).
+4. [ ] Run full test suite — 1360+ baseline must hold (CRUCIBLE Gate 4).
+
+**Constraints**:
+- This is a spec generation task, not an API redesign. Do NOT modify any routes or models.
+- If the FastAPI app requires env vars or DB to import, document the minimal command to generate the spec in a comment at the top of `docs/openapi.json`.
+
+**Response** (filled by project team):
+>
+
+---
+
 ### DIRECTIVE-NXTG-20260307-02 — Fix CI RED: Ruff StrEnum Lint Errors
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P2
 **Injected**: 2026-03-07 08:40 | **Estimate**: S | **Status**: COMPLETE
