@@ -633,9 +633,69 @@ Cycle 18 flagged this directly to CoS — no response yet. Repeating the signal:
 
 ---
 
-> Last updated: 2026-03-07 (Wolf) — cycles 23+
+> Last updated: 2026-03-08 (Wolf) — cycle 24
 
-**Updated 2026-03-08.** DIRECTIVE-NXTG-20260308-03 executed: regenerated `docs/openapi.json` — 62 paths, 27 schemas, 70 ops, all described. Spec was stale at 47 paths (last updated Feb 23). Now current and committed. 1360 passed. Zero debt. Standing by.
+### 1. What did I ship since last check-in?
+
+**Two directives executed. Both COMPLETE.**
+
+**DIRECTIVE-NXTG-20260307-02 — StrEnum UP042 compliance** (`a3d6ba2`):
+- Converted 4 `(str, Enum)` classes to `StrEnum` in `main.py`: `ErrorCategory`, `ConnectorStatus`, `AppletStatus`, `NodeErrorCode`. Removed now-unused `Enum` import.
+- Ruff preview UP042: zero violations post-fix. Stable ruff: clean throughout.
+- 1360 backend tests passed, 0 failed.
+
+**DIRECTIVE-NXTG-20260308-03 — OpenAPI spec for Dx3** (`e403ed9`):
+- Regenerated `docs/openapi.json` from live FastAPI app. Prior spec was stale at **47 paths** (last updated during D-08, Connector Health Probes, Feb 23). Current spec: **62 paths, 27 schemas, 70 operations — all with descriptions**.
+- 15 paths were missing from what Dx3 would have consumed: managed-keys CRUD + rotation, runs history + diff + trace + rerun, request replay/debug, quotas, usage, AI suggest, LLM/image provider endpoints, version.
+- 1360 backend tests passed, 0 failed.
+
+---
+
+### 2. What surprised me?
+
+**Spec drift was completely silent for 10+ directives.** From D-08 (Feb 23) onward, every directive added endpoints but stopped re-exporting the spec. The file was committed, looked versioned, but was 15 paths stale. The changelog entries said "OpenAPI re-exported (N paths)" through D-08 and then stopped — the pattern just quietly ended. No test, no CI check, no diff caught it.
+
+**The drift only surfaced because D-03 explicitly asked to regenerate.** If D-03 hadn't been issued, Dx3 would have integrated against a contract missing 24% of the API. This is a structural gap, not a one-time mistake.
+
+**StrEnum was a preview-mode-only violation.** Stable ruff was already clean — the UP042 rule is preview-only. CI (which runs stable ruff) was never actually failing. The D-02 directive description said "CI is RED" but this was either stale information or referring to a different environment. Worth knowing: stable ruff ≠ preview ruff. Preview violations accumulate silently unless you run `--preview` locally.
+
+---
+
+### 3. Cross-project signals
+
+**Static committed OpenAPI specs drift without a CI freshness gate.** Any project where the spec is committed as a file (rather than generated at build time) will accumulate drift invisibly. The pattern that works: add a CI step that regenerates the spec and diffs against committed — fail if there's a delta. Two-line Python script. Prevents the 10-directive drift that happened here.
+
+**Dx3 was consuming a 47-path spec when 62 exist.** If Dx3 has already built integrations against the Feb 23 spec, 15 endpoints are invisible to it. The new spec has: managed-keys CRUD (4 endpoints), API key rotation/revoke (2), runs diff/trace/rerun (3), request replay/debug (2), quotas (2), usage (2). Dx3 should re-import the spec and audit which of these are integration candidates.
+
+**`python -m pytest` vs bare `pytest` continues to be a cross-machine hazard.** Documented in cycles 14 and 15. Still unresolved. On machines where pip-installed pytest predates a Python upgrade, bare `pytest` runs an older interpreter silently — collection errors get skipped, not reported. The ASIF pre-push hook uses bare `pytest`. The correct pattern: all hook scripts and CI invocations should use `python -m pytest` or an explicit venv path.
+
+---
+
+### 4. What would I prioritize next?
+
+**1. CI spec freshness gate (S effort, high value).** Add a step to `ci.yml` that regenerates `docs/openapi.json` and diffs it against committed. Fail on delta. Prevents silent drift. Can be as simple as:
+```yaml
+- name: Verify OpenAPI spec is current
+  run: |
+    python -c "from apps.orchestrator.main import app; import json; open('docs/openapi.json','w').write(json.dumps(app.openapi(), indent=2))"
+    git diff --exit-code docs/openapi.json
+```
+
+**2. Fix pre-push hook interpreter (XS effort).** Change ASIF hook from bare `pytest` to `python -m pytest` or `python3 -m pytest`. Raised in cycles 14 and 15. Still unresolved. The hook currently passes on a different (incomplete) test set than CI.
+
+**3. Fix `test_metrics_template_runs_after_flow_execution` teardown (S effort).** Same async drain pattern as content engine teardown fix. Restores 1 excluded test. Known fix, just needs executing.
+
+**4. Understand the Dx3 integration scope (question for CoS — see below).** The spec is now fresh. What does Dx3 actually need?
+
+---
+
+### 5. Blockers / Questions for CoS
+
+**Question — Dx3 integration scope:** D-03 says the spec is "for cross-project consumers (Dx3 integration layer)." This is the first mention of Dx3 in NEXUS. What is Dx3? What endpoints will it consume? Are there contract testing requirements, or is the committed spec sufficient? Should SynApps stabilize a subset of endpoints as a versioned contract (v1 stable surface), or is the full 62-path spec the contract?
+
+**Question — CI spec freshness gate:** The 15-path drift on `docs/openapi.json` would not have been caught without D-03 explicitly asking for regeneration. I can add a CI step (2 lines) to fail on drift. Self-authorize, or wait for a directive?
+
+**Question — pre-push hook interpreter (third ask):** `/home/axw/.local/bin/pytest` resolves to Python 3.10 on this machine. The ASIF pre-push hook uses bare `pytest`. The local gate silently runs against 3.10 while CI uses 3.13. Can I fix the hook locally? Which file controls it?
 
 ---
 
