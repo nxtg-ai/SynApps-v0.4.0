@@ -906,7 +906,7 @@
           "Health"
         ],
         "summary": "Connectors Health",
-        "description": "Run health probes on all connectors and return per-connector status.\n\nEach connector is probed with a lightweight ``validate_config()`` call.\nAfter 3 consecutive failures a connector is auto-disabled; a single\nsuccess re-enables it.",
+        "description": "Run health probes on all connectors and return per-connector status.\n\nEach connector is probed with a lightweight HTTP HEAD ping (5 s timeout).\nResults are cached for 30 s to avoid hammering upstream on every request.\n\nDashboard statuses follow these thresholds:\n- *healthy*:  avg latency < 500 ms AND 0 errors in last 5 min\n- *degraded*: avg latency < 2000 ms OR < 5 errors in last 5 min\n- *down*:     timeout OR \u2265 5 errors in last 5 min",
         "operationId": "connectors_health_api_v1_connectors_health_get",
         "parameters": [
           {
@@ -1574,9 +1574,27 @@
           "Templates"
         ],
         "summary": "List Templates",
-        "description": "List all imported templates (latest version of each).",
+        "description": "List all imported templates (latest version of each), optionally filtered by category.",
         "operationId": "list_templates_api_v1_templates_get",
         "parameters": [
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by category: notification, data-sync, monitoring, content, devops",
+              "title": "Category"
+            },
+            "description": "Filter by category: notification, data-sync, monitoring, content, devops"
+          },
           {
             "name": "Authorization",
             "in": "header",
@@ -1612,6 +1630,342 @@
         ],
         "responses": {
           "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "v1",
+          "Templates"
+        ],
+        "summary": "Publish Template",
+        "description": "Publish an existing flow as a marketplace template.\n\nSnapshots the flow's nodes and edges into the template registry with\nmarketplace metadata (category, author).",
+        "operationId": "publish_template_api_v1_templates_post",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishTemplateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/templates/{template_id}/by-semver": {
+      "get": {
+        "tags": [
+          "v1",
+          "Templates"
+        ],
+        "summary": "Get Template By Semver",
+        "description": "Fetch a specific template version by semver string.\n\nReturns the latest version if the ``version`` query param is omitted.",
+        "operationId": "get_template_by_semver_api_v1_templates__template_id__by_semver_get",
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Template Id"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^\\d+\\.\\d+\\.\\d+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Semver version (e.g. '1.0.0'). Returns latest if omitted.",
+              "title": "Version"
+            },
+            "description": "Semver version (e.g. '1.0.0'). Returns latest if omitted."
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/templates/{template_id}/rollback": {
+      "put": {
+        "tags": [
+          "v1",
+          "Templates"
+        ],
+        "summary": "Rollback Template",
+        "description": "Rollback a template to a previous semver version.\n\nCreates a new version whose content is copied from the target version.\nThe new version gets the next auto-incremented semver.",
+        "operationId": "rollback_template_api_v1_templates__template_id__rollback_put",
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Template Id"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d+\\.\\d+\\.\\d+$",
+              "description": "Semver version to rollback to (e.g. '1.0.0').",
+              "title": "Version"
+            },
+            "description": "Semver version to rollback to (e.g. '1.0.0')."
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/templates/{template_id}/instantiate": {
+      "post": {
+        "tags": [
+          "v1",
+          "Templates"
+        ],
+        "summary": "Instantiate Template",
+        "description": "Create a new flow from a marketplace template.\n\nClones the template's nodes and edges into a fresh flow, re-mapping all\nIDs to avoid collisions. If ``connector_overrides`` are provided, the\nmatching node configs are merged with the user's actual connector settings.",
+        "operationId": "instantiate_template_api_v1_templates__template_id__instantiate_post",
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Template Id"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstantiateTemplateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
             "description": "Successful Response",
             "content": {
               "application/json": {
@@ -2020,6 +2374,460 @@
         "summary": "Delete Admin Key",
         "description": "Delete (revoke) an admin API key by ID (requires master key).",
         "operationId": "delete_admin_key_api_v1_admin_keys__key_id__delete",
+        "parameters": [
+          {
+            "name": "key_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key Id"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/managed-keys": {
+      "post": {
+        "tags": [
+          "v1",
+          "API Keys"
+        ],
+        "summary": "Create Managed Key",
+        "description": "Create a Fernet-encrypted managed API key with scoped permissions.",
+        "operationId": "create_managed_key_api_v1_managed_keys_post",
+        "parameters": [
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManagedKeyCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "v1",
+          "API Keys"
+        ],
+        "summary": "List Managed Keys",
+        "description": "List all managed API keys with usage stats.",
+        "operationId": "list_managed_keys_api_v1_managed_keys_get",
+        "parameters": [
+          {
+            "name": "include_inactive",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Include revoked/expired keys",
+              "default": false,
+              "title": "Include Inactive"
+            },
+            "description": "Include revoked/expired keys"
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/managed-keys/{key_id}": {
+      "get": {
+        "tags": [
+          "v1",
+          "API Keys"
+        ],
+        "summary": "Get Managed Key",
+        "description": "Get a single managed API key by ID.",
+        "operationId": "get_managed_key_api_v1_managed_keys__key_id__get",
+        "parameters": [
+          {
+            "name": "key_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key Id"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "v1",
+          "API Keys"
+        ],
+        "summary": "Delete Managed Key",
+        "description": "Permanently delete a managed key.",
+        "operationId": "delete_managed_key_api_v1_managed_keys__key_id__delete",
+        "parameters": [
+          {
+            "name": "key_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key Id"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/managed-keys/{key_id}/rotate": {
+      "post": {
+        "tags": [
+          "v1",
+          "API Keys"
+        ],
+        "summary": "Rotate Managed Key",
+        "description": "Rotate a managed key. Old key remains valid for the grace period.",
+        "operationId": "rotate_managed_key_api_v1_managed_keys__key_id__rotate_post",
+        "parameters": [
+          {
+            "name": "key_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key Id"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RotateKeyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/managed-keys/{key_id}/revoke": {
+      "post": {
+        "tags": [
+          "v1",
+          "API Keys"
+        ],
+        "summary": "Revoke Managed Key",
+        "description": "Revoke (deactivate) a managed key immediately.",
+        "operationId": "revoke_managed_key_api_v1_managed_keys__key_id__revoke_post",
         "parameters": [
           {
             "name": "key_id",
@@ -3718,6 +4526,546 @@
         }
       }
     },
+    "/api/v1/requests/failed": {
+      "get": {
+        "tags": [
+          "v1",
+          "Debug"
+        ],
+        "summary": "List Failed Requests",
+        "description": "List recent failed requests with timestamp, upstream, status code, and error.",
+        "operationId": "list_failed_requests_api_v1_requests_failed_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/_FailedRequestSummary"
+                  },
+                  "title": "Response List Failed Requests Api V1 Requests Failed Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/requests/{request_id}/replay": {
+      "post": {
+        "tags": [
+          "v1",
+          "Debug"
+        ],
+        "summary": "Replay Request",
+        "description": "Re-send the original failed request internally.\n\nThe replayed request does **not** count toward the consumer's rate limit\n(it is an admin/debug action).  Returns the new upstream response.",
+        "operationId": "replay_request_api_v1_requests__request_id__replay_post",
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Request Id"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/requests/{request_id}/debug": {
+      "get": {
+        "tags": [
+          "v1",
+          "Debug"
+        ],
+        "summary": "Debug Request",
+        "description": "Return the full request chain for a failed request.\n\nIncludes request headers, body, response headers, response body, and\ntiming.  Sensitive headers (Authorization, API keys, cookies) are\n**redacted** in the output.",
+        "operationId": "debug_request_api_v1_requests__request_id__debug_get",
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Request Id"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/usage": {
+      "get": {
+        "tags": [
+          "v1",
+          "Usage"
+        ],
+        "summary": "List Usage",
+        "description": "Per-API-key usage breakdown (requests today/week/month, bandwidth, error rate).",
+        "operationId": "list_usage_api_v1_usage_get",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/usage/{key_id}": {
+      "get": {
+        "tags": [
+          "v1",
+          "Usage"
+        ],
+        "summary": "Get Key Usage",
+        "description": "Detailed usage for a specific consumer (by endpoint, by hour).",
+        "operationId": "get_key_usage_api_v1_usage__key_id__get",
+        "parameters": [
+          {
+            "name": "key_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key Id"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/quotas": {
+      "get": {
+        "tags": [
+          "v1",
+          "Usage"
+        ],
+        "summary": "List Quotas",
+        "description": "Show all keys with current usage vs quota, percentage consumed.",
+        "operationId": "list_quotas_api_v1_quotas_get",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/quotas/{key_id}": {
+      "put": {
+        "tags": [
+          "v1",
+          "Usage"
+        ],
+        "summary": "Set Quota",
+        "description": "Set or clear the monthly request quota for a consumer key.",
+        "operationId": "set_quota_api_v1_quotas__key_id__put",
+        "parameters": [
+          {
+            "name": "key_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key Id"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/_SetQuotaRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/version": {
+      "get": {
+        "tags": [
+          "v1",
+          "Health"
+        ],
+        "summary": "Get Api Version",
+        "description": "Return current API version, supported versions, and deprecated endpoints.",
+        "operationId": "get_api_version_api_v1_version_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "summary": "Health",
@@ -4167,6 +5515,150 @@
         "title": "ImportFlowRequest",
         "description": "Request body for importing a flow."
       },
+      "InstantiateTemplateRequest": {
+        "properties": {
+          "flow_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flow Name",
+            "description": "Name for the new flow. Defaults to template name."
+          },
+          "connector_overrides": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Connector Overrides",
+            "description": "Map of node IDs to connector config overrides."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "InstantiateTemplateRequest",
+        "description": "Request body for instantiating a flow from a template."
+      },
+      "ManagedKeyCreateRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "scopes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scopes",
+            "description": "Scopes: read, write, admin"
+          },
+          "expires_in": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 31536000.0,
+                "minimum": 60.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires In",
+            "description": "Seconds until expiry (min 60s, max 1 year). Omit for no expiry."
+          },
+          "rate_limit": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 10000.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate Limit",
+            "description": "Custom rate limit (requests/min)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "ManagedKeyCreateRequest",
+        "description": "Request body for creating a managed API key."
+      },
+      "PublishTemplateRequest": {
+        "properties": {
+          "flow_id": {
+            "type": "string",
+            "title": "Flow Id",
+            "description": "ID of the existing flow to publish as a template"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "description": "Template display name"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000,
+            "title": "Description",
+            "description": "Template description",
+            "default": ""
+          },
+          "category": {
+            "type": "string",
+            "title": "Category",
+            "description": "One of: notification, data-sync, monitoring, content, devops"
+          },
+          "author": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Author",
+            "description": "Template author",
+            "default": "anonymous"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version",
+            "description": "Semver version string (e.g. '1.0.0'). Auto-generated if omitted."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "flow_id",
+          "name",
+          "category"
+        ],
+        "title": "PublishTemplateRequest",
+        "description": "Request body for publishing a flow as a marketplace template."
+      },
       "RegisterWebhookRequest": {
         "properties": {
           "url": {
@@ -4226,6 +5718,22 @@
         "title": "RerunFlowRequest",
         "description": "Request body for re-running a previous flow execution with input overrides."
       },
+      "RotateKeyRequest": {
+        "properties": {
+          "grace_period": {
+            "type": "integer",
+            "maximum": 604800.0,
+            "minimum": 0.0,
+            "title": "Grace Period",
+            "description": "Seconds the old key stays valid (default 24h, max 7 days).",
+            "default": 86400
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "RotateKeyRequest",
+        "description": "Request body for rotating a managed API key."
+      },
       "RunAsyncRequest": {
         "properties": {
           "input": {
@@ -4273,6 +5781,16 @@
             "maxLength": 200,
             "minLength": 1,
             "title": "Name"
+          },
+          "version": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version",
+            "description": "Semver version string (e.g. '1.2.0'). Auto-incremented patch if omitted. Integer values from legacy exports are accepted but ignored."
           },
           "description": {
             "anyOf": [
@@ -4455,6 +5973,69 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "_FailedRequestSummary": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "title": "Request Id"
+          },
+          "timestamp": {
+            "type": "number",
+            "title": "Timestamp"
+          },
+          "method": {
+            "type": "string",
+            "title": "Method"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "response_status": {
+            "type": "integer",
+            "title": "Response Status"
+          },
+          "duration_ms": {
+            "type": "number",
+            "title": "Duration Ms"
+          },
+          "client_ip": {
+            "type": "string",
+            "title": "Client Ip",
+            "default": "unknown"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request_id",
+          "timestamp",
+          "method",
+          "path",
+          "response_status",
+          "duration_ms"
+        ],
+        "title": "_FailedRequestSummary"
+      },
+      "_SetQuotaRequest": {
+        "properties": {
+          "monthly_limit": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 10000000.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly Limit",
+            "description": "Monthly request limit. null = unlimited."
+          }
+        },
+        "type": "object",
+        "title": "_SetQuotaRequest"
       }
     }
   },

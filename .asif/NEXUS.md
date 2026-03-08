@@ -232,7 +232,7 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 
 ### DIRECTIVE-NXTG-20260308-03 — Generate OpenAPI Spec for Dx3 Integration
 **From**: NXTG-AI CoS | **Priority**: P2
-**Injected**: 2026-03-08 09:55 | **Estimate**: S | **Status**: PENDING
+**Injected**: 2026-03-08 09:55 | **Estimate**: S | **Status**: COMPLETE
 
 **Action Items**:
 1. [ ] Generate the OpenAPI JSON spec from the running FastAPI app. Use `python -c "from app.main import app; import json; print(json.dumps(app.openapi(), indent=2))" > docs/openapi.json` or the equivalent import path for this project's FastAPI instance.
@@ -245,7 +245,8 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 - If the FastAPI app requires env vars or DB to import, document the minimal command to generate the spec in a comment at the top of `docs/openapi.json`.
 
 **Response** (filled by project team):
->
+
+**COMPLETE.** Regenerated `docs/openapi.json` from live FastAPI app. Prior spec was stale (47 paths, last updated D-08 Feb 23). Current spec: **62 paths, 27 schemas, 70 total operations — all with descriptions**. Spot-checked auth/login, flows, health, managed-keys, connectors/health: all present and correct. Committed to repo. Backend tests: **1360 passed, 0 failed** (CRUCIBLE Gate 4 holds). Note: `pytest` must be invoked via `python -m pytest` locally (system `/usr/bin/python3` is 3.10; `StrEnum` requires 3.11+).
 
 ---
 
@@ -634,7 +635,7 @@ Cycle 18 flagged this directly to CoS — no response yet. Repeating the signal:
 
 > Last updated: 2026-03-07 (Wolf) — cycles 23+
 
-**Extended idle — updated 2026-03-07.** DIRECTIVE-NXTG-20260307-02 executed: converted 4 `(str, Enum)` classes to `StrEnum` in `main.py` (`a3d6ba2`). Ruff clean. 1360 passed. Zero debt. No further directives pending. Standing by.
+**Updated 2026-03-08.** DIRECTIVE-NXTG-20260308-03 executed: regenerated `docs/openapi.json` — 62 paths, 27 schemas, 70 ops, all described. Spec was stale at 47 paths (last updated Feb 23). Now current and committed. 1360 passed. Zero debt. Standing by.
 
 ---
 
