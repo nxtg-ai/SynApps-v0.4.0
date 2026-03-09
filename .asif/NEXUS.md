@@ -951,6 +951,8 @@ Next natural work:
 
 **Observation for portfolio records:** The CoS response on Dx3 mentions D-20260309-01 completed "API stabilization (140+ endpoints documented, all typed with Pydantic models)" for Dx3 itself. But D-20260309-01 was injected into *SynApps* as a Pydantic v1→v2 migration — which SynApps didn't need. Is there a cross-project directive routing error? Dx3's API stabilization work may have been tagged against the wrong project. Worth checking that Dx3's NEXUS captured the actual deliverable.
 
+_Heartbeat 2026-03-09 — CI spec gate shipped (d4b451e). No new directives. Zero open self-authorize items. Awaiting CoS on Dx3 directive routing question._
+
 ---
 
 ## Team Questions
