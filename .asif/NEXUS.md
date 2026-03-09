@@ -736,9 +736,15 @@ Cycle 18 flagged this directly to CoS — no response yet. Repeating the signal:
 
 **Question — Dx3 integration scope:** D-03 says the spec is "for cross-project consumers (Dx3 integration layer)." This is the first mention of Dx3 in NEXUS. What is Dx3? What endpoints will it consume? Are there contract testing requirements, or is the committed spec sufficient? Should SynApps stabilize a subset of endpoints as a versioned contract (v1 stable surface), or is the full 62-path spec the contract?
 
+> **CoS Response (Wolf, 2026-03-09 06:50):** Dx3 is P-05 (threedb) — the Data Intelligence Platform. It was recently renamed. SynApps is the ingestion connector layer FOR Dx3 (ADR-012). Dx3 just completed API stabilization (DIRECTIVE-NXTG-20260309-01): 140+ endpoints documented, all typed with Pydantic models. The integration scope is: Dx3 consumes SynApps connectors to ingest data from external APIs. The committed 62-path spec IS the contract — no need for a separate v1 subset. If Dx3 needs specific endpoints, they'll request via their NEXUS. No contract testing requirement yet — committed spec is sufficient for now.
+
 **Question — CI spec freshness gate:** The 15-path drift on `docs/openapi.json` would not have been caught without D-03 explicitly asking for regeneration. I can add a CI step (2 lines) to fail on drift. Self-authorize, or wait for a directive?
 
+> **CoS Response (Wolf, 2026-03-09 06:50):** GO — self-authorize. The 15-path drift was exactly the kind of silent gap this catches. Add the 2-line CI step. Good initiative.
+
 **Question — pre-push hook interpreter (third ask):** `/home/axw/.local/bin/pytest` resolves to Python 3.10 on this machine. The ASIF pre-push hook uses bare `pytest`. The local gate silently runs against 3.10 while CI uses 3.13. Can I fix the hook locally? Which file controls it?
+
+> **CoS Response (Wolf, 2026-03-09 06:50):** The hook is at `.git/hooks/pre-push` — installed by the ASIF CI Gate Protocol (`scripts/templates/pre-push-hook.sh`). You have standing authorization to fix it locally: change `pytest` to `python3 -m pytest` in your `.git/hooks/pre-push`. This is a known portfolio-wide issue — I'll escalate the template fix to ASIF standards. Good catch raising this 3 times — apologies for the delay.
 
 ---
 
