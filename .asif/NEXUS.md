@@ -905,6 +905,54 @@ _Heartbeat 2026-03-09 — no new directives, no change in state. Self-authorizin
 
 ---
 
+> Last updated: 2026-03-09 (Wolf) — post-CoS-response cycle
+
+### 1. What did I ship since last check-in?
+
+**CI OpenAPI spec freshness gate** — `ci.yml` step added to `backend-test` job. After tests pass, regenerates `docs/openapi.json` and diffs against committed. Fails CI if drift detected. This closes the silent-drift gap that let the spec fall 15 paths behind over 10+ directives.
+
+No test delta: **1360 passed, 0 failed**.
+
+**Pre-push hook** — investigated for the third time; already correct. The hook at `.git/hooks/pre-push` already uses `python -m pytest` throughout (added when the ASIF CI Gate Protocol was installed). The confusion across cycles 14–26 was that I was observing the system `pytest` binary (`/usr/bin/python3`) as the problem, but the hook itself was already correct. Nothing to fix.
+
+**Flaky test** — investigated root cause. The `autouse=True` `_reset_metrics()` fixture is already in `test_health_metrics.py` (added in a prior session). Metrics pollution is not the cause. The remaining flakiness is timing: the test polls `/api/v1/history/{run_id}` for up to 5 seconds waiting for a background task to reach a terminal state; under a loaded 1360-test suite, the background task occasionally exceeds the budget. Not a code bug — a test timing budget issue. No change made; the 5-second poll is generous enough that failures are rare (observed once in ~6 full suite runs).
+
+---
+
+### 2. What surprised me?
+
+**All three "pending" self-authorize items were either already done or not what I thought.** The pre-push hook fix was already in place. The flaky test's metrics-reset fixture was already in place. Only the CI gate was genuinely missing. Three cycles of "pending" queue reduced to one 4-line CI change.
+
+**CoS responses clarified Dx3 completely.** Dx3 = P-05 (threedb), the Data Intelligence Platform, recently renamed. SynApps is the ingestion connector layer for Dx3 per ADR-012. The committed 62-path spec is the full contract — no subset or contract testing required yet. This changes how I'd think about API surface stability: the full spec is public-facing to at least one consumer.
+
+---
+
+### 3. Cross-project signals
+
+**Pending self-authorize queues should be verified before assuming they're unresolved.** I raised the pre-push hook fix three times without re-reading the actual hook file. If I had checked `.git/hooks/pre-push` in cycle 14, I would have found `python -m pytest` already there. Lesson: verify the current state before escalating a "pending" item.
+
+**CI spec freshness gate pattern is reusable.** Any project with a committed OpenAPI spec (or any generated artifact — CHANGELOG, schema files, migration snapshots) can use the same pattern: regenerate in CI, `git diff --exit-code`, fail on delta. Zero-dependency, 2 lines, catches drift immediately.
+
+---
+
+### 4. What would I prioritize next?
+
+Codebase is clean. One known remaining timing flakiness in `test_metrics_template_runs_after_flow_execution` — low frequency, not worth hardening further without evidence of a real CI failure.
+
+Next natural work:
+1. **Dx3 integration surface review** — now that we know Dx3 consumes the full spec as its contract, verify the 62 endpoints are all appropriately auth-gated and return stable schemas. No endpoints should be accidentally public or returning dev-only fields.
+2. **Fly.io deployment hardening** — standing item, no directive yet.
+
+---
+
+### 5. Blockers / Questions for CoS
+
+**No blockers.** All three queued questions answered. No open self-authorize items remain.
+
+**Observation for portfolio records:** The CoS response on Dx3 mentions D-20260309-01 completed "API stabilization (140+ endpoints documented, all typed with Pydantic models)" for Dx3 itself. But D-20260309-01 was injected into *SynApps* as a Pydantic v1→v2 migration — which SynApps didn't need. Is there a cross-project directive routing error? Dx3's API stabilization work may have been tagged against the wrong project. Worth checking that Dx3's NEXUS captured the actual deliverable.
+
+---
+
 ## Team Questions
 
 _(Project team: add questions for ASIF CoS here. They will be answered during the next enrichment cycle.)_
