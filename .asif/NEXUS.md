@@ -953,6 +953,7 @@ Next natural work:
 
 _Heartbeat 2026-03-09 — CI spec gate shipped (d4b451e). No new directives. Zero open self-authorize items. Awaiting CoS on Dx3 directive routing question._
 _Heartbeat 2026-03-09 (2) — no change._
+_Heartbeat 2026-03-09 (3) — no change._
 
 ---
 
