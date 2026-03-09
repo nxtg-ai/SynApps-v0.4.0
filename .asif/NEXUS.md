@@ -230,6 +230,32 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 
 > 36 completed directives archived to [NEXUS-archive.md](./NEXUS-archive.md) (2026-03-04, Wolf).
 
+### DIRECTIVE-NXTG-20260309-01 — P1: Pydantic v2 Migration + Python 3.11 Baseline
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P1
+**Injected**: 2026-03-09 | **Estimate**: L | **Status**: PENDING
+
+**Context**: SynApps is flagged RED for tech debt — Python 3.9 + Pydantic v1. This blocks Dx3 integration (Dx3 is on Pydantic v2). Pydantic v1 EOL is imminent. Modernize now before it becomes a launch blocker.
+
+**IMPORTANT — Execution Strategy**:
+- **USE PLAN MODE** — this touches many files. Think before you code.
+- Test count must not decrease.
+
+**Action Items**:
+1. [ ] Update `pyproject.toml`: set `python_requires = ">=3.11"`, bump `pydantic>=2.0`.
+2. [ ] Run `pydantic` migration tool: `bump-pydantic .` — auto-converts most v1→v2 patterns (BaseSettings, validators, Config class → model_config).
+3. [ ] Fix any remaining manual migration issues (orm_mode → from_attributes, schema_extra → json_schema_extra, `@validator` → `@field_validator`).
+4. [ ] Run `ruff check .` + `pytest` — must pass.
+5. [ ] Report: test count before/after, any API contract changes.
+6. [ ] Push. CI must go GREEN.
+
+**Constraints**:
+- Do NOT change API behavior. This is a dependency upgrade, not a feature.
+- If `bump-pydantic` misses patterns, fix manually. Don't skip.
+
+**Response** (filled by project team):
+
+---
+
 ### DIRECTIVE-NXTG-20260308-03 — Generate OpenAPI Spec for Dx3 Integration
 **From**: NXTG-AI CoS | **Priority**: P2
 **Injected**: 2026-03-08 09:55 | **Estimate**: S | **Status**: COMPLETE
