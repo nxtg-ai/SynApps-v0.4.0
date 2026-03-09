@@ -849,6 +849,54 @@ _2026-03-09 — DIRECTIVE-NXTG-20260309-01 (Pydantic v2 + Python 3.11) closed im
 
 ---
 
+> Last updated: 2026-03-09 (Wolf) — post-D-01 reflection
+
+### 1. What did I ship since last check-in?
+
+**DIRECTIVE-NXTG-20260309-01 — closed without code changes.** Verified the directive's premise was false: SynApps is Python 3.13 + Pydantic 2.12.5, not Python 3.9 + Pydantic v1. Response written in NEXUS, status marked COMPLETE (already done), committed `b500044`.
+
+No test delta. 1360 passed before and after.
+
+---
+
+### 2. What surprised me?
+
+**The same stale-intelligence error occurred twice.** PI-002 was acknowledged as wrong on 2026-03-02 (TQ-20260228-01, CoS said "I will flag for correction"). Seven days later, D-20260309-01 was injected against the same wrong baseline. The correction either wasn't applied to the source of truth, or the portfolio re-scanned and overwrote the manual correction with stale data.
+
+**The directive was P1/L — highest urgency, largest estimate.** If executed uncritically it would have: run `bump-pydantic` on an already-v2 codebase (likely no-ops or subtle regressions), potentially downgraded pins, and consumed significant CoS-allocated effort on a non-problem. The correct response was to verify before touching anything. Plan mode instruction in the directive was appropriate but would have been wasted on investigation that should have caught this before injection.
+
+---
+
+### 3. Cross-project signals
+
+**Portfolio intelligence pipelines need a live-verify step before P1 directives fire.** Any portfolio RED flag that triggers a P1 directive should be verified against a fresh signal (CI status, dependency scan, or agent probe) before injection. A stale RED that was GREEN for weeks is worse than no flag — it consumes team capacity and erodes trust in the directive system. Recommendation for ASIF: add a "last verified" timestamp to portfolio intelligence records and reject injections where the signal is >7 days stale for P1/P0 items.
+
+**The two-step pattern that caught this:** (1) read existing NEXUS before touching code, (2) verify claims against live codebase before executing. Both steps are already in the execution strategy but easy to skip under P1 urgency pressure. The governance loop's "USE PLAN MODE" instruction for L-effort directives creates exactly the right pause for this check.
+
+---
+
+### 4. What would I prioritize next?
+
+Same XS items as before, all self-authorize candidates:
+1. Fix `test_metrics_template_runs_after_flow_execution` isolation — `_MetricsCollector` reset fixture
+2. CI OpenAPI spec freshness gate — 2-line CI step
+3. Pre-push hook interpreter fix — `python -m pytest` in hook
+
+No new feature work without a fresh directive. Codebase is clean.
+
+---
+
+### 5. Blockers / Questions for CoS
+
+**Portfolio intelligence audit request (escalation).** Two P1/P2 directives injected against a baseline that has been wrong for weeks. The source of truth for SynApps in the portfolio needs a manual correction that persists — not just acknowledged in NEXUS. Specific records to correct: Python version (3.9 → 3.13), Pydantic version (v1 → 2.12.5), N-07 status (should be SHIPPED, not in-progress).
+
+**Self-authorize queue (unchanged from cycle 24):**
+- Flaky test isolation fix (XS)
+- CI spec freshness gate (S)
+- Pre-push hook interpreter (XS)
+
+---
+
 ## Team Questions
 
 _(Project team: add questions for ASIF CoS here. They will be answered during the next enrichment cycle.)_
