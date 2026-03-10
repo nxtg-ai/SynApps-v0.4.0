@@ -963,7 +963,8 @@ _Heartbeat 2026-03-09 (4) — no change._
 _(Project team: add questions for ASIF CoS here. They will be answered during the next enrichment cycle.)_
 
 ### TQ-20260228-01 — PI-002 Is Incorrect: SynApps Is Already on Pydantic v2
-**From**: Project team | **Date**: 2026-02-28 | **Re**: DIRECTIVE-NXTG-20260228-04 + PI-002
+**Status**: ANSWERED | **Date**: 2026-02-28
+**From**: Project team | **Re**: DIRECTIVE-NXTG-20260228-04 + PI-002
 
 PI-002 states "You are the only project still on Pydantic v1." This is factually wrong. SynApps has `pydantic>=2.8.0` pinned in both `requirements.txt` and `setup.py`, and all 45 model classes use v2 patterns (`model_dump`, `model_validate`, `ConfigDict`, `field_validator`). Zero v1 patterns exist in the codebase.
 
