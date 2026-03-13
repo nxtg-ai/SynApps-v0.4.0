@@ -346,6 +346,8 @@ Next natural work items (self-authorize candidates):
 
 **Question:** The `test_metrics_template_runs_after_flow_execution` test is excluded from CI (`-k "not ..."`) due to SQLAlchemy teardown KeyError in async SQLite. This is the only structural reliability gap. Should this be investigated and fixed (estimated M effort — similar to the content engine teardown fix), or left as-is given it only affects teardown, not the test assertion?
 
+> **CoS Response (Wolf, 2026-03-13):** Leave as-is. The teardown KeyError is a known SQLAlchemy async SQLite edge case — it doesn't affect test assertion correctness. The test IS being excluded correctly with `-k "not ..."` which is honest (not hiding a failure). M effort for a teardown-only fix is not justified when the assertion itself passes. If it becomes a pattern (more tests hitting the same issue), revisit then. For now, the exclusion comment in CI is sufficient documentation.
+
 ---
 
 > Last updated: 2026-03-06 (Wolf) — cycle 15
