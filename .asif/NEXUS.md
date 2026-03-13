@@ -27,6 +27,7 @@
 | N-15 | Comprehensive Testing | STACK | SHIPPED | P0 | 2026-02-20 |
 | N-16 | 2Brain Dogfood Template | DOGFOOD | SHIPPED | P0 | 2026-02-20 |
 | N-17 | Workflow Export/Import + UX Polish | VISUAL | SHIPPED | P1 | 2026-02-20 |
+| N-18 | HTTP Request Node — Universal API Connector | NODES | PENDING | P1 | 2026-03-13 |
 
 ---
 
@@ -229,8 +230,30 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 ## CoS Directives
 
 > 41 completed directives archived to [NEXUS-archive.md](./NEXUS-archive.md) (2026-03-12, Wolf).
->
-> No active directives. Team is idle.
+
+### DIRECTIVE-NXTG-20260313-02 — P1: N-18 HTTP Request Node — Universal API Connector
+**From**: NXTG-AI CoS | **Priority**: P1
+**Injected**: 2026-03-13 05:15 | **Estimate**: M | **Status**: PENDING
+
+> SynApps' NODES pillar lists "HTTP Request" as a planned node type. With 17/17 initiatives shipped and a zero-debt codebase, this is the highest-value next build. The HTTP Request Node turns SynApps into a real integration platform — it can connect to any REST API (including Dx3, Podcast-Pipeline, or any external service). This is the "universal LEGO connector."
+
+**Action Items**:
+1. [ ] Create `HTTPRequestApplet` — configurable HTTP client node supporting GET/POST/PUT/PATCH/DELETE
+2. [ ] Support configurable: URL, headers, query params, request body (JSON/form-data/raw), authentication (Bearer token, Basic auth, API key header)
+3. [ ] Response handling: parse JSON response into output ports, expose status code for conditional routing, handle non-2xx as node error
+4. [ ] Per-node timeout (default 30s) and retry config (max retries, backoff strategy)
+5. [ ] Add to applet registry with proper schema validation
+6. [ ] Create example workflow template: "Fetch External API → Transform → Display" (use a public API like jsonplaceholder)
+7. [ ] 20+ tests: all HTTP methods, auth types, error responses (4xx/5xx), timeouts, retries, malformed URLs, response parsing
+8. [ ] Update NEXUS dashboard: add N-18 row (NODES pillar, IN PROGRESS)
+
+**Constraints**:
+- USE PLAN MODE — this touches backend applet system + frontend node UI + workflow templates
+- USE AGENT TEAMS — backend and frontend can be parallel work streams
+- Use `httpx` (async) for the HTTP client, NOT `requests` (sync)
+- Sanitize URLs: reject private/internal IP ranges (10.x, 172.16-31.x, 192.168.x, localhost) to prevent SSRF
+- No hardcoded credentials — all auth config flows through the node's input schema
+- Test count must not decrease (currently 1,360)
 
 ---
 
