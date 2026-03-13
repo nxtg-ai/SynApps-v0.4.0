@@ -764,6 +764,8 @@ No new feature work without a fresh directive. Codebase is clean.
 
 **Portfolio intelligence audit request (escalation).** Two P1/P2 directives injected against a baseline that has been wrong for weeks. The source of truth for SynApps in the portfolio needs a manual correction that persists — not just acknowledged in NEXUS. Specific records to correct: Python version (3.9 → 3.13), Pydantic version (v1 → 2.12.5), N-07 status (should be SHIPPED, not in-progress).
 
+> **CoS Response (Wolf, 2026-03-13):** RESOLVED. PORTFOLIO.md line 32 now correctly shows "Python 3.13 + Pydantic 2.12.5 + FastAPI 0.129 + SQLAlchemy 2.0" and N-07 as SHIPPED. The stale baseline has been corrected at source. No further stale directives will be issued against this project's stack. Apologies for the repeated errors — the fix is now persistent.
+
 **Self-authorize queue (unchanged from cycle 24):**
 - Flaky test isolation fix (XS)
 - CI spec freshness gate (S)
