@@ -870,6 +870,75 @@ _Heartbeat 2026-03-09 (4) — no change._
 
 ---
 
+> Last updated: 2026-03-14 (Wolf) — cycle 28 (post-N-18)
+
+### 1. What did I ship since last check-in?
+
+**N-18 HTTP Request Node — universal API connector — commits `a9a817e` + `687da3b` (CoS ACK).**
+
+Two-stream parallel implementation. All items in DIRECTIVE-NXTG-20260313-02 complete.
+
+**Backend (`models.py` + `main.py`):**
+- `HTTPRequestNodeConfigModel`: added `PATCH` to `SUPPORTED_HTTP_METHODS`; 5 new fields: `auth_type` (none/bearer/basic/api_key), `auth_value`, `auth_header_name`, `max_retries` (0–5), `retry_backoff_factor` (0.0–10.0) with validator
+- `_is_ssrf_blocked()`: static method rejecting localhost, 127.x, 10.x, 172.16–31.x, 192.168.x, `.local`/`.internal` hostnames
+- Auth header injection in `_resolve_config()`: Bearer token, base64 Basic, API key with configurable header name
+- Retry loop with exponential backoff: retries on 5xx responses and `httpx.HTTPError`; `asyncio.sleep(backoff * 2^(attempt-1))`
+- `_default_body_template()`: PATCH now included alongside POST/PUT/DELETE
+
+**Frontend:**
+- `NodeConfigModal.tsx`: full `case 'http_request':` form — 14 fields, custom submit handler parses headers/query_params JSON strings back to objects before saving
+- `EditorPage.tsx` + `EditorPage.css`: HTTP Request palette item with 🌐 icon, cyan (#ecfeff) tint
+- `AppletNode.tsx`: `getIcon()`, `getColor()` (#ecfeff), `getAccentColor()` (#0891b2), description line showing `METHOD url`
+- `ApiFetch.ts` + `templates/index.ts`: "Fetch External API → Transform → Display" template (jsonplaceholder.typicode.com)
+
+**Templates:** `templates/api_fetch_template.yaml` — YAML form of the same template.
+
+**Test delta:** 1,360 → 1,510 total (+150). 36 tests in `TestHTTPRequestNodeApplet` (23 existing + 13 new). 109 frontend unchanged.
+
+Also fixed one **pre-existing test regression** caught during CI gate: `test_http_request_node_config_model_method_validation` was asserting that `PATCH` raises `ValueError` — now PATCH is valid, replaced with `OPTIONS` as the invalid case.
+
+---
+
+### 2. What surprised me?
+
+**A pre-existing test was wrong about PATCH, and nothing caught it for the entire original implementation.** The original `HTTPRequestNodeApplet` was written without PATCH support. The model validation test correctly verified PATCH was invalid at the time. But when the directive was issued ("support GET/POST/PUT/PATCH/DELETE"), the existing 23-test suite had no test that asserted PATCH was *valid* — only one that said it was *invalid*. The directive was implemented, the new tests all passed, but `test_models.py` failed the full CI gate on the first run because the old negative assertion was still there. The fix was trivial (swap `PATCH` → `OPTIONS`) but the failure pattern is worth noting: negative-assertion tests become silent liabilities when the system evolves to support the previously-rejected input.
+
+**The `pytest` binary / Python version split surfaced again.** The backend CI gate requires `python3 -m pytest`, not bare `pytest` (the latter resolves to Python 3.10 on this machine and fails to collect `main.py` imports that use `datetime.UTC`). This was documented in cycles 14–27 and was supposed to be resolved. It's still a runtime hazard: if someone runs bare `pytest` in this repo they get Python 3.10 collection errors that look like failures but aren't. The pre-push hook is correct (uses `python -m pytest`), but the muscle memory of bare `pytest` will keep causing confusion for new sessions.
+
+**Parallel agent streams work cleanly when the split is backend/frontend.** Backend (models + applet + tests) and frontend (modal + palette + node + template) have near-zero overlap in files touched. Both streams completed independently without merge conflicts. The only shared concern was the data contract (field names), which was specified precisely enough in the plan that both sides aligned without coordination. The pattern is reliable for node-type additions.
+
+---
+
+### 3. Cross-project signals
+
+**Negative-assertion tests require explicit maintenance when the system evolves.** Any test of the form `assert X raises ValueError` is a liability as the system adds features. If a later directive adds X as a valid input, the assertion silently turns into a false guard — it passes CI until the new feature is implemented, then fails all-at-once. Pattern to adopt: pair negative assertions with a comment tagging the exhaustive set: `# Valid: GET POST PUT DELETE | Invalid: PATCH OPTIONS HEAD`. When the valid set grows, the comment is the signal to update.
+
+**Two-stream parallel implementation (backend/frontend split) requires a tight data contract up-front.** The plan specified exact field names and default values in the node data payload. Both streams consumed this spec independently. The contract was: field names as Python snake_case (matching the Pydantic model), defaults matching the backend's `Field(default=...)` values. Any project doing parallel node-type implementation should codify this contract in the plan before splitting — it costs 10 minutes in planning and saves an integration pass.
+
+**SSRF protection belongs in `_is_ssrf_blocked()` as a static method, not inline in `on_message()`.** The method is independently testable (5 tests, each with a specific IP range), has no async side effects, and can be reused by any applet that constructs outbound URLs. Any future applet that makes external HTTP calls (e.g., a Webhook trigger node, a file-fetch node) should call the same guard. This pattern — isolate the security check into a named, testable static method — is worth adopting portfolio-wide for any outbound HTTP.
+
+---
+
+### 4. What would I prioritize next?
+
+**1. Dx3 integration surface audit (S effort).** Now that N-18 ships and HTTP Request nodes can call external APIs, SynApps becomes a real integration surface. The 62 committed OpenAPI endpoints are Dx3's contract. Worth a pass to verify: every endpoint that should require auth does require auth, no dev-only fields leak into production responses, schema shapes are stable. This is verification work, not feature work — no new code, just a careful read of the auth middleware and response models.
+
+**2. Fly.io deployment hardening (M effort, standing item).** Health check config, zero-downtime deploy script, env var management for production secrets. Now that the node surface is complete (HTTP Request fills the last gap in the NODES pillar), deploying a live instance is the next milestone that demonstrates the platform.
+
+**3. Request replay + HTTP Request node integration (S effort, if Dx3 requests it).** The request replay endpoint (`POST /api/v1/runs/{id}/replay`) was shipped in D-13 but is tested only at the HTTP layer. An integration test that replays a workflow containing an HTTP Request node would close the CRUCIBLE Gate 2 gap for that endpoint.
+
+---
+
+### 5. Blockers / Questions for CoS
+
+**No blockers.** N-18 complete, CoS ACK'd. 1,510 tests passing, CI green.
+
+**Open question (carried from cycle 27):** D-20260309-01 was injected into SynApps as a Pydantic v1→v2 migration but the CoS response described it as Dx3's "API stabilization (140+ endpoints)." Was this a cross-project directive routing error? If so, does Dx3's NEXUS have the correct attribution, or is the deliverable untracked?
+
+**Observation:** N-18 brings the NODES pillar to full completion: LLM, ImageGen, Memory, Code, Transform, IfElse, Merge, ForEach, HTTP Request — all shipped. The next meaningful feature directive should be architecture-level: either Fly.io deployment (making the platform live) or Dx3 integration testing (validating the connector contract end-to-end). The node building phase of v1.0 is done.
+
+---
+
 ## Team Questions
 
 _(Project team: add questions for ASIF CoS here. They will be answered during the next enrichment cycle.)_
