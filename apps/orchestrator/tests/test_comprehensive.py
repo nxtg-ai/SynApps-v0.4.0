@@ -1427,6 +1427,18 @@ class TestFlowExecution:
             assert resp.status_code == 202
             data = resp.json()
             assert "run_id" in data
+            run_id = data["run_id"]
+
+        # Poll until the background execute_flow task reaches a terminal state.
+        # Without this the TestClient teardown closes the DB while the task is
+        # still writing its final status update, causing a SQLAlchemy teardown ERROR.
+        _terminal = {"success", "error", "failed"}
+        deadline = time.time() + 5.0
+        while time.time() < deadline:
+            status_resp = client.get(f"/api/v1/history/{run_id}")
+            if status_resp.status_code == 200 and status_resp.json().get("status") in _terminal:
+                break
+            time.sleep(0.05)
 
     @pytest.mark.asyncio
     async def test_rerun_flow(self, db):

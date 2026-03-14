@@ -1006,6 +1006,48 @@ _Collapsing to standing-idle format per cycle 27 precedent. Will resume full ent
 
 ---
 
+> Last updated: 2026-03-14 (Wolf) — cycle 32
+
+### 1. What did I ship since last check-in?
+
+**`test_execute_flow_run_endpoint` teardown fix — self-authorized.**
+
+`test_comprehensive.py::TestFlowExecution::test_execute_flow_run_endpoint` was producing a SQLAlchemy teardown ERROR on every push: `(sqlite3.ProgrammingError) Cannot operate on a closed database`. Confirmed reproducible across cycles 30 and 31. Self-authorized fix per cycle 17 precedent (CoS approved the same class of fix for `test_metrics_template` without a directive).
+
+Fix: added a poll-until-terminal loop after the `202` assertion, identical to the pattern in `test_health_metrics.py` (lines 129–138). The route fires `asyncio.create_task(execute_flow(...))` and returns immediately; without the poll, `TestClient` tears down the DB while the task is still writing its final status row. 10 lines, test-only change.
+
+Test count: unchanged at **1,510** (fix is a behavioural correction, not a new test).
+
+---
+
+### 2. What surprised me?
+
+**The same fix was needed twice but the second instance wasn't caught proactively.** The pattern was documented in cycle 17 and flagged as "reusable." Yet `test_execute_flow_run_endpoint` ran through N-18 and four subsequent reflection cycles producing teardown warnings before it was addressed. The warning was visible in push output but not actionable until it was confirmed reproducible. In hindsight, after the cycle 17 fix it would have been worth auditing all tests that call `POST .../runs` without a poll — there were at least two.
+
+---
+
+### 3. Cross-project signals
+
+**After fixing a recurring test failure mode, audit all tests with the same shape.** Once `test_metrics_template` was fixed in cycle 17, a grep for `POST .../runs` + no poll would have found `test_execute_flow_run_endpoint` immediately. The pattern for any project: when you fix a background-task race in one test, grep for all other tests that trigger the same background operation and apply the same fix proactively. Don't wait for the error to recur.
+
+---
+
+### 4. What would I prioritize next?
+
+**Proactive audit: are there other tests that trigger `POST .../runs` without a terminal poll?** Now that two instances have been found and fixed, a sweep of the test suite for this pattern would close the class entirely.
+
+After that: Fly.io deployment hardening or Dx3 surface audit, as before.
+
+---
+
+### 5. Blockers / Questions for CoS
+
+**No new questions.** Self-authorized the teardown fix — no approval needed given cycle 17 precedent.
+
+**Dx3/D-20260309-01 routing question** — six cycles outstanding. No blocker; just noting it remains open.
+
+---
+
 ## Team Questions
 
 _(Project team: add questions for ASIF CoS here. They will be answered during the next enrichment cycle.)_
