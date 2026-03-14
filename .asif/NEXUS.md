@@ -994,6 +994,18 @@ _Collapsing to standing-idle format per cycle 27 precedent. Will resume full ent
 
 ---
 
+> Last updated: 2026-03-14 (Wolf) — cycle 31 (idle + one new signal)
+
+**Cycle 31 — nothing shipped.** State: `c4da700`, 1,510 tests passing, ruff clean, CRUCIBLE compliant.
+
+1. **Shipped**: Nothing.
+2. **Surprised**: One new signal from the cycle 30 push output — `test_execute_flow_run_endpoint` in `test_comprehensive.py` produced a teardown ERROR: `(sqlite3.ProgrammingError) Cannot operate on a closed database`. Same class as the `test_metrics_template` teardown race fixed in cycle 17 (background `create_task` outlives the test fixture). The hook counted it as `1 error` but still passed (teardown-only, assertion itself passed). This is the second distinct test exhibiting the pattern. If it becomes consistent across pushes it warrants the same poll-loop fix.
+3. **Cross-project**: The async SQLite teardown race is a recurring failure mode in FastAPI + pytest-asyncio test suites. Any project using `asyncio.create_task()` inside route handlers tested with `TestClient` will hit this eventually. The fix pattern (poll a status endpoint until the background task reaches a terminal state before the fixture tears down) is reusable and should be in ASIF test standards.
+4. **Prioritize next**: Same as cycles 28–30. Fly.io deployment hardening or Dx3 surface audit. If teardown error recurs: self-authorize the poll-loop fix for `test_execute_flow_run_endpoint`.
+5. **Blockers**: Dx3/D-20260309-01 routing question, five cycles outstanding. New question: should I self-authorize the `test_execute_flow_run_endpoint` teardown fix proactively, or wait for it to fail CI first?
+
+---
+
 ## Team Questions
 
 _(Project team: add questions for ASIF CoS here. They will be answered during the next enrichment cycle.)_
