@@ -393,8 +393,10 @@ def test_http_request_node_config_model_method_validation():
     HTTPRequestNodeConfigModel(url="http://example.com", method="put") # Lower case
     HTTPRequestNodeConfigModel(url="http://example.com", method="DELETE")
 
+    HTTPRequestNodeConfigModel(url="http://example.com", method="PATCH")  # PATCH is now supported
+
     with pytest.raises(ValueError, match="method must be one of"):
-        HTTPRequestNodeConfigModel(url="http://example.com", method="PATCH")
+        HTTPRequestNodeConfigModel(url="http://example.com", method="OPTIONS")
 
 def test_http_request_node_config_model_body_type_validation():
     HTTPRequestNodeConfigModel(url="http://example.com", body_type="auto")

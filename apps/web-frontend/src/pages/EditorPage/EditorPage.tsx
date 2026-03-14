@@ -520,6 +520,35 @@ class ${nodeType.charAt(0).toUpperCase() + nodeType.slice(1)}Applet(BaseApplet):
                     <span className="node-icon">{"</>"}</span>
                     <span className="node-label">Code</span>
                   </div>
+                  <div
+                    className="node-item http_request"
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData(
+                        'application/reactflow',
+                        JSON.stringify({
+                          type: 'http_request',
+                          data: {
+                            label: 'HTTP Request',
+                            method: 'GET',
+                            url: '',
+                            headers: {},
+                            query_params: {},
+                            body_type: 'auto',
+                            timeout_seconds: 30,
+                            allow_redirects: true,
+                            verify_ssl: true,
+                            auth_type: 'none',
+                            max_retries: 0,
+                          },
+                        })
+                      );
+                    }}
+                    onClick={() => handleNodeClick(generateId(), 'http_request')}
+                  >
+                    <span className="node-icon">🌐</span>
+                    <span className="node-label">HTTP Request</span>
+                  </div>
                 </div>
               </div>
               

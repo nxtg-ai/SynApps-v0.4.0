@@ -935,6 +935,301 @@ class TestHTTPRequestNodeApplet:
 
         assert "headers" in result.content
 
+    @pytest.mark.asyncio
+    async def test_patch_method(self, applet):
+        """PATCH method should be valid and send a request."""
+        import httpx
+
+        mock_response = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.is_success = True
+        mock_response.url = "https://api.example.com/items/1"
+        mock_response.headers = {"content-type": "application/json"}
+        mock_response.text = '{"id": 1}'
+        mock_response.json.return_value = {"id": 1}
+
+        with patch("apps.orchestrator.main.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.request = AsyncMock(return_value=mock_response)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            msg = _msg(metadata={"node_data": {
+                "url": "https://api.example.com/items/1",
+                "method": "PATCH",
+                "body_type": "json",
+                "body_template": '{"status": "updated"}',
+            }})
+            result = await applet.on_message(msg)
+
+        assert result.content.get("ok") is True
+
+    @pytest.mark.asyncio
+    async def test_bearer_auth_header_injected(self, applet):
+        """Bearer auth should inject Authorization header."""
+        import httpx
+
+        captured_headers = {}
+        mock_response = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.is_success = True
+        mock_response.url = "https://api.example.com/data"
+        mock_response.headers = {"content-type": "application/json"}
+        mock_response.text = "{}"
+        mock_response.json.return_value = {}
+
+        async def capture_request(*args, **kwargs):
+            captured_headers.update(kwargs.get("headers", {}))
+            return mock_response
+
+        with patch("apps.orchestrator.main.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client.request = AsyncMock(side_effect=capture_request)
+            mock_client_cls.return_value = mock_client
+
+            msg = _msg(metadata={"node_data": {
+                "url": "https://api.example.com/data",
+                "method": "GET",
+                "auth_type": "bearer",
+                "auth_value": "mytoken123",
+            }})
+            result = await applet.on_message(msg)
+
+        assert "Authorization" in captured_headers
+        assert captured_headers["Authorization"] == "Bearer mytoken123"
+
+    @pytest.mark.asyncio
+    async def test_basic_auth_header_injected(self, applet):
+        """Basic auth should inject base64-encoded Authorization header."""
+        import base64
+        import httpx
+
+        captured_headers = {}
+        mock_response = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.is_success = True
+        mock_response.url = "https://api.example.com/data"
+        mock_response.headers = {"content-type": "application/json"}
+        mock_response.text = "{}"
+        mock_response.json.return_value = {}
+
+        async def capture_request(*args, **kwargs):
+            captured_headers.update(kwargs.get("headers", {}))
+            return mock_response
+
+        with patch("apps.orchestrator.main.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client.request = AsyncMock(side_effect=capture_request)
+            mock_client_cls.return_value = mock_client
+
+            msg = _msg(metadata={"node_data": {
+                "url": "https://api.example.com/data",
+                "method": "GET",
+                "auth_type": "basic",
+                "auth_value": "user:password",
+            }})
+            result = await applet.on_message(msg)
+
+        expected = "Basic " + base64.b64encode(b"user:password").decode()
+        assert captured_headers.get("Authorization") == expected
+
+    @pytest.mark.asyncio
+    async def test_api_key_header_injected(self, applet):
+        """API key auth should inject custom header."""
+        import httpx
+
+        captured_headers = {}
+        mock_response = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.is_success = True
+        mock_response.url = "https://api.example.com/data"
+        mock_response.headers = {"content-type": "application/json"}
+        mock_response.text = "{}"
+        mock_response.json.return_value = {}
+
+        async def capture_request(*args, **kwargs):
+            captured_headers.update(kwargs.get("headers", {}))
+            return mock_response
+
+        with patch("apps.orchestrator.main.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client.request = AsyncMock(side_effect=capture_request)
+            mock_client_cls.return_value = mock_client
+
+            msg = _msg(metadata={"node_data": {
+                "url": "https://api.example.com/data",
+                "method": "GET",
+                "auth_type": "api_key",
+                "auth_value": "secret-key-abc",
+                "auth_header_name": "X-Custom-API-Key",
+            }})
+            result = await applet.on_message(msg)
+
+        assert captured_headers.get("X-Custom-API-Key") == "secret-key-abc"
+
+    @pytest.mark.asyncio
+    async def test_ssrf_localhost_blocked(self, applet):
+        """localhost URLs must be blocked."""
+        msg = _msg(metadata={"node_data": {"url": "http://localhost/admin", "method": "GET"}})
+        result = await applet.on_message(msg)
+        assert "error" in result.content
+        assert "blocked" in result.content["error"].lower()
+
+    @pytest.mark.asyncio
+    async def test_ssrf_127_blocked(self, applet):
+        """127.x.x.x loopback must be blocked."""
+        msg = _msg(metadata={"node_data": {"url": "http://127.0.0.1:8000/internal", "method": "GET"}})
+        result = await applet.on_message(msg)
+        assert "error" in result.content
+        assert "blocked" in result.content["error"].lower()
+
+    @pytest.mark.asyncio
+    async def test_ssrf_private_10_blocked(self, applet):
+        """10.x.x.x private range must be blocked."""
+        msg = _msg(metadata={"node_data": {"url": "http://10.0.0.1/secret", "method": "GET"}})
+        result = await applet.on_message(msg)
+        assert "error" in result.content
+        assert "blocked" in result.content["error"].lower()
+
+    @pytest.mark.asyncio
+    async def test_ssrf_private_192_168_blocked(self, applet):
+        """192.168.x.x private range must be blocked."""
+        msg = _msg(metadata={"node_data": {"url": "http://192.168.1.1/data", "method": "GET"}})
+        result = await applet.on_message(msg)
+        assert "error" in result.content
+        assert "blocked" in result.content["error"].lower()
+
+    @pytest.mark.asyncio
+    async def test_ssrf_private_172_16_blocked(self, applet):
+        """172.16.x.x private range must be blocked."""
+        msg = _msg(metadata={"node_data": {"url": "http://172.16.0.1/data", "method": "GET"}})
+        result = await applet.on_message(msg)
+        assert "error" in result.content
+        assert "blocked" in result.content["error"].lower()
+
+    @pytest.mark.asyncio
+    async def test_4xx_response_status_error(self, applet):
+        """404 response should have ok=False and status_code=404."""
+        import httpx
+
+        mock_response = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 404
+        mock_response.is_success = False
+        mock_response.url = "https://api.example.com/notfound"
+        mock_response.headers = {"content-type": "text/plain"}
+        mock_response.text = "Not Found"
+        mock_response.json.side_effect = ValueError("not JSON")
+
+        with patch("apps.orchestrator.main.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.request = AsyncMock(return_value=mock_response)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            msg = _msg(metadata={"node_data": {"url": "https://api.example.com/notfound", "method": "GET"}})
+            result = await applet.on_message(msg)
+
+        assert result.content.get("ok") is False
+        assert result.content.get("status_code") == 404
+
+    @pytest.mark.asyncio
+    async def test_5xx_response_status_error(self, applet):
+        """500 response should have ok=False."""
+        import httpx
+
+        mock_response = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 500
+        mock_response.is_success = False
+        mock_response.url = "https://api.example.com/broken"
+        mock_response.headers = {"content-type": "text/plain"}
+        mock_response.text = "Internal Server Error"
+        mock_response.json.side_effect = ValueError("not JSON")
+
+        with patch("apps.orchestrator.main.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.request = AsyncMock(return_value=mock_response)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            msg = _msg(metadata={"node_data": {"url": "https://api.example.com/broken", "method": "GET"}})
+            result = await applet.on_message(msg)
+
+        assert result.content.get("ok") is False
+
+    @pytest.mark.asyncio
+    async def test_timeout_error(self, applet):
+        """ReadTimeout should return error AppletMessage."""
+        import httpx
+
+        with patch("apps.orchestrator.main.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.request = AsyncMock(side_effect=httpx.ReadTimeout("timed out"))
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            msg = _msg(metadata={"node_data": {"url": "https://api.example.com/slow", "method": "GET"}})
+            result = await applet.on_message(msg)
+
+        assert "error" in result.content
+
+    @pytest.mark.asyncio
+    async def test_retry_on_transient_failure(self, applet):
+        """With max_retries=2, second attempt should succeed after first 500."""
+        import httpx
+
+        error_response = MagicMock(spec=httpx.Response)
+        error_response.status_code = 500
+        error_response.is_success = False
+        error_response.headers = {"content-type": "text/plain"}
+        error_response.text = "error"
+        error_response.json.side_effect = ValueError("not JSON")
+
+        success_response = MagicMock(spec=httpx.Response)
+        success_response.status_code = 200
+        success_response.is_success = True
+        success_response.url = "https://api.example.com/flaky"
+        success_response.headers = {"content-type": "application/json"}
+        success_response.text = '{"ok": true}'
+        success_response.json.return_value = {"ok": True}
+
+        call_count = 0
+
+        async def flaky_request(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return error_response
+            return success_response
+
+        with patch("apps.orchestrator.main.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client.request = AsyncMock(side_effect=flaky_request)
+            mock_client_cls.return_value = mock_client
+
+            with patch("apps.orchestrator.main.asyncio.sleep", new_callable=AsyncMock):
+                msg = _msg(metadata={"node_data": {
+                    "url": "https://api.example.com/flaky",
+                    "method": "GET",
+                    "max_retries": 2,
+                    "retry_backoff_factor": 0.0,
+                }})
+                result = await applet.on_message(msg)
+
+        assert result.content.get("ok") is True
+        assert call_count == 2
+
 
 # ============================================================
 # CodeNodeApplet Tests

@@ -5933,6 +5933,29 @@ class HTTPRequestNodeApplet(BaseApplet):
         "templated-body",
     ]
 
+    @staticmethod
+    def _is_ssrf_blocked(url: str) -> bool:
+        """Reject private/internal IP ranges to prevent SSRF."""
+        import urllib.parse
+        import ipaddress as _ip
+
+        try:
+            host = urllib.parse.urlparse(url).hostname or ""
+            if not host:
+                return False
+            if host.lower() in {"localhost", "ip6-localhost", "ip6-loopback"}:
+                return True
+            if host.endswith(".local") or host.endswith(".internal"):
+                return True
+            try:
+                addr = _ip.ip_address(host)
+                return addr.is_private or addr.is_loopback or addr.is_link_local
+            except ValueError:
+                pass  # hostname is a DNS name, not an IP literal — allow
+            return False
+        except Exception:
+            return False  # malformed URL will fail at the httpx layer
+
     async def on_message(self, message: AppletMessage) -> AppletMessage:
         try:
             config = self._resolve_config(message)
@@ -5949,6 +5972,13 @@ class HTTPRequestNodeApplet(BaseApplet):
         if not rendered_url:
             return AppletMessage(
                 content={"error": "HTTP request URL resolved to an empty value"},
+                context=message.context,
+                metadata={"applet": HTTP_REQUEST_NODE_TYPE, "status": "error"},
+            )
+
+        if self._is_ssrf_blocked(rendered_url):
+            return AppletMessage(
+                content={"error": "URL blocked: private/internal addresses are not allowed"},
                 context=message.context,
                 metadata={"applet": HTTP_REQUEST_NODE_TYPE, "status": "error"},
             )
@@ -5976,28 +6006,58 @@ class HTTPRequestNodeApplet(BaseApplet):
             self._apply_body_payload(config.body_type, rendered_body, request_kwargs)
         request_kwargs.update(dict(config.extra))
 
-        try:
-            async with httpx.AsyncClient(
-                timeout=config.timeout_seconds,
-                follow_redirects=config.allow_redirects,
-                verify=config.verify_ssl,
-            ) as client:
-                response = await client.request(config.method, rendered_url, **request_kwargs)
-        except httpx.HTTPError as exc:
-            logger.error("HTTP request node error: %s", exc)
+        last_error: Exception | None = None
+        last_response: httpx.Response | None = None
+        for attempt in range(config.max_retries + 1):
+            if attempt > 0:
+                await asyncio.sleep(config.retry_backoff_factor * (2 ** (attempt - 1)))
+            try:
+                async with httpx.AsyncClient(
+                    timeout=httpx.Timeout(config.timeout_seconds),
+                    follow_redirects=config.allow_redirects,
+                    verify=config.verify_ssl,
+                ) as client:
+                    response = await client.request(
+                        config.method, rendered_url, **request_kwargs
+                    )
+                if response.status_code >= 500 and attempt < config.max_retries:
+                    last_response = response
+                    continue
+                last_response = response
+                break
+            except httpx.HTTPError as exc:
+                last_error = exc
+                logger.warning(
+                    "HTTP request node attempt %d/%d failed: %s",
+                    attempt + 1,
+                    config.max_retries + 1,
+                    exc,
+                )
+                if attempt < config.max_retries:
+                    continue
+                return AppletMessage(
+                    content={
+                        "error": f"HTTP request failed: {exc!s}",
+                        "url": rendered_url,
+                        "method": config.method,
+                    },
+                    context=message.context,
+                    metadata={
+                        "applet": HTTP_REQUEST_NODE_TYPE,
+                        "status": "error",
+                        "method": config.method,
+                        "url": rendered_url,
+                    },
+                )
+
+        response = last_response
+        if response is None:
+            # Safety fallback — should not be reachable
+            error_detail = str(last_error) if last_error else "unknown error"
             return AppletMessage(
-                content={
-                    "error": str(exc),
-                    "url": rendered_url,
-                    "method": config.method,
-                },
+                content={"error": f"HTTP request failed after retries: {error_detail}"},
                 context=message.context,
-                metadata={
-                    "applet": HTTP_REQUEST_NODE_TYPE,
-                    "status": "error",
-                    "method": config.method,
-                    "url": rendered_url,
-                },
+                metadata={"applet": HTTP_REQUEST_NODE_TYPE, "status": "error"},
             )
 
         parsed_data = self._parse_response_data(response)
@@ -6072,8 +6132,25 @@ class HTTPRequestNodeApplet(BaseApplet):
                 merged.get("includeResponseHeaders", True),
             ),
             "extra": merged.get("extra", {}),
+            "auth_type": str(merged.get("auth_type", "none")),
+            "auth_value": merged.get("auth_value"),
+            "auth_header_name": str(merged.get("auth_header_name", "X-API-Key")),
+            "max_retries": int(merged.get("max_retries", 0)),
+            "retry_backoff_factor": float(merged.get("retry_backoff_factor", 0.5)),
         }
-        return HTTPRequestNodeConfigModel.model_validate(config_payload)
+        config = HTTPRequestNodeConfigModel.model_validate(config_payload)
+
+        if config.auth_type == "bearer" and config.auth_value:
+            config.headers.setdefault("Authorization", f"Bearer {config.auth_value}")
+        elif config.auth_type == "basic" and config.auth_value:
+            import base64
+
+            encoded = base64.b64encode(config.auth_value.encode()).decode()
+            config.headers.setdefault("Authorization", f"Basic {encoded}")
+        elif config.auth_type == "api_key" and config.auth_value:
+            config.headers.setdefault(config.auth_header_name, config.auth_value)
+
+        return config
 
     def _template_data(self, message: AppletMessage) -> dict[str, Any]:
         context = message.context if isinstance(message.context, dict) else {}
@@ -6117,7 +6194,7 @@ class HTTPRequestNodeApplet(BaseApplet):
         return query_params
 
     def _default_body_template(self, message: AppletMessage, method: str) -> Any | None:
-        if method not in {"POST", "PUT", "DELETE"}:
+        if method not in {"POST", "PUT", "PATCH", "DELETE"}:
             return None
         if message.content is None:
             return None

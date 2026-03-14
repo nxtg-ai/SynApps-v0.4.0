@@ -23,9 +23,27 @@ const NodeConfigModal: React.FC<NodeConfigModalProps> = ({
   // Initialize form data when modal opens or node changes
   useEffect(() => {
     if (isOpen && nodeData) {
-      setFormData({ ...nodeData });
+      const initialData = { ...nodeData };
+      if (nodeType === 'http_request') {
+        // Apply defaults for http_request fields
+        initialData.method = initialData.method || 'GET';
+        initialData.timeout_seconds = initialData.timeout_seconds ?? 30;
+        initialData.allow_redirects = initialData.allow_redirects ?? true;
+        initialData.verify_ssl = initialData.verify_ssl ?? true;
+        initialData.auth_type = initialData.auth_type || 'none';
+        initialData.max_retries = initialData.max_retries ?? 0;
+        initialData.body_type = initialData.body_type || 'auto';
+        // Serialize headers/query_params objects to JSON strings for editing
+        initialData.headers_json = initialData.headers && typeof initialData.headers === 'object'
+          ? JSON.stringify(initialData.headers, null, 2)
+          : '{}';
+        initialData.query_params_json = initialData.query_params && typeof initialData.query_params === 'object'
+          ? JSON.stringify(initialData.query_params, null, 2)
+          : '{}';
+      }
+      setFormData(initialData);
     }
-  }, [isOpen, nodeData]);
+  }, [isOpen, nodeData, nodeType]);
   
   if (!isOpen) return null;
   
@@ -63,7 +81,26 @@ const NodeConfigModal: React.FC<NodeConfigModalProps> = ({
   
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSave(nodeId, formData);
+    if (nodeType === 'http_request') {
+      // Parse JSON text fields back to objects before saving
+      const saveData = { ...formData };
+      try {
+        saveData.headers = JSON.parse(saveData.headers_json || '{}');
+      } catch {
+        saveData.headers = {};
+      }
+      try {
+        saveData.query_params = JSON.parse(saveData.query_params_json || '{}');
+      } catch {
+        saveData.query_params = {};
+      }
+      // Remove the temporary JSON string fields
+      delete saveData.headers_json;
+      delete saveData.query_params_json;
+      onSave(nodeId, saveData);
+    } else {
+      onSave(nodeId, formData);
+    }
     onClose();
   };
   
@@ -620,6 +657,201 @@ const NodeConfigModal: React.FC<NodeConfigModalProps> = ({
                 min={1}
                 max={60}
               />
+            </div>
+          </>
+        );
+
+      case 'http_request':
+        return (
+          <>
+            <div className="form-group">
+              <label htmlFor="label">Node Label</label>
+              <input
+                type="text"
+                id="label"
+                name="label"
+                value={formData.label || ''}
+                onChange={handleChange}
+                placeholder="Enter node label"
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="method">Method</label>
+              <select
+                id="method"
+                name="method"
+                value={formData.method || 'GET'}
+                onChange={handleChange}
+              >
+                <option value="GET">GET</option>
+                <option value="POST">POST</option>
+                <option value="PUT">PUT</option>
+                <option value="PATCH">PATCH</option>
+                <option value="DELETE">DELETE</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label htmlFor="url">URL</label>
+              <input
+                type="text"
+                id="url"
+                name="url"
+                value={formData.url || ''}
+                onChange={handleChange}
+                required
+                placeholder="https://api.example.com/endpoint"
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="headers_json">Headers (JSON)</label>
+              <textarea
+                id="headers_json"
+                name="headers_json"
+                value={formData.headers_json || '{}'}
+                onChange={handleChange}
+                placeholder='{"Authorization": "Bearer ..."}'
+                rows={3}
+                style={{ fontFamily: 'monospace', fontSize: '13px' }}
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="query_params_json">Query Params (JSON)</label>
+              <textarea
+                id="query_params_json"
+                name="query_params_json"
+                value={formData.query_params_json || '{}'}
+                onChange={handleChange}
+                placeholder='{"key": "value"}'
+                rows={3}
+                style={{ fontFamily: 'monospace', fontSize: '13px' }}
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="auth_type">Auth Type</label>
+              <select
+                id="auth_type"
+                name="auth_type"
+                value={formData.auth_type || 'none'}
+                onChange={handleChange}
+              >
+                <option value="none">None</option>
+                <option value="bearer">Bearer Token</option>
+                <option value="basic">Basic Auth</option>
+                <option value="api_key">API Key</option>
+              </select>
+            </div>
+            {formData.auth_type && formData.auth_type !== 'none' && (
+              <div className="form-group">
+                <label htmlFor="auth_value">
+                  {formData.auth_type === 'bearer' ? 'Bearer Token' :
+                   formData.auth_type === 'basic' ? 'Credentials (user:pass)' :
+                   'API Key Value'}
+                </label>
+                <input
+                  type="text"
+                  id="auth_value"
+                  name="auth_value"
+                  value={formData.auth_value || ''}
+                  onChange={handleChange}
+                  placeholder={
+                    formData.auth_type === 'bearer' ? 'eyJhbGciOi...' :
+                    formData.auth_type === 'basic' ? 'username:password' :
+                    'your-api-key'
+                  }
+                />
+              </div>
+            )}
+            {formData.auth_type === 'api_key' && (
+              <div className="form-group">
+                <label htmlFor="auth_header_name">Auth Header Name</label>
+                <input
+                  type="text"
+                  id="auth_header_name"
+                  name="auth_header_name"
+                  value={formData.auth_header_name || ''}
+                  onChange={handleChange}
+                  placeholder="X-API-Key"
+                />
+              </div>
+            )}
+            {['POST', 'PUT', 'PATCH', 'DELETE'].includes(formData.method || 'GET') && (
+              <>
+                <div className="form-group">
+                  <label htmlFor="body_type">Body Type</label>
+                  <select
+                    id="body_type"
+                    name="body_type"
+                    value={formData.body_type || 'auto'}
+                    onChange={handleChange}
+                  >
+                    <option value="auto">Auto</option>
+                    <option value="json">JSON</option>
+                    <option value="text">Text</option>
+                    <option value="form">Form</option>
+                    <option value="none">None</option>
+                  </select>
+                </div>
+                {formData.body_type !== 'none' && (
+                  <div className="form-group">
+                    <label htmlFor="body_template">Body</label>
+                    <textarea
+                      id="body_template"
+                      name="body_template"
+                      value={formData.body_template || ''}
+                      onChange={handleChange}
+                      placeholder='{"key": "value"}'
+                      rows={6}
+                      style={{ fontFamily: 'monospace', fontSize: '13px' }}
+                    />
+                  </div>
+                )}
+              </>
+            )}
+            <div className="form-group">
+              <label htmlFor="timeout_seconds">Timeout (seconds)</label>
+              <input
+                type="number"
+                id="timeout_seconds"
+                name="timeout_seconds"
+                value={formData.timeout_seconds ?? 30}
+                onChange={handleIntChange}
+                min={1}
+                max={600}
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="max_retries">Max Retries</label>
+              <input
+                type="number"
+                id="max_retries"
+                name="max_retries"
+                value={formData.max_retries ?? 0}
+                onChange={handleIntChange}
+                min={0}
+                max={5}
+              />
+            </div>
+            <div className="form-group">
+              <label>
+                <input
+                  type="checkbox"
+                  name="allow_redirects"
+                  checked={formData.allow_redirects ?? true}
+                  onChange={handleCheckboxChange}
+                />
+                {' '}Allow Redirects
+              </label>
+            </div>
+            <div className="form-group">
+              <label>
+                <input
+                  type="checkbox"
+                  name="verify_ssl"
+                  checked={formData.verify_ssl ?? true}
+                  onChange={handleCheckboxChange}
+                />
+                {' '}Verify SSL
+              </label>
             </div>
           </>
         );

@@ -650,7 +650,7 @@ class MemorySearchResultModel(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
-SUPPORTED_HTTP_METHODS = ("GET", "POST", "PUT", "DELETE")
+SUPPORTED_HTTP_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE")
 
 
 class HTTPRequestNodeConfigModel(BaseModel):
@@ -670,6 +670,11 @@ class HTTPRequestNodeConfigModel(BaseModel):
     verify_ssl: bool = True
     include_response_headers: bool = True
     extra: dict[str, Any] = Field(default_factory=dict)
+    auth_type: str = Field("none")
+    auth_value: str | None = None
+    auth_header_name: str = Field("X-API-Key")
+    max_retries: int = Field(0, ge=0, le=5)
+    retry_backoff_factor: float = Field(0.5, ge=0.0, le=10.0)
 
     @field_validator("url")
     @classmethod
@@ -696,6 +701,13 @@ class HTTPRequestNodeConfigModel(BaseModel):
         if normalized not in {"auto", "json", "text", "form", "none"}:
             raise ValueError("body_type must be one of: auto, json, text, form, none")
         return normalized
+
+    @field_validator("auth_type")
+    @classmethod
+    def validate_auth_type(cls, value: str) -> str:
+        if value not in {"none", "bearer", "basic", "api_key"}:
+            raise ValueError("auth_type must be one of: none, bearer, basic, api_key")
+        return value
 
 
 SUPPORTED_CODE_LANGUAGES = ("python", "javascript")

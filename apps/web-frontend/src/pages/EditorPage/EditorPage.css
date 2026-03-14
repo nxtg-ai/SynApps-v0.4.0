@@ -350,6 +350,10 @@
   background-color: #f9f0ff;
 }
 
+.node-item.http_request {
+  background-color: #ecfeff;
+}
+
 .node-icon {
   font-size: 1.2rem;
   margin-right: 12px;

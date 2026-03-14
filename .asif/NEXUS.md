@@ -27,7 +27,7 @@
 | N-15 | Comprehensive Testing | STACK | SHIPPED | P0 | 2026-02-20 |
 | N-16 | 2Brain Dogfood Template | DOGFOOD | SHIPPED | P0 | 2026-02-20 |
 | N-17 | Workflow Export/Import + UX Polish | VISUAL | SHIPPED | P1 | 2026-02-20 |
-| N-18 | HTTP Request Node — Universal API Connector | NODES | PENDING | P1 | 2026-03-13 |
+| N-18 | HTTP Request Node — Universal API Connector | NODES | SHIPPED | P1 | 2026-03-13 |
 
 ---
 
@@ -223,6 +223,7 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 | 2026-03-06 | Cycle 6 reflection — null result. Nothing shipped. All debt cleared. 1,465 tests passing. Asked CoS whether idle is correct state or self-direct on N-04 (ChromaDB). |
 | 2026-03-06 | Cycle 7 reflection — null result. Self-authorizing N-04 (ChromaDB Memory upgrade) per N-07 precedent. Deployment remains HOLD. CoS notified. |
 | 2026-03-06 | Cycle 8 — N-04 self-authorization withdrawn: ChromaDB already shipped in T-055/T-056 (`5692d90`/`4a85783`). Updated N-04 description in NEXUS. Asked CoS for T-0xx commit series inventory. |
+| 2026-03-13 | DIRECTIVE-NXTG-20260313-02 (N-18 HTTP Request Node) → SHIPPED. PATCH method, bearer/basic/api_key auth, SSRF protection (5 IP ranges), retry with exponential backoff. Frontend: NodeConfigModal form, palette item, AppletNode icon/color, ApiFetch template. 36 new tests. 1,401 backend + 109 frontend = 1,510 total passing. |
 
 ---
 
@@ -238,14 +239,32 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 > SynApps' NODES pillar lists "HTTP Request" as a planned node type. With 17/17 initiatives shipped and a zero-debt codebase, this is the highest-value next build. The HTTP Request Node turns SynApps into a real integration platform — it can connect to any REST API (including Dx3, Podcast-Pipeline, or any external service). This is the "universal LEGO connector."
 
 **Action Items**:
-1. [ ] Create `HTTPRequestApplet` — configurable HTTP client node supporting GET/POST/PUT/PATCH/DELETE
-2. [ ] Support configurable: URL, headers, query params, request body (JSON/form-data/raw), authentication (Bearer token, Basic auth, API key header)
-3. [ ] Response handling: parse JSON response into output ports, expose status code for conditional routing, handle non-2xx as node error
-4. [ ] Per-node timeout (default 30s) and retry config (max retries, backoff strategy)
-5. [ ] Add to applet registry with proper schema validation
-6. [ ] Create example workflow template: "Fetch External API → Transform → Display" (use a public API like jsonplaceholder)
-7. [ ] 20+ tests: all HTTP methods, auth types, error responses (4xx/5xx), timeouts, retries, malformed URLs, response parsing
-8. [ ] Update NEXUS dashboard: add N-18 row (NODES pillar, IN PROGRESS)
+1. [x] Create `HTTPRequestApplet` — configurable HTTP client node supporting GET/POST/PUT/PATCH/DELETE
+2. [x] Support configurable: URL, headers, query params, request body (JSON/form-data/raw), authentication (Bearer token, Basic auth, API key header)
+3. [x] Response handling: parse JSON response into output ports, expose status code for conditional routing, handle non-2xx as node error
+4. [x] Per-node timeout (default 30s) and retry config (max retries, backoff strategy)
+5. [x] Add to applet registry with proper schema validation
+6. [x] Create example workflow template: "Fetch External API → Transform → Display" (use a public API like jsonplaceholder)
+7. [x] 36 tests: all HTTP methods, auth types, error responses (4xx/5xx), timeouts, retries, SSRF protection, response parsing
+8. [x] Update NEXUS dashboard: N-18 → SHIPPED
+
+**Response**:
+Shipped 2026-03-13. Two-stream parallel implementation (backend + frontend).
+
+Backend (`models.py` + `main.py`):
+- Added PATCH to `SUPPORTED_HTTP_METHODS`
+- Added 5 new fields: `auth_type` (none/bearer/basic/api_key), `auth_value`, `auth_header_name`, `max_retries` (0–5), `retry_backoff_factor`
+- `_is_ssrf_blocked()` rejects localhost, loopback IPs, private ranges (10.x, 172.16-31.x, 192.168.x), `.local`/`.internal` hostnames
+- Auth header injection in `_resolve_config()` — bearer, basic (base64), api_key
+- Retry loop with exponential backoff on 5xx responses and `httpx.HTTPError`
+
+Frontend:
+- `NodeConfigModal.tsx`: full http_request form (14 fields: method, URL, headers JSON, query params JSON, auth, body, timeout, retries, SSL, redirects)
+- `EditorPage.tsx` + `EditorPage.css`: HTTP Request palette item with 🌐 icon and cyan tint
+- `AppletNode.tsx`: icon/color/accentColor/description for http_request type
+- `ApiFetch.ts` + `templates/index.ts`: "Fetch External API → Transform → Display" template registered
+
+Tests: 36 backend (TestHTTPRequestNodeApplet) + 1 model validation fix. 1,401 backend + 109 frontend = 1,510 total passing.
 
 **Constraints**:
 - USE PLAN MODE — this touches backend applet system + frontend node UI + workflow templates
