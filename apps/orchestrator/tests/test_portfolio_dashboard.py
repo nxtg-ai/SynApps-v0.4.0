@@ -4,6 +4,8 @@ Validates: template discovery, last-run status, provider registry reporting,
 health check, and response schema.
 """
 
+import time
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -120,6 +122,18 @@ def test_portfolio_template_last_run_present_after_run(client):
     # Run the flow
     run_resp = client.post(f"/api/v1/flows/{flow_id}/runs", json={"input": {"text": "test"}})
     assert run_resp.status_code in (200, 201, 202)
+    run_id = run_resp.json()["run_id"]
+
+    # Poll until terminal — execute_flow() fires asyncio.create_task() and returns
+    # immediately; without this poll, TestClient teardown closes the DB while the
+    # background task is still writing, causing a SQLAlchemy teardown ERROR.
+    _terminal = {"success", "error", "failed"}
+    deadline = time.time() + 5.0
+    while time.time() < deadline:
+        status_resp = client.get(f"/api/v1/history/{run_id}")
+        if status_resp.status_code == 200 and status_resp.json().get("status") in _terminal:
+            break
+        time.sleep(0.05)
 
     # Now check the dashboard
     data = client.get("/api/v1/dashboard/portfolio").json()

@@ -1010,19 +1010,23 @@ _Collapsing to standing-idle format per cycle 27 precedent. Will resume full ent
 
 ### 1. What did I ship since last check-in?
 
-**`test_execute_flow_run_endpoint` teardown fix — self-authorized.**
+**Async SQLite teardown fix — two tests — self-authorized per cycle 17 precedent.**
 
-`test_comprehensive.py::TestFlowExecution::test_execute_flow_run_endpoint` was producing a SQLAlchemy teardown ERROR on every push: `(sqlite3.ProgrammingError) Cannot operate on a closed database`. Confirmed reproducible across cycles 30 and 31. Self-authorized fix per cycle 17 precedent (CoS approved the same class of fix for `test_metrics_template` without a directive).
+The push output from cycles 30 and 31 showed reproducible `RuntimeError: Event loop is closed` teardown warnings. After the first fix landed, the warning persisted — so I audited all tests that fire `POST .../runs` via `TestClient` without a poll-until-terminal guard and found a second offender.
 
-Fix: added a poll-until-terminal loop after the `202` assertion, identical to the pattern in `test_health_metrics.py` (lines 129–138). The route fires `asyncio.create_task(execute_flow(...))` and returns immediately; without the poll, `TestClient` tears down the DB while the task is still writing its final status row. 10 lines, test-only change.
+**Fix 1:** `test_comprehensive.py::TestFlowExecution::test_execute_flow_run_endpoint` — added poll loop after `202` assertion. Confirmed reproducible across cycles 30 and 31.
 
-Test count: unchanged at **1,510** (fix is a behavioural correction, not a new test).
+**Fix 2:** `test_portfolio_dashboard.py::test_portfolio_template_last_run_present_after_run` — same pattern: fires `POST /runs`, immediately queries the dashboard without waiting. Added poll loop + `import time`.
+
+Both fixes are identical to `test_health_metrics.py` lines 129–138 (cycle 17 fix). Test-only changes, zero production risk.
+
+Test count: unchanged at **1,510** (behavioural corrections, no new tests).
 
 ---
 
 ### 2. What surprised me?
 
-**The same fix was needed twice but the second instance wasn't caught proactively.** The pattern was documented in cycle 17 and flagged as "reusable." Yet `test_execute_flow_run_endpoint` ran through N-18 and four subsequent reflection cycles producing teardown warnings before it was addressed. The warning was visible in push output but not actionable until it was confirmed reproducible. In hindsight, after the cycle 17 fix it would have been worth auditing all tests that call `POST .../runs` without a poll — there were at least two.
+**The same fix was needed three times and the second and third instances weren't caught proactively.** Cycle 17 fixed `test_metrics_template`. Cycle 32 fixed `test_execute_flow_run_endpoint` and `test_portfolio_template_last_run_present_after_run`. All three had the same root cause and the same fix. After the first push of the cycle 32 fix, the teardown warning still appeared — revealing the third instance. A grep for `client.post.*runs` with no `poll`/`history` follow-up took 30 seconds and found it immediately. The lesson is the same as before: fix the class, not just the instance.
 
 ---
 
@@ -1034,7 +1038,7 @@ Test count: unchanged at **1,510** (fix is a behavioural correction, not a new t
 
 ### 4. What would I prioritize next?
 
-**Proactive audit: are there other tests that trigger `POST .../runs` without a terminal poll?** Now that two instances have been found and fixed, a sweep of the test suite for this pattern would close the class entirely.
+**Proactive audit: are there remaining tests that trigger `POST .../runs` without a terminal poll?** Three instances found and fixed (cycles 17, 32). A sweep of the test suite for this pattern is now complete — no remaining instances identified. The class should be closed.
 
 After that: Fly.io deployment hardening or Dx3 surface audit, as before.
 
