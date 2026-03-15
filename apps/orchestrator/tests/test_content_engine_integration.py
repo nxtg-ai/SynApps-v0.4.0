@@ -9,6 +9,7 @@ execute for real, validating the actual data flow through the pipeline.
 """
 import asyncio
 import os
+import time
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -374,3 +375,12 @@ class TestContentEngineIntegration:
                         )
                         assert resp.status_code == 202, f"Run failed: {resp.text}"
                         assert "run_id" in resp.json()
+                        run_id = resp.json()["run_id"]
+                        # Poll until terminal — prevents TestClient DB teardown race
+                        _terminal = {"success", "error", "failed"}
+                        deadline = time.time() + 5.0
+                        while time.time() < deadline:
+                            r = client.get(f"/api/v1/history/{run_id}")
+                            if r.status_code == 200 and r.json().get("status") in _terminal:
+                                break
+                            time.sleep(0.05)
