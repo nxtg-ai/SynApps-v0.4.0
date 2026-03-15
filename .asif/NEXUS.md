@@ -234,7 +234,7 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 
 ### DIRECTIVE-NXTG-20260314-08 — P0: CRUCIBLE Gate 8 — Fix Coverage Config + Stale Artifact
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P0
-**Injected**: 2026-03-14 | **Estimate**: S | **Status**: PENDING
+**Injected**: 2026-03-14 | **Estimate**: S | **Status**: DONE
 
 **Context**: CRUCIBLE audit found coverage published at 88.6% vs real ~71-77%. Three issues: stale coverage.xml (predates 834 tests), `--cov=.` counting test files as source (+8.2pp inflation), webhooks+api_keys modules invisible.
 
@@ -1143,6 +1143,56 @@ Next work is directive-driven:
 **Dx3/D-20260309-01 routing question** — seventh cycle outstanding. No blocker; noting for records.
 
 **Observation:** The project has now had multiple sessions of maintenance self-authorization with no feature directives. The NODES pillar is complete, debt is zero, tests are clean. The next meaningful work (Fly.io or Dx3) requires a directive to scope and prioritize. Ready.
+
+---
+
+> Last updated: 2026-03-14 (Wolf) — cycle 34 (post-DIRECTIVE-NXTG-20260314-08)
+
+### 1. What did I ship since last check-in?
+
+**DIRECTIVE-NXTG-20260314-08 — CRUCIBLE Gate 8: coverage config fix + stale artifact — commit `b0e2ab7`.**
+
+Three changes, all in one commit:
+
+- **`ci.yml`**: `--cov=.` → `--cov=apps/orchestrator` — eliminates test-file inflation (~8.2pp false uplift that inflated 88.6% from ~71-77% real)
+- **`apps/orchestrator/coverage.xml`** deleted — 8,500-line stale artifact predating 834 tests; CI regenerates on next push
+- **`test_repositories.py`**: removed module-level `os.environ["DATABASE_URL"]` override (lines 1–9) — conflict with conftest autouse fixture was silently killing 4 test functions. Those 4 tests now pass, bringing total from 1,506 to **1,510** (floor requirement met exactly)
+
+---
+
+### 2. What surprised me?
+
+**The four dead `test_repositories.py` tests were never visible as failures — they simply didn't run.** The module-level `os.environ["DATABASE_URL"]` override was executing before conftest.py loaded, setting the wrong database URL. When conftest's `autouse=True` fixture later set the correct in-memory URL, the database was already initialized against the wrong path. The tests "passed" in isolation but produced a conftest conflict in the full suite that caused them to be skipped without error. This is the silent-kill pattern: no failure, no skip mark, just absence. The 4 tests were missing from the count and nobody noticed because the total count was still increasing from N-18.
+
+**The directive's floor count (1,510) was precisely met by the fix.** Without the repository fix, the count would have been 1,506 — 4 below the floor. The directive's action items were self-consistent: fix coverage config + fix dead tests = exactly meet the required floor.
+
+---
+
+### 3. Cross-project signals
+
+**Module-level side effects in test files are a silent reliability hazard.** Any `os.environ[...]` set at module import time (before fixtures) can conflict with conftest autouse fixtures that own the same environment variable. The fix pattern: never set environment variables in test module scope; always use fixtures or conftest. Grep pattern to audit: `^os.environ\[` at module level in test files.
+
+**CI `--cov=PATH` scoping matters more than it appears.** `--cov=.` in a monorepo counts test files, migration scripts, conftest.py, and other non-production code as coverage source. The inflation is not linear — it depends on how many non-production Python files exist. For SynApps, the delta was 8.2pp. Any project running coverage with `--cov=.` from a repo root should switch to `--cov=src` or `--cov=<app_dir>` to report meaningful numbers.
+
+---
+
+### 4. What would I prioritize next?
+
+**Codebase is at zero debt.** 1,510 tests, ruff clean, CRUCIBLE compliant (all gates), coverage config honest. No self-authorizable maintenance remains.
+
+Ready for next feature directive. Top candidates unchanged:
+1. **Fly.io deployment hardening** — makes platform live; health check config, zero-downtime deploy, production env vars
+2. **Dx3 integration surface audit** — verify 62 endpoints auth-gated and schema-stable before Dx3 builds against them
+
+---
+
+### 5. Blockers / Questions for CoS
+
+**No blockers.**
+
+**Dx3/D-20260309-01 routing question** — eighth cycle outstanding. Still not a blocker. Low urgency.
+
+**Observation:** Two P0 directives executed in this session (D-08: coverage config; preceding session had D-02, the N-18 directive). Both were S-sized and completed cleanly. The project is now genuinely at zero-debt for the third consecutive session checkpoint. The NODES pillar is complete, coverage is honest, CI is accurate. The next directive is an architecture or deployment decision — something that can't be self-authorized.
 
 ---
 
