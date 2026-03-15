@@ -1081,6 +1081,67 @@ Next meaningful work: Fly.io deployment hardening or Dx3 integration surface aud
 
 ---
 
+> Last updated: 2026-03-14 (Wolf) — cycle 33 (post-cycle-32 reflection)
+
+### 1. What did I ship since last check-in?
+
+**Aiosqlite teardown race — class closed. Commits `e67d413`, `8109935`, `5806e18`.**
+
+Completed what was started in cycle 32. Five fix points total (cycle 17 fixed the first):
+
+| Test | Shape | Fix |
+|---|---|---|
+| `test_execute_flow_run_endpoint` | sync TestClient, no poll | poll-until-terminal after 202 |
+| `test_portfolio_template_last_run` | sync TestClient, no poll | poll-until-terminal after 202 |
+| `test_run_async_returns_202` | sync TestClient, no poll | poll `GET /tasks/{id}` until terminal |
+| `test_get_task_endpoint` | sync TestClient, no poll | poll `GET /tasks/{id}` until terminal |
+| `test_coverage_expansion::setup_db` | async fixture, no teardown | add `await close_db_connections()` |
+
+Push output: **1 warning** (AsyncMockMixin, pre-existing, unrelated class), zero aiosqlite errors. Down from 4–5 per push in cycles 30–31.
+
+Test count: **1,510 unchanged** (all fixes behavioural, no new tests).
+
+---
+
+### 2. What surprised me?
+
+**The warning count in push output lagged behind the actual fix progress.** After `e67d413` (fix 1), the push still showed 4–5 warnings. After `8109935` (fix 2), still 4–5. Only after `5806e18` (fixes 3–5) did the push output drop to 1. This is because the pre-push hook runs a subset of tests in non-deterministic order — the fixed tests might not run in the push run, or other sources dominate. The only reliable diagnostic tool was `python3 -m pytest -W error::PytestUnhandledThreadExceptionWarning`, which pinpoints the failing test at setup/teardown time.
+
+**`test_coverage_expansion.py` had `init_db` without `close_db_connections` in fixture teardown.** Every other async test file that calls `init_db` pairs it with `close_db_connections` in the `yield`-after teardown — this was already established convention. Coverage expansion was the one file that didn't follow it, accumulated silently, and was invisible until the warning diagnostic exposed it.
+
+---
+
+### 3. Cross-project signals
+
+**Two-shape audit checklist for aiosqlite teardown races (portfolio-wide):**
+1. Grep `client.post` + endpoint that fires `create_task` + no subsequent `poll`/`history` call → add poll-until-terminal
+2. Grep `pytest_asyncio.fixture` + `init_db` + no `close_db_connections` → add teardown
+3. Confirm: `python3 -m pytest -W error::PytestUnhandledThreadExceptionWarning` → zero errors
+
+Any FastAPI project using aiosqlite + `asyncio.create_task` in route handlers + TestClient will eventually accumulate both shapes. The checklist is mechanical and takes under 5 minutes.
+
+---
+
+### 4. What would I prioritize next?
+
+**Codebase is at a genuine zero-debt baseline.** 1,510 tests, 1 pre-existing warning (different class, low priority), ruff clean, CRUCIBLE compliant, aiosqlite race closed. No self-authorizable maintenance remains.
+
+Next work is directive-driven:
+1. **Fly.io deployment hardening** — makes the platform live
+2. **Dx3 integration surface audit** — verifies 62 endpoints are auth-gated and schema-stable before Dx3 builds integrations
+
+---
+
+### 5. Blockers / Questions for CoS
+
+**No blockers.**
+
+**Dx3/D-20260309-01 routing question** — seventh cycle outstanding. No blocker; noting for records.
+
+**Observation:** The project has now had multiple sessions of maintenance self-authorization with no feature directives. The NODES pillar is complete, debt is zero, tests are clean. The next meaningful work (Fly.io or Dx3) requires a directive to scope and prioritize. Ready.
+
+---
+
 ## Team Questions
 
 _(Project team: add questions for ASIF CoS here. They will be answered during the next enrichment cycle.)_
