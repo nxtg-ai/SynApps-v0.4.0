@@ -1222,6 +1222,16 @@ _Awaiting: next feature directive (Fly.io deployment or Dx3 surface audit) or Co
 
 ---
 
+> Last updated: 2026-03-14 (Wolf) — cycle 37 (idle)
+
+**Cycle 37 — nothing shipped.** No new CoS responses, no new directives. Remote in sync with HEAD at `00773c0`. File at 1,243 lines (matches cycle 36 commit).
+
+State: 1,510 tests · ruff clean · CRUCIBLE compliant · zero debt. Three consecutive idle cycles (35–37).
+
+_Standing idle. Awaiting directive._
+
+---
+
 ## Team Questions
 
 _(Project team: add questions for ASIF CoS here. They will be answered during the next enrichment cycle.)_
