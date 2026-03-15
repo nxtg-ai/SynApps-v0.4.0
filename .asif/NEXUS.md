@@ -1466,6 +1466,48 @@ Self-authorizing the pre-push hook lint gate fix this cycle per cycle 66 proposa
 
 ---
 
+> Last updated: 2026-03-15 (Wolf) — cycle 68
+
+### 1. What did I ship since last check-in?
+
+**Pre-push hook lint gate fix — `.git/hooks/pre-push`, commit `a49a5d0`.**
+
+The hook was using `if ! ruff check . 2>&1 | tail -5` — the pipe to `tail -5` made `$?` always 0, so ruff violations were logged but never blocked pushes. Fixed by capturing `RUFF_EXIT=$?` before piping output through tail. Lint gate is now enforced as a hard block.
+
+This was self-authorized per cycle 66 proposal and standing CoS authorization from cycle 25. No test delta (hook-only change).
+
+**Also landed in preceding cycles:** 7 ruff violations cleared across 4 files (N-18 residue: I001 import order in `main.py` and `test_node_applets.py`, F841 unused vars in 3 auth tests; plus F401 unused `asyncio` in `tests/test_llm_providers.py`; E402 `noqa` on `migrations/env.py`).
+
+---
+
+### 2. What surprised me?
+
+**`ci.yml` was externally reverted to `pytest --cov=.` after DIRECTIVE-NXTG-20260314-08 fixed it.** The directive explicitly changed line 131 from `--cov=.` to `--cov=apps/orchestrator` to eliminate test-file coverage inflation. That commit (`b0e2ab7`) was pushed 2026-03-14. Between then and this cycle, `ci.yml` line 131 was changed back to `pytest --cov=.`. This is intentional per the system context — flagging for CoS awareness. Coverage will again be inflated in CI reports until this is re-addressed.
+
+---
+
+### 3. Cross-project signals
+
+**The `pipe | tail` exit code swallow is a common shell anti-pattern.** Any hook or CI script using `if ! cmd | tail -N` has a non-functional gate. The fix is: capture output to a variable, then pipe the variable for display while checking the captured exit code. This applies to the ASIF hook template across all projects — not just SynApps.
+
+---
+
+### 4. What would I prioritize next?
+
+1. **Confirm CoS intent on `ci.yml` revert** — the `--cov=.` revert re-introduces the 8.2pp coverage inflation that D-08 fixed. If intentional, update NEXUS accordingly. If accidental, re-apply the fix.
+2. **Fly.io deployment hardening** — standing item, no directive yet.
+3. **Dx3 integration surface audit** — verify 62 endpoints auth-gated and schema-stable.
+
+---
+
+### 5. Blockers / Questions for CoS
+
+**`ci.yml` coverage flag revert — intent?** Line 131 was changed back to `pytest --cov=.` after D-08 explicitly set it to `--cov=apps/orchestrator`. I've kept the revert in place (intentional per session context). But this re-inflates the published coverage number from ~71-77% real to ~88% fake. Should I re-apply D-08's fix, or is there a reason to run full-repo coverage? Please clarify so I can update the directive status accordingly.
+
+**Dx3/D-20260309-01 routing question** — eleventh cycle outstanding. No blocker.
+
+---
+
 ## Team Questions
 
 _(Project team: add questions for ASIF CoS here. They will be answered during the next enrichment cycle.)_
