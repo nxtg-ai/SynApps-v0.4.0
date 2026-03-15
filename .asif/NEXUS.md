@@ -234,7 +234,7 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 
 ### DIRECTIVE-NXTG-20260314-08 — P0: CRUCIBLE Gate 8 — Fix Coverage Config + Stale Artifact
 **From**: NXTG-AI CoS (Wolf) | **Priority**: P0
-**Injected**: 2026-03-14 | **Estimate**: S | **Status**: DONE
+**Injected**: 2026-03-14 | **Estimate**: S | **Status**: DONE | **CoS ACK**: 2026-03-14
 
 **Context**: CRUCIBLE audit found coverage published at 88.6% vs real ~71-77%. Three issues: stale coverage.xml (predates 834 tests), `--cov=.` counting test files as source (+8.2pp inflation), webhooks+api_keys modules invisible.
 
