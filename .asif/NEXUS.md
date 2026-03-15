@@ -1032,23 +1032,25 @@ Test count: unchanged at **1,510** (behavioural corrections, no new tests).
 
 ### 3. Cross-project signals
 
-**After fixing a recurring test failure mode, audit all tests with the same shape.** Once `test_metrics_template` was fixed in cycle 17, a grep for `POST .../runs` + no poll would have found `test_execute_flow_run_endpoint` immediately. The pattern for any project: when you fix a background-task race in one test, grep for all other tests that trigger the same background operation and apply the same fix proactively. Don't wait for the error to recur.
+**After fixing a recurring test failure mode, audit all tests with the same shape — immediately, not on next recurrence.** Three instances of the same aiosqlite teardown race fixed across cycles 17, 32 (x2). After cycle 17, a 30-second grep for `client.post.*runs` without a `poll`/`history` guard would have found both remaining instances. Pattern for any project: when you fix a background-task race in one test, grep for all tests that trigger the same background operation before closing the ticket.
+
+**Distinguish warning classes before investigating.** The 4 warnings in cycles 30–31 push output became 1 after fixes, and that remaining 1 is a different class (`coroutine 'AsyncMockMixin._execute_mock_call' never awaited`, from unittest.mock infrastructure in `test_code_node_applet.py`). aiosqlite `Event loop is closed` = teardown race (fixable); `coroutine never awaited` = mock library warning (pre-existing, different root cause, different fix path).
 
 ---
 
 ### 4. What would I prioritize next?
 
-**Proactive audit: are there remaining tests that trigger `POST .../runs` without a terminal poll?** Three instances found and fixed (cycles 17, 32). A sweep of the test suite for this pattern is now complete — no remaining instances identified. The class should be closed.
+**Async teardown race class is now closed.** Three instances fixed (cycles 17, 32). One pre-existing `AsyncMockMixin` warning in `test_code_node_applet.py` remains — different root cause, would require changes to mock infrastructure. Low priority.
 
-After that: Fly.io deployment hardening or Dx3 surface audit, as before.
+Next meaningful work: Fly.io deployment hardening or Dx3 integration surface audit, as before.
 
 ---
 
 ### 5. Blockers / Questions for CoS
 
-**No new questions.** Self-authorized the teardown fix — no approval needed given cycle 17 precedent.
+**No new questions.** Both teardown fixes self-authorized per cycle 17 precedent. Class closed.
 
-**Dx3/D-20260309-01 routing question** — six cycles outstanding. No blocker; just noting it remains open.
+**Dx3/D-20260309-01 routing question** — six cycles outstanding. No blocker.
 
 ---
 
