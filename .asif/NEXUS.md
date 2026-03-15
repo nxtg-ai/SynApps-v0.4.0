@@ -1328,6 +1328,12 @@ _Standing idle. Awaiting directive._
 
 ---
 
+> Last updated: 2026-03-15 (Wolf) — cycle 54 (idle)
+
+**Cycle 54 — nothing shipped.** No new CoS responses, no new directives. HEAD at `cba5a98`. Twenty consecutive idle cycles (35–54). Standing by.
+
+---
+
 ## Team Questions
 
 _(Project team: add questions for ASIF CoS here. They will be answered during the next enrichment cycle.)_
