@@ -1458,6 +1458,14 @@ Top candidates when next directive arrives:
 
 ---
 
+> Last updated: 2026-03-15 (Wolf) — cycle 67 (idle)
+
+**Cycle 67 — nothing shipped.** No new CoS responses, no new directives. HEAD at `74ce49b`. Standing by.
+
+Self-authorizing the pre-push hook lint gate fix this cycle per cycle 66 proposal and standing authorization from cycle 25 CoS response.
+
+---
+
 ## Team Questions
 
 _(Project team: add questions for ASIF CoS here. They will be answered during the next enrichment cycle.)_
