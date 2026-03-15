@@ -232,6 +232,25 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 
 > 41 completed directives archived to [NEXUS-archive.md](./NEXUS-archive.md) (2026-03-12, Wolf).
 
+### DIRECTIVE-NXTG-20260314-08 — P0: CRUCIBLE Gate 8 — Fix Coverage Config + Stale Artifact
+**From**: NXTG-AI CoS (Wolf) | **Priority**: P0
+**Injected**: 2026-03-14 | **Estimate**: S | **Status**: PENDING
+
+**Context**: CRUCIBLE audit found coverage published at 88.6% vs real ~71-77%. Three issues: stale coverage.xml (predates 834 tests), `--cov=.` counting test files as source (+8.2pp inflation), webhooks+api_keys modules invisible.
+
+**Action Items**:
+1. [ ] **Fix CI**: Change `.github/workflows/ci.yml` line 131 from `pytest --cov=.` to `pytest --cov=apps/orchestrator --cov-report=xml --cov-report=term-missing`
+2. [ ] **Delete stale artifact**: `rm apps/orchestrator/coverage.xml` — CI regenerates on next push
+3. [ ] **Fix test_repositories.py**: Remove module-level `os.environ["DATABASE_URL"]` at line 9 (conflicts with conftest autouse fixture, kills 4 test functions)
+4. [ ] Tests: count must not decrease from 1,510
+5. [ ] Commit and push
+
+**Constraints**:
+- S-sized. Config + cleanup only. No new tests required.
+- The reported number WILL drop from 88.6% to ~71-77%. That is the CORRECT number.
+
+---
+
 ### DIRECTIVE-NXTG-20260313-02 — P1: N-18 HTTP Request Node — Universal API Connector
 **From**: NXTG-AI CoS | **Priority**: P1
 **Injected**: 2026-03-13 05:15 | **Estimate**: M | **Status**: DONE | **CoS ACK**: 2026-03-14
