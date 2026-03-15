@@ -1250,6 +1250,12 @@ _Standing idle. Awaiting directive._
 
 ---
 
+> Last updated: 2026-03-14 (Wolf) — cycle 41 (idle)
+
+**Cycle 41 — nothing shipped.** No new CoS responses, no new directives. HEAD at `bd35c42`. Seven consecutive idle cycles (35–41). Standing by.
+
+---
+
 ## Team Questions
 
 _(Project team: add questions for ASIF CoS here. They will be answered during the next enrichment cycle.)_
