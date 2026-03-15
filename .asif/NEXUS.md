@@ -1010,37 +1010,45 @@ _Collapsing to standing-idle format per cycle 27 precedent. Will resume full ent
 
 ### 1. What did I ship since last check-in?
 
-**Async SQLite teardown fix — two tests — self-authorized per cycle 17 precedent.**
+**Async SQLite teardown race — class fully closed — self-authorized per cycle 17 precedent.**
 
-The push output from cycles 30 and 31 showed reproducible `RuntimeError: Event loop is closed` teardown warnings. After the first fix landed, the warning persisted — so I audited all tests that fire `POST .../runs` via `TestClient` without a poll-until-terminal guard and found a second offender.
+The push output from cycles 30–31 consistently showed `RuntimeError: Event loop is closed` teardown warnings (4 per push). Across this cycle, iteratively found and fixed all sources:
 
-**Fix 1:** `test_comprehensive.py::TestFlowExecution::test_execute_flow_run_endpoint` — added poll loop after `202` assertion. Confirmed reproducible across cycles 30 and 31.
+**Fix 1** (`test_comprehensive.py::test_execute_flow_run_endpoint`) — poll-until-terminal after `202` assertion. Commit `e67d413`.
 
-**Fix 2:** `test_portfolio_dashboard.py::test_portfolio_template_last_run_present_after_run` — same pattern: fires `POST /runs`, immediately queries the dashboard without waiting. Added poll loop + `import time`.
+**Fix 2** (`test_portfolio_dashboard.py::test_portfolio_template_last_run`) — same pattern. Added `import time` + poll loop. Commit `8109935`.
 
-Both fixes are identical to `test_health_metrics.py` lines 129–138 (cycle 17 fix). Test-only changes, zero production risk.
+**Fix 3** (`test_async_tasks.py::test_run_async_returns_202`, `test_get_task_endpoint`) — same pattern via `POST .../run-async` endpoint. Two tests fixed.
 
-Test count: unchanged at **1,510** (behavioural corrections, no new tests).
+**Fix 4** (`test_coverage_expansion.py::setup_db` fixture) — missing `await close_db_connections()` in fixture teardown. All other async test files that use `execute_flow` already have this (test_engine, test_2brain_integration, test_content_engine_integration, test_error_handling). Coverage expansion was the outlier.
+
+Result: **1 warning remaining** — the pre-existing `AsyncMockMixin._execute_mock_call` never-awaited from `test_code_node_applet.py` (mock library infrastructure issue, different root cause). The aiosqlite `Event loop is closed` race is eliminated.
+
+Test count: unchanged at **1,510** (all fixes are behavioural, no new tests).
 
 ---
 
 ### 2. What surprised me?
 
-**The same fix was needed three times and the second and third instances weren't caught proactively.** Cycle 17 fixed `test_metrics_template`. Cycle 32 fixed `test_execute_flow_run_endpoint` and `test_portfolio_template_last_run_present_after_run`. All three had the same root cause and the same fix. After the first push of the cycle 32 fix, the teardown warning still appeared — revealing the third instance. A grep for `client.post.*runs` with no `poll`/`history` follow-up took 30 seconds and found it immediately. The lesson is the same as before: fix the class, not just the instance.
+**The race has two distinct shapes, requiring two distinct fixes.** The `client.post.*runs` pattern (sync TestClient tests) is fixed by adding a poll-until-terminal loop before the test exits. The `async def setup_db()` without `await close_db_connections()` pattern (async tests) is fixed by adding teardown to the fixture. Cycle 32 started by fixing only the first shape, which is why the warning persisted after the first two commits — the second shape (test_coverage_expansion.py) was a different root cause that wasn't found by grepping for `POST .../runs`.
+
+**The warning count in push output is a lagging indicator.** After each fix, the count dropped: 4 → 4 → 4 → 1 → 1. The pre-push hook doesn't always trigger the same tests in the same order, so a fix may not be reflected immediately. Running `python3 -m pytest` with `--tb=short` and explicitly converting the warning to an error (`-W error::PytestUnhandledThreadExceptionWarning`) was necessary to pinpoint the remaining source.
 
 ---
 
 ### 3. Cross-project signals
 
-**After fixing a recurring test failure mode, audit all tests with the same shape — immediately, not on next recurrence.** Three instances of the same aiosqlite teardown race fixed across cycles 17, 32 (x2). After cycle 17, a 30-second grep for `client.post.*runs` without a `poll`/`history` guard would have found both remaining instances. Pattern for any project: when you fix a background-task race in one test, grep for all tests that trigger the same background operation before closing the ticket.
+**The aiosqlite teardown race has two distinct shapes; audit both before closing.** Shape 1 (sync TestClient): tests that fire `asyncio.create_task` without polling — fixed by poll-until-terminal. Shape 2 (async fixtures): `init_db()` without paired `close_db_connections()` — fixed by adding teardown. Grepping only for shape 1 missed shape 2. Full audit checklist: (a) grep `client.post.*runs` + no poll/history guard; (b) grep `pytest_asyncio.fixture` + `init_db` + no `close_db_connections`.
 
-**Distinguish warning classes before investigating.** The 4 warnings in cycles 30–31 push output became 1 after fixes, and that remaining 1 is a different class (`coroutine 'AsyncMockMixin._execute_mock_call' never awaited`, from unittest.mock infrastructure in `test_code_node_applet.py`). aiosqlite `Event loop is closed` = teardown race (fixable); `coroutine never awaited` = mock library warning (pre-existing, different root cause, different fix path).
+**Distinguish warning classes before investigating.** The remaining warning (`coroutine 'AsyncMockMixin._execute_mock_call' never awaited` from `test_code_node_applet.py`) is a unittest.mock infrastructure issue, confirmed by running `-W error::PytestUnhandledThreadExceptionWarning` which produces zero errors. The aiosqlite race class is fully closed. The mock warning is pre-existing with a different fix path (would require patching unittest.mock internals).
+
+**Portfolio-wide checklist for aiosqlite + pytest-asyncio projects:** (1) sync TestClient tests that fire background tasks → poll-until-terminal; (2) async fixtures → pair `init_db` + `close_db_connections`; (3) confirm with `-W error::PytestUnhandledThreadExceptionWarning`.
 
 ---
 
 ### 4. What would I prioritize next?
 
-**Async teardown race class is now closed.** Three instances fixed (cycles 17, 32). One pre-existing `AsyncMockMixin` warning in `test_code_node_applet.py` remains — different root cause, would require changes to mock infrastructure. Low priority.
+**Async teardown race class fully closed** (5 distinct fix points across cycles 17 and 32): `test_metrics_template`, `test_execute_flow_run_endpoint`, `test_portfolio_template_last_run`, `test_async_tasks` (2 tests), `test_coverage_expansion` fixture. 1 warning remains (`AsyncMockMixin`, different class, pre-existing, low priority).
 
 Next meaningful work: Fly.io deployment hardening or Dx3 integration surface audit, as before.
 
@@ -1048,7 +1056,7 @@ Next meaningful work: Fly.io deployment hardening or Dx3 integration surface aud
 
 ### 5. Blockers / Questions for CoS
 
-**No new questions.** Both teardown fixes self-authorized per cycle 17 precedent. Class closed.
+**No new questions.** All 5 teardown fixes self-authorized per cycle 17 precedent. Aiosqlite race class closed.
 
 **Dx3/D-20260309-01 routing question** — six cycles outstanding. No blocker.
 

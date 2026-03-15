@@ -1,5 +1,7 @@
 """Tests for async task queue + background execution endpoints."""
 
+import time
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -120,6 +122,15 @@ def test_run_async_returns_202(client):
     body = resp.json()
     assert "task_id" in body
     assert body["status"] == "pending"
+    # Poll until terminal — _run_task_background fires asyncio.create_task();
+    # without this poll, TestClient teardown closes the DB while the task writes.
+    _terminal = {"completed", "failed", "error"}
+    deadline = time.time() + 5.0
+    while time.time() < deadline:
+        t = client.get(f"/api/v1/tasks/{body['task_id']}").json()
+        if t.get("status") in _terminal:
+            break
+        time.sleep(0.05)
 
 
 def test_run_async_unknown_template(client):
@@ -153,6 +164,13 @@ def test_get_task_endpoint(client):
     assert body["template_id"] == "content-engine-pipeline"
     assert body["status"] in ("pending", "running", "completed", "failed")
     assert "progress_pct" in body
+    # Poll until terminal — prevents TestClient DB teardown race.
+    _terminal = {"completed", "failed", "error"}
+    deadline = time.time() + 5.0
+    while time.time() < deadline:
+        if client.get(f"/api/v1/tasks/{task_id}").json().get("status") in _terminal:
+            break
+        time.sleep(0.05)
 
 
 def test_get_task_not_found(client):

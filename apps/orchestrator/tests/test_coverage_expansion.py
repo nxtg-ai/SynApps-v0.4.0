@@ -5,6 +5,7 @@ import pytest
 import pytest_asyncio
 from fastapi.testclient import TestClient
 
+from apps.orchestrator.db import close_db_connections
 from apps.orchestrator.main import (
     Orchestrator,
     app,
@@ -19,6 +20,7 @@ from apps.orchestrator.main import (
 async def setup_db():
     await init_db()
     yield
+    await close_db_connections()
 
 
 @pytest.mark.asyncio
