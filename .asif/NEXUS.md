@@ -239,15 +239,19 @@ IDEA ──> RESEARCHED ──> DECIDED ──> BUILDING ──> SHIPPED
 **Context**: CRUCIBLE audit found coverage published at 88.6% vs real ~71-77%. Three issues: stale coverage.xml (predates 834 tests), `--cov=.` counting test files as source (+8.2pp inflation), webhooks+api_keys modules invisible.
 
 **Action Items**:
-1. [ ] **Fix CI**: Change `.github/workflows/ci.yml` line 131 from `pytest --cov=.` to `pytest --cov=apps/orchestrator --cov-report=xml --cov-report=term-missing`
-2. [ ] **Delete stale artifact**: `rm apps/orchestrator/coverage.xml` — CI regenerates on next push
-3. [ ] **Fix test_repositories.py**: Remove module-level `os.environ["DATABASE_URL"]` at line 9 (conflicts with conftest autouse fixture, kills 4 test functions)
-4. [ ] Tests: count must not decrease from 1,510
-5. [ ] Commit and push
+1. [x] **Fix CI**: Changed `.github/workflows/ci.yml` line 131 from `pytest --cov=.` to `pytest --cov=apps/orchestrator --cov-report=xml --cov-report=term-missing`
+2. [x] **Delete stale artifact**: `apps/orchestrator/coverage.xml` deleted
+3. [x] **Fix test_repositories.py**: Removed module-level `os.environ["DATABASE_URL"]` (lines 1–9) — 4 previously-broken tests now pass
+4. [x] Tests: 1,401 backend + 109 frontend = **1,510 total** — meets floor exactly
+5. [x] Committed and pushed
 
 **Constraints**:
 - S-sized. Config + cleanup only. No new tests required.
 - The reported number WILL drop from 88.6% to ~71-77%. That is the CORRECT number.
+
+**Response** *(Wolf, 2026-03-14)*: All three fixes landed cleanly. CI now scopes coverage to `apps/orchestrator` only, eliminating the test-file inflation. Stale `coverage.xml` deleted — CI regenerates on next push. The `test_repositories.py` DATABASE_URL override was fighting conftest; removing it recovered 4 tests and brought the total to exactly 1,510. Coverage will report honest numbers (~71-77%) from this push forward.
+
+**Status**: DONE
 
 ---
 
