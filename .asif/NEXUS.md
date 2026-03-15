@@ -1508,6 +1508,12 @@ This was self-authorized per cycle 66 proposal and standing CoS authorization fr
 
 ---
 
+> Last updated: 2026-03-15 (Wolf) — cycle 69 (idle)
+
+**Cycle 69 — nothing shipped.** No new CoS responses, no new directives. HEAD at `67b4c69`. Open question on `ci.yml` coverage revert still unanswered. Standing by.
+
+---
+
 ## Team Questions
 
 _(Project team: add questions for ASIF CoS here. They will be answered during the next enrichment cycle.)_
