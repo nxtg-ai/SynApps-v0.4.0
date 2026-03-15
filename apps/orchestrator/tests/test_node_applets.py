@@ -996,7 +996,7 @@ class TestHTTPRequestNodeApplet:
                 "auth_type": "bearer",
                 "auth_value": "mytoken123",
             }})
-            result = await applet.on_message(msg)
+            await applet.on_message(msg)
 
         assert "Authorization" in captured_headers
         assert captured_headers["Authorization"] == "Bearer mytoken123"
@@ -1005,6 +1005,7 @@ class TestHTTPRequestNodeApplet:
     async def test_basic_auth_header_injected(self, applet):
         """Basic auth should inject base64-encoded Authorization header."""
         import base64
+
         import httpx
 
         captured_headers = {}
@@ -1033,7 +1034,7 @@ class TestHTTPRequestNodeApplet:
                 "auth_type": "basic",
                 "auth_value": "user:password",
             }})
-            result = await applet.on_message(msg)
+            await applet.on_message(msg)
 
         expected = "Basic " + base64.b64encode(b"user:password").decode()
         assert captured_headers.get("Authorization") == expected
@@ -1070,7 +1071,7 @@ class TestHTTPRequestNodeApplet:
                 "auth_value": "secret-key-abc",
                 "auth_header_name": "X-Custom-API-Key",
             }})
-            result = await applet.on_message(msg)
+            await applet.on_message(msg)
 
         assert captured_headers.get("X-Custom-API-Key") == "secret-key-abc"
 

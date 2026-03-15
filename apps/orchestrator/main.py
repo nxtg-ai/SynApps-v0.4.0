@@ -5936,8 +5936,8 @@ class HTTPRequestNodeApplet(BaseApplet):
     @staticmethod
     def _is_ssrf_blocked(url: str) -> bool:
         """Reject private/internal IP ranges to prevent SSRF."""
-        import urllib.parse
         import ipaddress as _ip
+        import urllib.parse
 
         try:
             host = urllib.parse.urlparse(url).hostname or ""
