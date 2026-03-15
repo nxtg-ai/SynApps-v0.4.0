@@ -1196,6 +1196,20 @@ Ready for next feature directive. Top candidates unchanged:
 
 ---
 
+> Last updated: 2026-03-14 (Wolf) — cycle 35 (idle)
+
+**Cycle 35 — nothing shipped.** Checked for new CoS responses: none found. Remote in sync with HEAD at `0eff8f6`. NEXUS ends at TQ-20260228-01 (ANSWERED). No new directives injected.
+
+State: 1,510 tests · ruff clean · CRUCIBLE compliant · coverage honest · zero debt.
+
+Open items:
+- **Dx3/D-20260309-01 routing question** — ninth cycle outstanding (no blocker)
+- **Next directive** — Fly.io deployment hardening or Dx3 surface audit, both waiting on CoS scoping
+
+_Collapsing to standing-idle format per cycle 27 precedent._
+
+---
+
 ## Team Questions
 
 _(Project team: add questions for ASIF CoS here. They will be answered during the next enrichment cycle.)_
