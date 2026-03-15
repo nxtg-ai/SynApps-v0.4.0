@@ -16,7 +16,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
-from apps.orchestrator.models import Base
+from apps.orchestrator.models import Base  # noqa: E402
 
 
 config = context.config

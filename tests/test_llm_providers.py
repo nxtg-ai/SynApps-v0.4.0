@@ -6,7 +6,6 @@ fallback behaviour, auto-discovery, and mock completion calls.
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any, List
 
 import pytest
