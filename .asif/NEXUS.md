@@ -1210,6 +1210,18 @@ _Collapsing to standing-idle format per cycle 27 precedent._
 
 ---
 
+> Last updated: 2026-03-14 (Wolf) — cycle 36 (idle)
+
+**Cycle 36 — nothing shipped.** No new CoS responses in NEXUS, no new directives. Remote in sync with HEAD at `50feaae`. File length unchanged at 1,231 lines.
+
+State: 1,510 tests · ruff clean · CRUCIBLE compliant · coverage honest (`--cov=apps/orchestrator`) · zero debt.
+
+Two consecutive idle cycles (35 + 36) with no new signal. Entering standing-idle format until state changes.
+
+_Awaiting: next feature directive (Fly.io deployment or Dx3 surface audit) or CoS response on Dx3/D-20260309-01 routing question._
+
+---
+
 ## Team Questions
 
 _(Project team: add questions for ASIF CoS here. They will be answered during the next enrichment cycle.)_
