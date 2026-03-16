@@ -1,0 +1,26 @@
+{
+  "id": "T-009",
+  "title": "Upgrade Backend Dependencies",
+  "description": "Update backend dependencies to Python 3.11+, FastAPI 0.115+, Pydantic v2, SQLAlchemy 2.0, and latest Alembic. Update Dockerfile and requirements.txt/pyproject.toml accordingly.",
+  "status": "completed",
+  "assigned_to": "codex",
+  "task_type": "implement",
+  "depends_on": [
+    "T-008"
+  ],
+  "locked_files": [
+    "apps/orchestrator/setup.py",
+    "apps/orchestrator/Dockerfile",
+    "apps/orchestrator/requirements.txt"
+  ],
+  "acceptance_criteria": [
+    "All backend dependencies upgraded to specified versions",
+    "Dockerfile uses Python 3.11+ base image",
+    "App starts without import errors"
+  ],
+  "created_at": "2026-02-15T03:19:12.347885519Z",
+  "updated_at": "2026-02-15T18:16:46.242549320Z",
+  "completed_at": "2026-02-15T18:16:46.242548477Z",
+  "plan_version": 2,
+  "retry_count": 0
+}

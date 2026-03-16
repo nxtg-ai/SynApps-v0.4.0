@@ -5,6 +5,78 @@ All notable changes to the SynApps project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.2] - 2025-06-10
+
+### Added
+
+- **Workflow Editor Enhancements**
+  - Added node deletion functionality via keyboard (Delete key) and context menu
+  - Implemented proper cleanup of connected edges when deleting nodes
+  - Added enhanced context menu for workflow nodes with the following features:
+    - Direct access to node configuration
+    - Improved positioning next to nodes
+    - Better styling with icons and dividers
+
+## [0.5.1] - 2025-06-09
+
+### Fixed
+
+- **Workflow History Page**
+  - Fixed run selection to show the latest workflow run by default instead of the oldest run
+  - Ensured proper sorting of workflow runs by timestamp
+
+## [0.5.0] - 2025-06-08
+
+### Added
+
+- **Node-Specific Configuration**
+  - Implemented `NodeConfig` component for node-specific input configuration
+  - Added configuration panels for Start, Writer, and Artist nodes:
+    - **Start Node**: Input text area for initial workflow input data with JSON parsing
+    - **Writer Node**: System prompt text area for configuring language model prompts
+    - **Artist Node**: System prompt text area and generator selection dropdown
+  - Added gear icon toggle button to open/close node configuration panels
+
+- **Dynamic Workflow Execution Feedback**
+  - Added status indicators (colored dots) in the upper-right corner of each node
+  - Implemented progressive lighting of status indicators as workflow steps complete
+  - Added visual feedback for running, success, and error states with appropriate colors
+  - Enhanced node border styling to reflect execution status
+  - Added backend tracking of completed workflow nodes via database
+  - Implemented real-time WebSocket broadcasting of node completion status
+
+### Changed
+
+- **Workflow Editor UI**
+  - Removed global Input Data Panel in favor of node-specific configurations
+  - Updated CSS styling for better layout and consistency
+  
+- **Orchestrator Backend**
+  - Enhanced `_execute_flow_async` to handle node-specific configuration data
+  - Updated flow execution to use Start node's input data configuration
+  - Added support for passing node-specific metadata (system prompts, generator selection) to applets
+  - Added tracking of completed nodes during workflow execution
+  - Created database migration for storing completed nodes in workflow runs
+  - Enhanced WebSocket status updates to include completed nodes information
+
+## [0.4.0] - 2025-06-07
+
+### Added
+
+- **Enhanced Run History Page**
+  - Added workflow names to the Run History page for better identification
+  - Implemented sorting functionality with newest-first as default
+  - Added toggle button to switch between newest-first and oldest-first sorting
+  - Improved UI styling for better readability
+
+### Changed
+
+- **FastAPI Modernization**
+  - Replaced deprecated lifecycle event handlers (`@app.on_event`) with the modern lifespan context manager
+  - Created a helper function `model_to_dict` to abstract Pydantic model serialization differences
+  - Updated all Pydantic model dictionary conversions for compatibility with both v1 and v2
+  - Fixed dependency injection in the Orchestrator class
+
 ## [0.3.0] - 2025-06-06
 
 ### Added

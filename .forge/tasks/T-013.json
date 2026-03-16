@@ -1,0 +1,24 @@
+{
+  "id": "T-013",
+  "title": "Upgrade Frontend Build Tool to Vite",
+  "description": "Migrate frontend from CRA (react-scripts) to Vite 6. Update build scripts, configuration, and ensure app runs and builds successfully.",
+  "status": "completed",
+  "assigned_to": "codex",
+  "task_type": "implement",
+  "depends_on": [],
+  "locked_files": [
+    "apps/web-frontend/package.json",
+    "apps/web-frontend/vite.config.ts",
+    "apps/web-frontend/tsconfig.json"
+  ],
+  "acceptance_criteria": [
+    "CRA removed, Vite 6 configured",
+    "Frontend builds and runs locally",
+    "No major regressions"
+  ],
+  "created_at": "2026-02-15T03:19:12.347888442Z",
+  "updated_at": "2026-02-15T03:58:51.966265595Z",
+  "completed_at": "2026-02-15T03:58:51.966264925Z",
+  "plan_version": 2,
+  "retry_count": 0
+}

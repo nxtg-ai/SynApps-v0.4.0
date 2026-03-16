@@ -31,6 +31,19 @@
   background-color: #40a9ff;
 }
 
+.load-in-editor-button {
+  padding: 8px 16px;
+  background-color: #1890ff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.load-in-editor-button:hover {
+  background-color: #40a9ff;
+}
+
 .history-container {
   display: flex;
   flex: 1;
@@ -48,11 +61,36 @@
   flex-direction: column;
 }
 
-.runs-sidebar h3 {
-  margin-top: 0;
+.runs-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: 12px;
+}
+
+.runs-header h3 {
+  margin: 0;
   font-size: 1.1rem;
   color: #333;
+}
+
+.sort-toggle {
+  background: #f0f0f0;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  color: #666;
+  display: flex;
+  align-items: center;
+  transition: all 0.2s;
+}
+
+.sort-toggle:hover {
+  background: #e6f7ff;
+  border-color: #91d5ff;
+  color: #1890ff;
 }
 
 .runs-list {
@@ -94,18 +132,27 @@
 
 .run-header {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
   margin-bottom: 8px;
 }
 
 .flow-name {
-  font-weight: 500;
-  font-size: 0.9rem;
+  font-weight: 600;
+  font-size: 0.95rem;
   color: #333;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  margin-bottom: 4px;
+}
+
+.flow-id {
+  font-size: 0.75rem;
+  color: #666;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: 6px;
 }
 
 .status-badge {
@@ -114,6 +161,7 @@
   border-radius: 10px;
   font-size: 0.7rem;
   text-transform: capitalize;
+  align-self: flex-start;
 }
 
 .status-badge.success {
@@ -240,7 +288,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 8px 12px;
-  background-color: #fafafa;
+  background-color: #c3ffc6;
   border-bottom: 1px solid #f0f0f0;
 }
 
@@ -262,13 +310,20 @@
 .text-output {
   white-space: pre-wrap;
   font-size: 0.9rem;
-  max-height: 400px;
-  overflow-y: auto;
+  width: 100%;
+  overflow-wrap: break-word;
+}
+
+.input-content {
+  white-space: pre-wrap;
+  font-size: 0.9rem;
+  width: auto;
+  overflow-wrap: break-word;
 }
 
 .image-output {
   display: flex;
-  justify-content: center;
+  justify-content: left;
 }
 
 .image-output img {
@@ -279,17 +334,21 @@
 
 .json-output {
   max-height: 400px;
+  max-width: 600px;
   overflow-y: auto;
+  overflow-x: auto;
   background-color: #fafafa;
   padding: 12px;
   border-radius: 4px;
+  overflow-wrap: break-word;
 }
 
-.json-output pre {
+.json-output-pre {
   margin: 0;
   font-family: monospace;
   font-size: 0.85rem;
   white-space: pre-wrap;
+  overflow-x: auto;
 }
 
 .no-run-selected {

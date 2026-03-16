@@ -1,42 +1,82 @@
-version: '3.8'
+# =============================================================================
+# SynApps — Docker Compose (infra/docker context)
+#
+# Same as root docker-compose.yml but with adjusted build context paths.
+# Prefer using the root docker-compose.yml via `docker compose up` from repo root.
+# =============================================================================
 
 services:
-  # Orchestrator service
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-synapps}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-synapps}
+      POSTGRES_DB: ${POSTGRES_DB:-synapps}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+    networks:
+      - synapps-network
+    restart: unless-stopped
+
   orchestrator:
     build:
       context: ../../
       dockerfile: infra/docker/Dockerfile.orchestrator
-    ports:
-      - "8000:8000"
     environment:
-      - PORT=8000
-      - HOST=0.0.0.0
-      - FRONTEND_URL=http://localhost:3000
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - STABILITY_API_KEY=${STABILITY_API_KEY}
+      PRODUCTION: ${PRODUCTION:-false}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://synapps:synapps@db:5432/synapps}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-synapps-dev-jwt-secret-change-me}
+      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-http://localhost:3000}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      SYNAPPS_MASTER_KEY: ${SYNAPPS_MASTER_KEY:-}
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:8000/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
     networks:
       - synapps-network
-    volumes:
-      - ../../apps/orchestrator:/app
-      - ../../apps/applets:/app/applets
     restart: unless-stopped
 
-  # Frontend service
   frontend:
     build:
       context: ../../
       dockerfile: infra/docker/Dockerfile.frontend
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:8000/api/v1}
+      VITE_WEBSOCKET_URL: ${VITE_WEBSOCKET_URL:-ws://localhost:8000/api/v1/ws}
     ports:
-      - "3000:80"
+      - "${FRONTEND_PORT:-3000}:80"
     depends_on:
-      - orchestrator
+      orchestrator:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
     networks:
       - synapps-network
     restart: unless-stopped
-    environment:
-      - REACT_APP_API_URL=http://localhost:8000
-      - REACT_APP_WEBSOCKET_URL=ws://localhost:8000/ws
 
 networks:
   synapps-network:
     driver: bridge
+
+volumes:
+  postgres_data:

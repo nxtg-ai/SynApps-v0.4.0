@@ -10,7 +10,7 @@ setup(
     install_requires=[
         "httpx>=0.23.0",
     ],
-    description="SynApps Writer Applet - Text generation using gpt-4.1",
+    description="SynApps Writer Applet - Text generation using gpt-4o",
     author="SynApps Team",
     author_email="synapps.info@nxtg.ai",
     classifiers=[

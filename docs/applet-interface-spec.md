@@ -114,7 +114,7 @@ The WriterApplet generates text content using language models.
 - `max_tokens`: Optional max tokens to generate (default: 1000)
 
 **Metadata Keys:**
-- `model`: The language model used (e.g., "gpt-4.1")
+- `model`: The language model used (e.g., "gpt-4o")
 - `applet`: Always "writer"
 
 ### ArtistApplet

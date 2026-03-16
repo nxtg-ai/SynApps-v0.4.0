@@ -5,12 +5,18 @@ import { FlowTemplate } from '../types';
 import { blogPostWriterTemplate } from './BlogPostWriter';
 import { illustratedStoryTemplate } from './IllustratedStory';
 import { chatbotWithMemoryTemplate } from './ChatbotWithMemory';
+import { twoBrainInboxTemplate } from './TwoBrainInbox';
+import { contentEngineTemplate } from './ContentEngine';
+import { apiFetchTemplate } from './ApiFetch';
 
 // Export all templates
 export const templates: FlowTemplate[] = [
   blogPostWriterTemplate,
   illustratedStoryTemplate,
-  chatbotWithMemoryTemplate
+  chatbotWithMemoryTemplate,
+  twoBrainInboxTemplate,
+  contentEngineTemplate,
+  apiFetchTemplate
 ];
 
 // Helper function to get a template by ID

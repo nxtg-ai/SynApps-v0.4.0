@@ -54,6 +54,23 @@
   background-color: #40a9ff;
 }
 
+.import-workflow-button {
+  padding: 12px 24px;
+  background-color: transparent;
+  color: #1890ff;
+  border: 1px solid #1890ff;
+  border-radius: 4px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.import-workflow-button:hover {
+  background-color: #1890ff;
+  color: white;
+}
+
 .dashboard-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

@@ -1,0 +1,50 @@
+# Version control
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.coverage
+htmlcov/
+*.egg-info
+.venv/
+venv/
+.mypy_cache
+
+# Node
+**/node_modules
+**/coverage
+**/.next
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Environment files with secrets
+.env
+.env.local
+.env.*.local
+
+# Docker
+docker-compose*.yml
+Dockerfile*
+
+# Databases (dev)
+*.db
+*.sqlite3
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test artifacts
+apps/web-frontend/test-results/
+apps/web-frontend/playwright-report/
+
+# Build artifacts
+apps/web-frontend/dist/

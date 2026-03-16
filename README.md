@@ -1,46 +1,46 @@
-# SynApps v4.0
 
-A web-based visual platform for modular AI agents with database persistence and improved workflow execution.
+![SynApps Logo](logo192.png)
+
+# SynApps [![Star on GitHub](https://img.shields.io/github/stars/nxtg-ai/SynApps-v0.4.0?style=social)](https://github.com/nxtg-ai/SynApps-v0.4.0/stargazers)
+
+A web-based visual AI workflow builder where users drag-and-drop AI agent nodes, connect them on a canvas, and execute workflows in real-time.
 
 ## Introduction
 
-SynApps is a **web-based visual platform for modular AI agents**. Its mission is to let indie creators build autonomous AI applets like LEGO blocks – each applet is a small agent with a specialized skill (e.g. *Writer*, *Memory*, *Artist*). 
-
-A lightweight **SynApps Orchestrator** routes messages between these applets, sequencing their interactions to solve tasks collaboratively. In other words, SynApps connects AI "synapses" (agents) in real time, forming an intelligent network that can tackle complex workflows.
+SynApps is a **web-based visual platform for modular AI agents called Snaplets**. Its mission is to let indie creators build autonomous AI snaplets like LEGO blocks -- each snaplet is a small agent with a specialized skill. A lightweight **SynApps Orchestrator** routes messages between these snaplets, sequencing their interactions to solve tasks collaboratively. SynApps connects AI "synapses" (snaplets) in real time, forming an intelligent network that can tackle complex workflows.
 
 ## Features
 
-- **One-Click Creation & Extreme Simplicity:** Create an AI workflow with minimal steps (one or two clicks).
-- **Autonomous & Collaborative Agents:** Each applet (agent) runs autonomously but can pass data to others via the orchestrator.
-- **Real-Time Visual Feedback:** See the AI agents at work with an animated graph of nodes (agents) and connections (data flow).
-- **Background Execution & Notifications:** Agents run in the background once triggered, with a notification system to alert users of important status changes.
-- **Openness and Extensibility:** Support for user-editable applets via code for those who want to customize logic.
+- **Visual Workflow Builder:** Drag-and-drop AI nodes onto a canvas and connect them to build workflows.
+- **Autonomous & Collaborative Snaplets:** Each snaplet runs autonomously but can pass data to others via the orchestrator.
+- **Real-Time Visual Feedback:** See the AI snaplets at work with an animated graph of nodes and connections.
+- **Background Execution & Notifications:** Snaplets run in the background once triggered, with notifications for status changes.
+- **Extensibility:** 9 built-in node types (LLM, ImageGen, Code, HTTP, Transform, IfElse, Merge, ForEach, Memory) with support for custom logic via the Code node.
 
 ## Quick Start
 
 ### Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/)
-- Optionally: Node.js 16+ and Python 3.9+ for local development
+- For local development: Node.js 20+ and Python 3.11+
 
 ### Running with Docker
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/nxtg-ai/SynApps-v4.0.git
-   cd SynApps-v4.0
+   git clone https://github.com/nxtg-ai/synapps.git
+   cd synapps
    ```
 
-2. Create a `.env` file in the root of the project with your API keys and database URL:
+2. Create a `.env` file in the root of the project:
    ```
    OPENAI_API_KEY=your_openai_api_key
    STABILITY_API_KEY=your_stability_api_key
-   DATABASE_URL=sqlite+aiosqlite:///synapps.db
    ```
 
-3. Build and run the containers:
+3. Build and run the containers (PostgreSQL + orchestrator + frontend):
    ```bash
-   docker-compose -f infra/docker/docker-compose.yml up
+   docker-compose -f infra/docker/docker-compose.yml up --build
    ```
 
 4. Open your browser and navigate to [http://localhost:3000](http://localhost:3000)
@@ -49,91 +49,146 @@ A lightweight **SynApps Orchestrator** routes messages between these applets, se
 
 #### Backend (Orchestrator)
 
-1. Navigate to the orchestrator directory:
-   ```bash
-   cd apps/orchestrator
-   ```
+```bash
+# From the repo root
+cd apps/orchestrator && pip install -e . && cd ../..
 
-2. Create a virtual environment and install dependencies:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   pip install -r requirements.txt
-   ```
+# Set up your environment variables
+cp .env.example .env
+# Then edit .env with your actual API keys
 
-3. Initialize the database:
-   ```bash
-   alembic upgrade head
-   ```
+# Run database migrations
+alembic upgrade head
 
-4. Run the development server:
-   ```bash
-   uvicorn main:app --reload
-   ```
+# Start the dev server
+PYTHONPATH=. uvicorn apps.orchestrator.main:app --reload --port 8000
+```
 
 #### Frontend
 
-1. Navigate to the frontend directory:
-   ```bash
-   cd apps/web-frontend
-   ```
-
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-
-3. Run the development server:
-   ```bash
-   npm start
-   ```
+```bash
+cd apps/web-frontend
+npm install
+npm run dev    # Starts Vite dev server on :3000
+```
 
 ## Architecture
 
 SynApps follows a microkernel architecture:
 
-- **Orchestrator:** A lightweight message routing core that passes data between applets and manages workflow execution.
-- **Applets:** Self-contained AI micro-agents implementing a standard interface to perform specialized tasks.
-- **Frontend:** React app with a visual workflow editor, built on React Flow and anime.js for animations.
-- **Database:** SQLite with async SQLAlchemy ORM for persistent storage of workflows and execution state.
+- **Orchestrator:** A FastAPI backend that routes messages between applets and manages workflow execution. All applet logic, auth, and WebSocket handlers live in `apps/orchestrator/main.py`.
+- **Applets (Nodes):** Self-contained AI micro-agents implementing a standard `BaseApplet` interface.
+- **Frontend:** React 18 + TypeScript app with a visual workflow editor built on @xyflow/react, styled with Tailwind CSS, state managed by Zustand.
+- **Database:** SQLite (dev via aiosqlite) / PostgreSQL (prod via asyncpg) with async SQLAlchemy 2.0 ORM.
 
-## Applets
+## Node Types
 
-The MVP includes three core applets:
+| Node | Description |
+|------|-------------|
+| **LLM** | Text generation via LLM (e.g. GPT-4o) |
+| **ImageGen** | Image generation from text prompts |
+| **Code** | Execute custom Python/JavaScript logic |
+| **HTTP** | Make HTTP requests to external APIs |
+| **Transform** | Transform and reshape data between nodes |
+| **IfElse** | Conditional branching based on expressions |
+| **Merge** | Combine outputs from multiple branches |
+| **ForEach** | Iterate over collections |
+| **Memory** | Store/retrieve context using SQLite FTS or ChromaDB vector store |
 
-- **WriterApplet:** Generates text given a topic or prompt using gpt-4.1.
-- **MemoryApplet:** Stores or retrieves information to maintain context between steps using a vector store.
-- **ArtistApplet:** Creates an image from a text description using Stable Diffusion.
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Backend | Python 3.11+, FastAPI 0.115+, Pydantic v2, SQLAlchemy 2.0 (async) |
+| Frontend | React 18, TypeScript (strict), Vite 6, Tailwind CSS 4, Zustand, @xyflow/react v12 |
+| Database | SQLite (dev), PostgreSQL (prod) |
+| Testing | pytest + pytest-asyncio (backend), Vitest + React Testing Library (frontend), Playwright (E2E) |
+| Linting | Ruff (Python), ESLint 9 flat config + Prettier (TypeScript) |
+| CI/CD | GitHub Actions, Codecov, Docker |
+| Deploy | Fly.io (backend), Vercel (frontend) |
+
+## Portfolio Templates
+
+SynApps ships with workflow templates that validate the platform against real NXTG.AI portfolio use cases.
+
+| Template | Consumer | Pipeline | Nodes |
+|----------|----------|----------|-------|
+| **2Brain Inbox Triage** | 2Brain (P-13) | Capture → Classify → Structure → Store | Start → LLM → Code → Memory → End |
+| **Content Engine Pipeline** | nxtg-content-engine (P-14) | Research → Summarize → Format → Store | Start → HTTP → LLM → Code → Memory → End |
+
+Templates are available in the frontend gallery (`apps/web-frontend/src/templates/`) and as standalone YAML definitions (`templates/`).
 
 ## Deployment
-
-The application is configured for deployment to:
 
 - **Frontend:** Vercel
 - **Backend:** Fly.io
 
 CI/CD pipelines are set up using GitHub Actions.
 
-## Database
+## Testing
 
-SynApps v4.0 uses SQLAlchemy with async support for database operations:
+### Backend
 
-- **ORM Models:** SQLAlchemy models for flows, nodes, edges, and workflow runs
-- **Migrations:** Alembic for database schema migrations
-- **Repository Pattern:** Clean separation of database access logic
-- **Async Support:** Full async/await pattern for database operations
+```bash
+# Run all tests (from repo root)
+PYTHONPATH=. pytest apps/orchestrator/tests/ -v
+
+# With coverage
+PYTHONPATH=. pytest apps/orchestrator/tests/ --cov=apps/orchestrator --cov-report=term-missing
+```
+
+### Frontend
+
+```bash
+cd apps/web-frontend
+npm test                        # Vitest (single run)
+npm run typecheck               # TypeScript type checking
+```
+
+### E2E
+
+```bash
+cd apps/web-frontend
+npx playwright test             # Run all E2E tests
+npx playwright test --headed    # Run with browser visible
+```
+
+## Linting & Formatting
+
+```bash
+# Backend (from repo root)
+ruff check apps/orchestrator --config apps/orchestrator/pyproject.toml
+ruff format apps/orchestrator --config apps/orchestrator/pyproject.toml
+
+# Frontend (from apps/web-frontend/)
+npm run lint
+npm run format:check
+
+# All at once via pre-commit
+pre-commit run --all-files
+```
+
+## Development Scripts
+
+A convenience script starts both servers (requires `concurrently` and `kill-port` installed globally):
+
+```bash
+.scripts/start-dev.sh
+```
+
+> **Note:** The script may use older invocation patterns. If you encounter import errors, use the manual backend/frontend commands documented above.
 
 ## Development Workflow
 
-1. Create a feature branch from `main`
+1. Create a feature branch from `master`
 2. Make your changes
 3. Write tests for your changes
-4. Submit a pull request to `main`
-5. After review and approval, the changes will be merged and deployed automatically
+4. Run `pre-commit run --all-files` to check linting
+5. Submit a pull request to `master`
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
 1. Fork the repository
 2. Create your feature branch (`git checkout -b feature/amazing-feature`)
@@ -147,7 +202,9 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Acknowledgements
 
-- [React Flow](https://reactflow.dev/) for the workflow visualization
+- [@xyflow/react](https://reactflow.dev/) for the workflow visualization
 - [anime.js](https://animejs.com/) for animations
 - [FastAPI](https://fastapi.tiangolo.com/) for the backend
 - [Monaco Editor](https://microsoft.github.io/monaco-editor/) for the code editor
+- [Tailwind CSS](https://tailwindcss.com/) for styling
+- [Zustand](https://zustand-demo.pmnd.rs/) for state management

@@ -1,0 +1,24 @@
+{
+  "id": "T-014",
+  "title": "Migrate Frontend Styling to Tailwind and shadcn/ui",
+  "description": "Replace CSS modules with Tailwind CSS 4 and integrate shadcn/ui components. Refactor existing components to use new styling system.",
+  "status": "completed",
+  "assigned_to": "codex",
+  "task_type": "implement",
+  "depends_on": [
+    "T-013"
+  ],
+  "locked_files": [
+    "apps/web-frontend/src/"
+  ],
+  "acceptance_criteria": [
+    "Tailwind CSS 4 and shadcn/ui installed and configured",
+    "All components use Tailwind classes and shadcn/ui",
+    "No remaining CSS modules"
+  ],
+  "created_at": "2026-02-15T03:19:12.347888934Z",
+  "updated_at": "2026-02-15T04:18:58.222371078Z",
+  "completed_at": "2026-02-15T04:18:58.222370299Z",
+  "plan_version": 2,
+  "retry_count": 0
+}

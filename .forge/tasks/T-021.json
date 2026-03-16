@@ -1,0 +1,24 @@
+{
+  "id": "T-021",
+  "title": "Implement Execution Visualization Features",
+  "description": "Add animated edge flow, node glow effects, per-node progress indicators, and execution timeline bar to visualize workflow execution in real-time.",
+  "status": "completed",
+  "assigned_to": "codex",
+  "task_type": "implement",
+  "depends_on": [
+    "T-019"
+  ],
+  "locked_files": [
+    "apps/web-frontend/src/"
+  ],
+  "acceptance_criteria": [
+    "Animated edge flow during execution",
+    "Node glow and progress indicators",
+    "Timeline bar shows total progress"
+  ],
+  "created_at": "2026-02-15T03:19:12.347893246Z",
+  "updated_at": "2026-02-15T18:45:27.132342501Z",
+  "completed_at": "2026-02-15T18:45:27.132341773Z",
+  "plan_version": 2,
+  "retry_count": 0
+}

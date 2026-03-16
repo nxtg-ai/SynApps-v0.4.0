@@ -202,8 +202,12 @@ The application uses CSS modules for styling:
 ### Prerequisites
 
 - [Node.js](https://nodejs.org/) (v16 or later)
-- [Python](https://python.org/) (v3.9 or later)
+- [Python](https://python.org/) (v3.11 or later)
 - [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/) (optional)
+
+### Stack Upgrade
+
+The project has recently undergone a major stack upgrade. For more details on the new versions, migration steps, and breaking changes, please refer to the [Stack Upgrade Guide](stack-upgrade.md).
 
 ### Backend Setup
 

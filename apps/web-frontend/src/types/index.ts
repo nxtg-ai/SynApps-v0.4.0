@@ -37,6 +37,8 @@ export interface WorkflowRunStatus {
   end_time?: number;
   results: Record<string, any>;
   error?: string;
+  completed_applets?: string[];
+  input_data?: Record<string, any>;
 }
 
 export interface AppletMetadata {
@@ -78,4 +80,26 @@ export interface CodeSuggestionResponse {
   original: string;
   suggestion: string;
   diff: string;
+}
+
+// ── Auth ────────────────────────────────────────────────────────────────
+
+export interface AuthCredentials {
+  email: string;
+  password: string;
+}
+
+export interface AuthTokenResponse {
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
+  access_expires_in: number;
+  refresh_expires_in: number;
+}
+
+export interface UserProfile {
+  id: string;
+  email: string;
+  is_active: boolean;
+  created_at: number;
 }

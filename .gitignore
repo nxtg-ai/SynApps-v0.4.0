@@ -10,8 +10,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+/lib/
+/lib64/
 parts/
 sdist/
 var/
@@ -38,15 +38,10 @@ yarn-error.log*
 *.swo
 .DS_Store
 
-# Environment variables
+# Environment variables (all .env* files except the template)
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# Local development
-.env.local
+.env.*
+!.env.example
 
 # Private documentation
 .docs/
@@ -60,17 +55,23 @@ yarn-error.log*
 
 # Testing
 /coverage
+apps/web-frontend/coverage/
+apps/web-frontend/test-results/
+apps/web-frontend/playwright-report/
+.coverage
+*.db
+
+# Virtual environments (all naming conventions)
+.venv/
+
+# Local tool configuration
+.claude/
 
 # Production
 /build
 
 # Misc
 .DS_Store
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
 
 # Debug
 npm-debug.log*

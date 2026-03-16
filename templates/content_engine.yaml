@@ -1,0 +1,128 @@
+# Content-Engine Workflow Template
+# Portfolio consumer: nxtg-content-engine (P-14)
+#
+# Pipeline: Start → HTTP (Research) → LLM (Enrich) → Code (Format) → Memory (Store) → End
+#
+# Orchestrates multi-source research into structured markdown articles.
+# This is the second portfolio dogfood template after 2Brain (N-16).
+
+id: content-engine-pipeline
+name: Content Engine Pipeline
+description: >
+  Fetch content from a web source, summarize it with an LLM,
+  format as a structured markdown article, and store the result.
+tags:
+  - content-engine
+  - research
+  - summarization
+  - markdown
+  - portfolio
+
+nodes:
+  - id: start
+    type: start
+    position: { x: 300, y: 25 }
+    data:
+      label: Research Topic
+
+  - id: research
+    type: http_request
+    position: { x: 300, y: 150 }
+    data:
+      label: Fetch Source
+      method: GET
+      url: "{{input.url}}"
+      headers:
+        Accept: application/json
+      timeout_seconds: 30
+
+  - id: enrich
+    type: llm
+    position: { x: 300, y: 300 }
+    data:
+      label: Summarize Content
+      provider: ollama
+      model: llama3.1
+      base_url: http://localhost:11434
+      temperature: 0.3
+      max_tokens: 1024
+      system_prompt: >
+        You are a research assistant for a content engine.
+        Summarize the provided content into clear, concise key points.
+        Focus on facts, insights, and actionable information.
+        Output a structured summary with bullet points.
+
+  - id: format
+    type: code
+    position: { x: 300, y: 450 }
+    data:
+      label: Format Article
+      language: python
+      timeout_seconds: 5
+      memory_limit_mb: 256
+      code: |
+        import json
+        import datetime
+
+        # data = LLM summary output
+        # context["input"] = original user input with topic/url
+        raw_input = context.get("input", {})
+        if isinstance(raw_input, dict):
+            topic = raw_input.get("topic", "Untitled")
+            source_url = raw_input.get("url", "")
+        else:
+            topic = str(raw_input)
+            source_url = ""
+
+        summary = str(data).strip() if data else "No summary available."
+
+        article = f"# {topic}\n\n"
+        article += f"*Generated: {datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}*\n\n"
+        if source_url:
+            article += f"**Source:** {source_url}\n\n"
+        article += "---\n\n"
+        article += f"## Summary\n\n{summary}\n"
+
+        result = {
+            "title": topic,
+            "content": article,
+            "source_url": source_url,
+            "generated_at": datetime.datetime.utcnow().isoformat() + "Z",
+            "format": "markdown",
+        }
+
+  - id: store
+    type: memory
+    position: { x: 300, y: 600 }
+    data:
+      label: Store Article
+      operation: store
+      key: content-engine-article
+      namespace: content-engine
+
+  - id: end
+    type: end
+    position: { x: 300, y: 720 }
+    data:
+      label: Published Article
+
+edges:
+  - id: start-research
+    source: start
+    target: research
+
+  - id: research-enrich
+    source: research
+    target: enrich
+
+  - id: enrich-format
+    source: enrich
+    target: format
+
+  - id: format-store
+    source: format
+    target: store
+
+  - id: store-end
+    source: store
+    target: end

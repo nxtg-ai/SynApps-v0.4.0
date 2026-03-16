@@ -25,7 +25,7 @@ SynApps MVP has been implemented according to the specifications. The implementa
 - Responsive design for various screen sizes
 
 ### Applets
-- WriterApplet for text generation using gpt-4.1
+- WriterApplet for text generation using gpt-4o
 - ArtistApplet for image generation using Stable Diffusion
 - MemoryApplet for context storage and retrieval
 

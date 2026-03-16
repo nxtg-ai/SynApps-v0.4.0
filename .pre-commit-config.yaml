@@ -1,0 +1,35 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.3
+    hooks:
+      - id: ruff
+        args: ["--config", "apps/orchestrator/pyproject.toml"]
+        files: ^apps/orchestrator/
+      - id: ruff-format
+        args: ["--config", "apps/orchestrator/pyproject.toml"]
+        files: ^apps/orchestrator/
+
+  - repo: local
+    hooks:
+      - id: frontend-eslint
+        name: frontend-eslint
+        entry: npm --prefix apps/web-frontend exec -- eslint --config apps/web-frontend/eslint.config.mjs
+        language: system
+        files: ^apps/web-frontend/.*\.(js|jsx|mjs|cjs|ts|tsx)$
+      - id: frontend-prettier-check
+        name: frontend-prettier-check
+        entry: npm --prefix apps/web-frontend exec -- prettier --check
+        language: system
+        files: ^apps/web-frontend/
+      - id: frontend-typecheck
+        name: frontend-typecheck
+        entry: bash -lc 'cd apps/web-frontend && npm run typecheck'
+        language: system
+        pass_filenames: false
+        files: ^apps/web-frontend/(src/|tsconfig\\.json|tsconfig\\.typecheck\\.json)

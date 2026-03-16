@@ -1,0 +1,26 @@
+{
+  "id": "T-019",
+  "title": "Redesign Workflow Editor UI",
+  "description": "Overhaul the workflow editor layout: collapsible node palette (left), ReactFlow canvas (center), node inspector (right), execution log (bottom), top bar (name/run/save).",
+  "status": "completed",
+  "assigned_to": "claude",
+  "task_type": "implement",
+  "depends_on": [
+    "T-014",
+    "T-017",
+    "T-018"
+  ],
+  "locked_files": [
+    "apps/web-frontend/src/"
+  ],
+  "acceptance_criteria": [
+    "Editor layout matches spec",
+    "All panels functional and responsive",
+    "No major regressions"
+  ],
+  "created_at": "2026-02-15T03:19:12.347892295Z",
+  "updated_at": "2026-02-15T18:21:33.883935855Z",
+  "completed_at": "2026-02-15T18:21:33.883935114Z",
+  "plan_version": 2,
+  "retry_count": 0
+}

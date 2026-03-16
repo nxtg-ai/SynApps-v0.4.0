@@ -4,104 +4,228 @@ Database and API models for the SynApps orchestrator.
 This module defines SQLAlchemy ORM models for database persistence
 and Pydantic models for API validation.
 """
-from typing import Dict, List, Any, Optional
+from __future__ import annotations
+
 import time
-from sqlalchemy import Column, String, Integer, Float, Boolean, ForeignKey, JSON
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
-from pydantic import BaseModel, Field
+from typing import Any
 
-# SQLAlchemy Base
-Base = declarative_base()
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from sqlalchemy import JSON, Boolean, Float, ForeignKey, Index, Integer, String
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-# SQLAlchemy ORM Models
+
+class Base(DeclarativeBase):
+    """SQLAlchemy declarative base."""
+
+
+class User(Base):
+    """ORM model for authenticated users."""
+
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    email: Mapped[str] = mapped_column(String, nullable=False, unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[float] = mapped_column(Float, nullable=False)
+    updated_at: Mapped[float] = mapped_column(Float, nullable=False)
+
+    refresh_tokens: Mapped[list[RefreshToken]] = relationship(
+        "RefreshToken",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    api_keys: Mapped[list[UserAPIKey]] = relationship(
+        "UserAPIKey",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert ORM model to dictionary."""
+        return {
+            "id": self.id,
+            "email": self.email,
+            "is_active": self.is_active,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+        }
+
+
+class RefreshToken(Base):
+    """ORM model for persisted refresh tokens."""
+
+    __tablename__ = "refresh_tokens"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    token_hash: Mapped[str] = mapped_column(String, nullable=False, unique=True, index=True)
+    expires_at: Mapped[float] = mapped_column(Float, nullable=False)
+    revoked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[float] = mapped_column(Float, nullable=False)
+    last_used_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    user: Mapped[User] = relationship("User", back_populates="refresh_tokens")
+
+
+class UserAPIKey(Base):
+    """ORM model for encrypted user API keys."""
+
+    __tablename__ = "user_api_keys"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String, nullable=False, default="default")
+    key_prefix: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    encrypted_key: Mapped[str] = mapped_column(String, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[float] = mapped_column(Float, nullable=False)
+    last_used_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    user: Mapped[User] = relationship("User", back_populates="api_keys")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert ORM model to dictionary."""
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "name": self.name,
+            "key_prefix": self.key_prefix,
+            "is_active": self.is_active,
+            "created_at": self.created_at,
+            "last_used_at": self.last_used_at,
+        }
+
+
 class Flow(Base):
     """ORM model for workflow flows."""
+
     __tablename__ = "flows"
-    
-    id = Column(String, primary_key=True)
-    name = Column(String, nullable=False)
-    
-    # Relationships
-    nodes = relationship("FlowNode", back_populates="flow", cascade="all, delete-orphan")
-    edges = relationship("FlowEdge", back_populates="flow", cascade="all, delete-orphan")
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+
+    nodes: Mapped[list[FlowNode]] = relationship(
+        "FlowNode",
+        back_populates="flow",
+        cascade="all, delete-orphan",
+    )
+    edges: Mapped[list[FlowEdge]] = relationship(
+        "FlowEdge",
+        back_populates="flow",
+        cascade="all, delete-orphan",
+    )
+
+    def to_dict(self) -> dict[str, Any]:
         """Convert ORM model to dictionary."""
         return {
             "id": self.id,
             "name": self.name,
             "nodes": [node.to_dict() for node in self.nodes],
-            "edges": [edge.to_dict() for edge in self.edges]
+            "edges": [edge.to_dict() for edge in self.edges],
         }
 
 
 class FlowNode(Base):
     """ORM model for workflow nodes."""
+
     __tablename__ = "flow_nodes"
-    
-    id = Column(String, primary_key=True)
-    flow_id = Column(String, ForeignKey("flows.id", ondelete="CASCADE"), nullable=False)
-    type = Column(String, nullable=False)
-    position_x = Column(Float, nullable=False)
-    position_y = Column(Float, nullable=False)
-    data = Column(JSON, nullable=True)
-    
-    # Relationships
-    flow = relationship("Flow", back_populates="nodes")
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    flow_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("flows.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    type: Mapped[str] = mapped_column(String, nullable=False)
+    position_x: Mapped[float] = mapped_column(Float, nullable=False)
+    position_y: Mapped[float] = mapped_column(Float, nullable=False)
+    data: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+
+    flow: Mapped[Flow] = relationship("Flow", back_populates="nodes")
+
+    def to_dict(self) -> dict[str, Any]:
         """Convert ORM model to dictionary."""
         return {
             "id": self.id,
             "type": self.type,
             "position": {
                 "x": self.position_x,
-                "y": self.position_y
+                "y": self.position_y,
             },
-            "data": self.data or {}
+            "data": self.data or {},
         }
 
 
 class FlowEdge(Base):
     """ORM model for workflow edges."""
+
     __tablename__ = "flow_edges"
-    
-    id = Column(String, primary_key=True)
-    flow_id = Column(String, ForeignKey("flows.id", ondelete="CASCADE"), nullable=False)
-    source = Column(String, nullable=False)
-    target = Column(String, nullable=False)
-    animated = Column(Boolean, default=False)
-    
-    # Relationships
-    flow = relationship("Flow", back_populates="edges")
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    flow_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("flows.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    source: Mapped[str] = mapped_column(String, nullable=False)
+    target: Mapped[str] = mapped_column(String, nullable=False)
+    animated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    flow: Mapped[Flow] = relationship("Flow", back_populates="edges")
+
+    def to_dict(self) -> dict[str, Any]:
         """Convert ORM model to dictionary."""
         return {
             "id": self.id,
             "source": self.source,
             "target": self.target,
-            "animated": self.animated
+            "animated": self.animated,
         }
 
 
 class WorkflowRun(Base):
     """ORM model for workflow runs."""
+
     __tablename__ = "workflow_runs"
-    
-    id = Column(String, primary_key=True)
-    flow_id = Column(String, ForeignKey("flows.id", ondelete="SET NULL"), nullable=True)
-    status = Column(String, nullable=False, default="idle")
-    current_applet = Column(String, nullable=True)
-    progress = Column(Integer, nullable=False, default=0)
-    total_steps = Column(Integer, nullable=False, default=0)
-    start_time = Column(Float, nullable=False)
-    end_time = Column(Float, nullable=True)
-    results = Column(JSON, nullable=True)
-    error = Column(String, nullable=True)
-    
-    def to_dict(self) -> Dict[str, Any]:
+    __table_args__ = (
+        # start_time is the run creation timestamp used by history views.
+        Index("ix_workflow_runs_created_at", "start_time"),
+        Index("ix_workflow_runs_flow_status_created_at", "flow_id", "status", "start_time"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    flow_id: Mapped[str | None] = mapped_column(
+        String,
+        ForeignKey("flows.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    status: Mapped[str] = mapped_column(String, nullable=False, default="idle", index=True)
+    current_applet: Mapped[str | None] = mapped_column(String, nullable=True)
+    progress: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_steps: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    start_time: Mapped[float] = mapped_column(Float, nullable=False)
+    end_time: Mapped[float | None] = mapped_column(Float, nullable=True)
+    results: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    error: Mapped[str | None] = mapped_column(String, nullable=True)
+    error_details: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    input_data: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    completed_applets: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+
+    def to_dict(self) -> dict[str, Any]:
         """Convert ORM model to dictionary."""
         return {
             "run_id": self.id,
@@ -113,21 +237,25 @@ class WorkflowRun(Base):
             "start_time": self.start_time,
             "end_time": self.end_time,
             "results": self.results or {},
-            "error": self.error
+            "error": self.error,
+            "error_details": self.error_details or {},
+            "input_data": self.input_data,
+            "completed_applets": self.completed_applets or [],
         }
 
 
-# Pydantic API Models
 class FlowNodeModel(BaseModel):
     """API model for flow nodes."""
+
     id: str
     type: str
-    position: Dict[str, float]
-    data: Dict[str, Any] = Field(default_factory=dict)
+    position: dict[str, float]
+    data: dict[str, Any] = Field(default_factory=dict)
 
 
 class FlowEdgeModel(BaseModel):
     """API model for flow edges."""
+
     id: str
     source: str
     target: str
@@ -136,29 +264,713 @@ class FlowEdgeModel(BaseModel):
 
 class FlowModel(BaseModel):
     """API model for flows."""
-    id: str
+
+    id: str | None = None
     name: str
-    nodes: List[FlowNodeModel] = Field(default_factory=list)
-    edges: List[FlowEdgeModel] = Field(default_factory=list)
+    nodes: list[FlowNodeModel] = Field(default_factory=list)
+    edges: list[FlowEdgeModel] = Field(default_factory=list)
 
 
 class WorkflowRunStatusModel(BaseModel):
     """API model for workflow run status."""
+
     run_id: str
     flow_id: str
     status: str = "idle"
-    current_applet: Optional[str] = None
+    current_applet: str | None = None
     progress: int = 0
     total_steps: int = 0
     start_time: float = Field(default_factory=lambda: time.time())
-    end_time: Optional[float] = None
-    results: Dict[str, Any] = Field(default_factory=dict)
-    error: Optional[str] = None
-    
-    def dict(self, *args, **kwargs) -> Dict[str, Any]:
-        """Override dict method to provide a consistent output."""
-        result = super().dict(*args, **kwargs)
-        # Ensure results is never None
+    end_time: float | None = None
+    results: dict[str, Any] = Field(default_factory=dict)
+    error: str | None = None
+    error_details: dict[str, Any] = Field(default_factory=dict)
+    input_data: dict[str, Any] | None = None
+    completed_applets: list[str] = Field(default_factory=list)
+
+    def model_dump(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        """Ensure `results` remains a dictionary in serialized output."""
+        result = super().model_dump(*args, **kwargs)
         if result.get("results") is None:
             result["results"] = {}
         return result
+
+
+class AuthRegisterRequestModel(BaseModel):
+    """Registration payload for email/password authentication."""
+
+    email: str = Field(..., min_length=3, max_length=320)
+    password: str = Field(..., min_length=8, max_length=256)
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if "@" not in normalized or normalized.startswith("@") or normalized.endswith("@"):
+            raise ValueError("email must be a valid email address")
+        return normalized
+
+
+class AuthLoginRequestModel(BaseModel):
+    """Login payload for email/password authentication."""
+
+    email: str = Field(..., min_length=3, max_length=320)
+    password: str = Field(..., min_length=1, max_length=256)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        return value.strip().lower()
+
+
+class AuthRefreshRequestModel(BaseModel):
+    """Refresh token payload used to issue a new access token pair."""
+
+    refresh_token: str = Field(..., min_length=10, max_length=4096)
+
+
+class AuthTokenResponseModel(BaseModel):
+    """Access/refresh token response payload."""
+
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    access_expires_in: int
+    refresh_expires_in: int
+
+
+class UserProfileModel(BaseModel):
+    """Authenticated user profile payload."""
+
+    id: str
+    email: str
+    is_active: bool
+    created_at: float
+
+
+class APIKeyCreateRequestModel(BaseModel):
+    """Payload for creating a user API key."""
+
+    name: str = Field("default", min_length=1, max_length=100)
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        return value.strip()
+
+
+class APIKeyResponseModel(BaseModel):
+    """Metadata payload for stored API keys."""
+
+    id: str
+    name: str
+    key_prefix: str
+    is_active: bool
+    created_at: float
+    last_used_at: float | None = None
+
+
+class APIKeyCreateResponseModel(APIKeyResponseModel):
+    """Create response that includes the one-time plain API key value."""
+
+    api_key: str
+
+
+SUPPORTED_LLM_PROVIDERS = ("openai", "anthropic", "google", "ollama", "custom")
+
+
+class LLMMessageModel(BaseModel):
+    """Provider-agnostic LLM message."""
+
+    role: str = Field(..., min_length=1)
+    content: str = Field(..., description="Message text content")
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, value: str) -> str:
+        role = value.strip().lower()
+        if role not in {"system", "user", "assistant", "tool"}:
+            raise ValueError("role must be one of: system, user, assistant, tool")
+        return role
+
+
+class LLMNodeConfigModel(BaseModel):
+    """Configuration schema for the universal LLM node."""
+
+    model_config = ConfigDict(extra="allow")
+
+    label: str = Field("LLM", max_length=100)
+    provider: str = Field("openai")
+    model: str | None = None
+    system_prompt: str = ""
+    temperature: float = Field(0.7, ge=0.0, le=2.0)
+    max_tokens: int = Field(1024, ge=1, le=32768)
+    top_p: float = Field(1.0, ge=0.0, le=1.0)
+    stop_sequences: list[str] = Field(default_factory=list)
+    stream: bool = False
+    structured_output: bool = False
+    json_schema: dict[str, Any] | None = None
+    api_key: str | None = None
+    base_url: str | None = None
+    timeout_seconds: float = Field(120.0, gt=0.0, le=600.0)
+    headers: dict[str, str] = Field(default_factory=dict)
+    extra: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("provider")
+    @classmethod
+    def validate_provider(cls, value: str) -> str:
+        provider = value.strip().lower()
+        if provider not in SUPPORTED_LLM_PROVIDERS:
+            raise ValueError(
+                f"provider must be one of: {', '.join(SUPPORTED_LLM_PROVIDERS)}"
+            )
+        return provider
+
+
+class LLMRequestModel(BaseModel):
+    """Provider-agnostic LLM completion request."""
+
+    messages: list[LLMMessageModel] = Field(default_factory=list)
+    model: str = Field(..., min_length=1)
+    temperature: float = Field(0.7, ge=0.0, le=2.0)
+    max_tokens: int = Field(1024, ge=1, le=32768)
+    top_p: float = Field(1.0, ge=0.0, le=1.0)
+    stop_sequences: list[str] = Field(default_factory=list)
+    stream: bool = False
+    structured_output: bool = False
+    json_schema: dict[str, Any] | None = None
+    extra: dict[str, Any] = Field(default_factory=dict)
+
+
+class LLMUsageModel(BaseModel):
+    """Token usage summary."""
+
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+
+
+class LLMStreamChunkModel(BaseModel):
+    """Single chunk from a streaming completion."""
+
+    content: str = ""
+    done: bool = False
+    usage: LLMUsageModel | None = None
+
+
+class LLMResponseModel(BaseModel):
+    """Provider-agnostic completion response."""
+
+    content: str
+    model: str
+    provider: str
+    usage: LLMUsageModel = Field(default_factory=LLMUsageModel)
+    finish_reason: str = "stop"
+    raw: dict[str, Any] = Field(default_factory=dict)
+
+
+class LLMModelInfoModel(BaseModel):
+    """Metadata for a model exposed by a provider."""
+
+    id: str
+    name: str
+    provider: str
+    context_window: int = 0
+    supports_streaming: bool = True
+    supports_vision: bool = False
+    max_output_tokens: int | None = None
+
+
+class LLMProviderInfoModel(BaseModel):
+    """Provider availability and model catalog."""
+
+    name: str
+    configured: bool
+    reason: str = ""
+    models: list[LLMModelInfoModel] = Field(default_factory=list)
+
+
+SUPPORTED_IMAGE_PROVIDERS = ("openai", "stability", "flux")
+
+
+class ImageGenNodeConfigModel(BaseModel):
+    """Configuration schema for the universal image generation node."""
+
+    model_config = ConfigDict(extra="allow")
+
+    label: str = Field("Image Gen", max_length=100)
+    provider: str = Field("openai")
+    model: str | None = None
+    size: str = Field("1024x1024")
+    style: str = Field("photorealistic")
+    quality: str = Field("standard")
+    n: int = Field(1, ge=1, le=4)
+    response_format: str = Field("b64_json")
+    api_key: str | None = None
+    base_url: str | None = None
+    timeout_seconds: float = Field(120.0, gt=0.0, le=600.0)
+    headers: dict[str, str] = Field(default_factory=dict)
+    extra: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("provider")
+    @classmethod
+    def validate_provider(cls, value: str) -> str:
+        provider = value.strip().lower()
+        if provider not in SUPPORTED_IMAGE_PROVIDERS:
+            raise ValueError(
+                f"provider must be one of: {', '.join(SUPPORTED_IMAGE_PROVIDERS)}"
+            )
+        return provider
+
+    @field_validator("response_format")
+    @classmethod
+    def validate_response_format(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"b64_json", "url"}:
+            raise ValueError("response_format must be one of: b64_json, url")
+        return normalized
+
+
+class ImageGenRequestModel(BaseModel):
+    """Provider-agnostic image generation request."""
+
+    prompt: str = Field(..., min_length=1, max_length=10000)
+    negative_prompt: str = ""
+    model: str = Field(..., min_length=1)
+    size: str = "1024x1024"
+    style: str = "photorealistic"
+    quality: str = "standard"
+    n: int = Field(1, ge=1, le=4)
+    response_format: str = Field("b64_json")
+    extra: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("response_format")
+    @classmethod
+    def validate_response_format(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"b64_json", "url"}:
+            raise ValueError("response_format must be one of: b64_json, url")
+        return normalized
+
+
+class ImageGenResponseModel(BaseModel):
+    """Provider-agnostic image generation response."""
+
+    images: list[str] = Field(default_factory=list)
+    model: str
+    provider: str
+    revised_prompt: str | None = None
+    raw: dict[str, Any] = Field(default_factory=dict)
+
+
+class ImageModelInfoModel(BaseModel):
+    """Metadata for an image model exposed by a provider."""
+
+    id: str
+    name: str
+    provider: str
+    supports_base64: bool = True
+    supports_url: bool = True
+    max_images: int = 1
+
+
+class ImageProviderInfoModel(BaseModel):
+    """Provider availability and model catalog for image generation."""
+
+    name: str
+    configured: bool
+    reason: str = ""
+    models: list[ImageModelInfoModel] = Field(default_factory=list)
+
+
+SUPPORTED_MEMORY_BACKENDS = ("sqlite_fts", "chroma")
+
+
+class MemoryNodeConfigModel(BaseModel):
+    """Configuration schema for the persistent memory node."""
+
+    model_config = ConfigDict(extra="allow")
+
+    label: str = Field("Memory", max_length=100)
+    operation: str = Field("store")
+    backend: str = Field("sqlite_fts")
+    namespace: str = Field("default", min_length=1, max_length=200)
+    key: str | None = Field(None, max_length=200)
+    query: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    top_k: int = Field(5, ge=1, le=50)
+    persist_path: str | None = None
+    collection: str = Field("synapps_memory", min_length=1, max_length=200)
+    include_metadata: bool = True
+    extra: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("operation")
+    @classmethod
+    def validate_operation(cls, value: str) -> str:
+        operation = value.strip().lower()
+        if operation not in {"store", "retrieve", "delete", "clear"}:
+            raise ValueError("operation must be one of: store, retrieve, delete, clear")
+        return operation
+
+    @field_validator("backend")
+    @classmethod
+    def validate_backend(cls, value: str) -> str:
+        backend = value.strip().lower()
+        if backend not in SUPPORTED_MEMORY_BACKENDS:
+            raise ValueError(
+                f"backend must be one of: {', '.join(SUPPORTED_MEMORY_BACKENDS)}"
+            )
+        return backend
+
+    @field_validator("query")
+    @classmethod
+    def normalize_query(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("tags")
+    @classmethod
+    def normalize_tags(cls, value: list[str]) -> list[str]:
+        unique: list[str] = []
+        for item in value:
+            cleaned = item.strip()
+            if cleaned and cleaned not in unique:
+                unique.append(cleaned)
+        return unique
+
+
+class MemorySearchResultModel(BaseModel):
+    """Search result payload for memory retrieval responses."""
+
+    key: str
+    data: Any
+    score: float = 0.0
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+SUPPORTED_HTTP_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE")
+
+
+class HTTPRequestNodeConfigModel(BaseModel):
+    """Configuration schema for the HTTP request node."""
+
+    model_config = ConfigDict(extra="allow")
+
+    label: str = Field("HTTP Request", max_length=100)
+    url: str = Field(..., min_length=1, max_length=5000)
+    method: str = Field("GET")
+    headers: dict[str, str] = Field(default_factory=dict)
+    query_params: dict[str, Any] = Field(default_factory=dict)
+    body_template: Any | None = None
+    body_type: str = Field("auto")
+    timeout_seconds: float = Field(30.0, gt=0.0, le=600.0)
+    allow_redirects: bool = True
+    verify_ssl: bool = True
+    include_response_headers: bool = True
+    extra: dict[str, Any] = Field(default_factory=dict)
+    auth_type: str = Field("none")
+    auth_value: str | None = None
+    auth_header_name: str = Field("X-API-Key")
+    max_retries: int = Field(0, ge=0, le=5)
+    retry_backoff_factor: float = Field(0.5, ge=0.0, le=10.0)
+
+    @field_validator("url")
+    @classmethod
+    def validate_url(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("url cannot be blank")
+        return normalized
+
+    @field_validator("method")
+    @classmethod
+    def validate_method(cls, value: str) -> str:
+        method = value.strip().upper()
+        if method not in SUPPORTED_HTTP_METHODS:
+            raise ValueError(
+                f"method must be one of: {', '.join(SUPPORTED_HTTP_METHODS)}"
+            )
+        return method
+
+    @field_validator("body_type")
+    @classmethod
+    def validate_body_type(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"auto", "json", "text", "form", "none"}:
+            raise ValueError("body_type must be one of: auto, json, text, form, none")
+        return normalized
+
+    @field_validator("auth_type")
+    @classmethod
+    def validate_auth_type(cls, value: str) -> str:
+        if value not in {"none", "bearer", "basic", "api_key"}:
+            raise ValueError("auth_type must be one of: none, bearer, basic, api_key")
+        return value
+
+
+SUPPORTED_CODE_LANGUAGES = ("python", "javascript")
+
+
+class CodeNodeConfigModel(BaseModel):
+    """Configuration schema for the sandboxed code execution node."""
+
+    model_config = ConfigDict(extra="allow")
+
+    label: str = Field("Code", max_length=100)
+    language: str = Field("python")
+    code: str = Field("", max_length=200000)
+    timeout_seconds: float = Field(5.0, gt=0.0, le=120.0)
+    cpu_time_seconds: int = Field(3, ge=1, le=60)
+    memory_limit_mb: int = Field(256, ge=64, le=2048)
+    max_output_bytes: int = Field(262144, ge=1024, le=1048576)
+    working_dir: str = Field("/tmp")
+    env: dict[str, str] = Field(default_factory=dict)
+    extra: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("language")
+    @classmethod
+    def validate_language(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        alias_map = {
+            "py": "python",
+            "python3": "python",
+            "js": "javascript",
+            "node": "javascript",
+            "nodejs": "javascript",
+        }
+        normalized = alias_map.get(normalized, normalized)
+        if normalized not in SUPPORTED_CODE_LANGUAGES:
+            raise ValueError(
+                f"language must be one of: {', '.join(SUPPORTED_CODE_LANGUAGES)}"
+            )
+        return normalized
+
+    @field_validator("working_dir")
+    @classmethod
+    def validate_working_dir(cls, value: str) -> str:
+        normalized = value.strip() or "/tmp"
+        if not normalized.startswith("/tmp"):
+            raise ValueError("working_dir must be under /tmp")
+        return normalized
+
+
+SUPPORTED_TRANSFORM_OPERATIONS = (
+    "json_path",
+    "template",
+    "regex_replace",
+    "split_join",
+)
+
+
+class TransformNodeConfigModel(BaseModel):
+    """Configuration schema for the transform node."""
+
+    model_config = ConfigDict(extra="allow")
+
+    label: str = Field("Transform", max_length=100)
+    operation: str = Field("template")
+    source: Any = Field(default="{{content}}")
+    json_path: str = Field("$")
+    template: str = Field("{{source}}")
+    regex_pattern: str = Field("", max_length=5000)
+    regex_replacement: str = Field("")
+    regex_flags: str = Field("")
+    regex_count: int = Field(0, ge=0, le=10000)
+    split_delimiter: str = Field(",")
+    split_maxsplit: int = Field(-1, ge=-1, le=10000)
+    split_index: int | None = Field(None, ge=0, le=100000)
+    join_delimiter: str = Field(",")
+    return_list: bool = False
+    strip_items: bool = False
+    drop_empty: bool = False
+    extra: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("operation")
+    @classmethod
+    def validate_operation(cls, value: str) -> str:
+        normalized = value.strip().lower().replace("-", "_")
+        alias_map = {
+            "jsonpath": "json_path",
+            "json_extract": "json_path",
+            "extract": "json_path",
+            "template_string": "template",
+            "string_template": "template",
+            "format": "template",
+            "regex": "regex_replace",
+            "replace": "regex_replace",
+            "split": "split_join",
+            "join": "split_join",
+            "splitjoin": "split_join",
+        }
+        normalized = alias_map.get(normalized, normalized)
+        if normalized not in SUPPORTED_TRANSFORM_OPERATIONS:
+            raise ValueError(
+                f"operation must be one of: {', '.join(SUPPORTED_TRANSFORM_OPERATIONS)}"
+            )
+        return normalized
+
+    @field_validator("json_path")
+    @classmethod
+    def validate_json_path(cls, value: str) -> str:
+        normalized = value.strip() or "$"
+        if not normalized.startswith("$"):
+            normalized = f"${normalized if normalized.startswith('.') else f'.{normalized}'}"
+        return normalized
+
+    @field_validator("regex_flags")
+    @classmethod
+    def validate_regex_flags(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        allowed = {"i", "m", "s", "x"}
+        unique = []
+        for flag in normalized:
+            if flag not in allowed:
+                raise ValueError("regex_flags may contain only: i, m, s, x")
+            if flag not in unique:
+                unique.append(flag)
+        return "".join(unique)
+
+
+SUPPORTED_IF_ELSE_OPERATIONS = (
+    "contains",
+    "equals",
+    "regex",
+    "json_path",
+)
+
+
+class IfElseNodeConfigModel(BaseModel):
+    """Configuration schema for the conditional if/else routing node."""
+
+    model_config = ConfigDict(extra="allow")
+
+    label: str = Field("If / Else", max_length=100)
+    operation: str = Field("equals")
+    source: Any = Field(default="{{content}}")
+    value: Any | None = None
+    case_sensitive: bool = False
+    negate: bool = False
+    regex_pattern: str = Field("", max_length=5000)
+    regex_flags: str = Field("")
+    json_path: str = Field("$")
+    true_target: str | None = Field(None, max_length=200)
+    false_target: str | None = Field(None, max_length=200)
+    extra: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("operation")
+    @classmethod
+    def validate_operation(cls, value: str) -> str:
+        normalized = value.strip().lower().replace("-", "_")
+        alias_map = {
+            "equal": "equals",
+            "eq": "equals",
+            "contains_text": "contains",
+            "matches": "regex",
+            "regex_match": "regex",
+            "pattern": "regex",
+            "jsonpath": "json_path",
+            "json_path_exists": "json_path",
+            "path": "json_path",
+        }
+        normalized = alias_map.get(normalized, normalized)
+        if normalized not in SUPPORTED_IF_ELSE_OPERATIONS:
+            raise ValueError(
+                f"operation must be one of: {', '.join(SUPPORTED_IF_ELSE_OPERATIONS)}"
+            )
+        return normalized
+
+    @field_validator("regex_flags")
+    @classmethod
+    def validate_regex_flags(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        allowed = {"i", "m", "s", "x"}
+        unique = []
+        for flag in normalized:
+            if flag not in allowed:
+                raise ValueError("regex_flags may contain only: i, m, s, x")
+            if flag not in unique:
+                unique.append(flag)
+        return "".join(unique)
+
+    @field_validator("json_path")
+    @classmethod
+    def validate_json_path(cls, value: str) -> str:
+        normalized = value.strip() or "$"
+        if not normalized.startswith("$"):
+            normalized = f"${normalized if normalized.startswith('.') else f'.{normalized}'}"
+        return normalized
+
+    @field_validator("true_target", "false_target")
+    @classmethod
+    def normalize_targets(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+
+SUPPORTED_MERGE_STRATEGIES = (
+    "concatenate",
+    "array",
+    "first_wins",
+)
+
+
+class MergeNodeConfigModel(BaseModel):
+    """Configuration schema for fan-in merge behavior."""
+
+    model_config = ConfigDict(extra="allow")
+
+    label: str = Field("Merge", max_length=100)
+    strategy: str = Field("array")
+    delimiter: str = Field("\n", max_length=1000)
+    extra: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("strategy")
+    @classmethod
+    def validate_strategy(cls, value: str) -> str:
+        normalized = value.strip().lower().replace("-", "_")
+        alias_map = {
+            "concat": "concatenate",
+            "join": "concatenate",
+            "list": "array",
+            "first": "first_wins",
+            "firstwins": "first_wins",
+        }
+        normalized = alias_map.get(normalized, normalized)
+        if normalized not in SUPPORTED_MERGE_STRATEGIES:
+            raise ValueError(
+                f"strategy must be one of: {', '.join(SUPPORTED_MERGE_STRATEGIES)}"
+            )
+        return normalized
+
+
+class ForEachNodeConfigModel(BaseModel):
+    """Configuration schema for the for-each loop node."""
+
+    model_config = ConfigDict(extra="allow")
+
+    label: str = Field("For-Each", max_length=100)
+    array_source: str = Field(
+        "{{input}}",
+        description="Template expression or JSON path resolving to the array to iterate over.",
+    )
+    max_iterations: int = Field(
+        1000,
+        ge=1,
+        le=100000,
+        description="Maximum number of iterations before the loop aborts.",
+    )
+    parallel: bool = Field(
+        False,
+        description="When true, execute iterations concurrently instead of sequentially.",
+    )
+    concurrency_limit: int = Field(
+        10,
+        ge=1,
+        le=100,
+        description="Maximum concurrent iterations when parallel is enabled.",
+    )
+    extra: dict[str, Any] = Field(default_factory=dict)

@@ -125,6 +125,7 @@
 .template-button {
   padding: 6px 12px;
   background-color: white;
+  color: #333;
   border: 1px solid #d9d9d9;
   border-radius: 4px;
   font-size: 0.9rem;
@@ -137,12 +138,29 @@
   color: #40a9ff;
 }
 
+.load-button {
+  padding: 6px 12px;
+  background-color: white;
+  color: #333;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.load-button:hover {
+  border-color: #40a9ff;
+  color: #40a9ff;
+}
+
 .workflow-name-input {
   padding: 6px 12px;
   border: 1px solid #d9d9d9;
   border-radius: 4px;
   font-size: 0.9rem;
   min-width: 200px;
+  color: #333;
 }
 
 .workflow-name-input:focus {
@@ -154,6 +172,7 @@
 .save-button {
   padding: 6px 12px;
   background-color: white;
+  color: #333;
   border: 1px solid #d9d9d9;
   border-radius: 4px;
   font-size: 0.9rem;
@@ -179,6 +198,29 @@
 
 .run-button:hover {
   background-color: #40a9ff;
+}
+
+.export-button {
+  padding: 6px 12px;
+  background-color: white;
+  color: #333;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.export-button:hover {
+  border-color: #52c41a;
+  color: #52c41a;
+}
+
+.export-button:disabled {
+  background-color: #f5f5f5;
+  color: #d9d9d9;
+  cursor: not-allowed;
+  border-color: #d9d9d9;
 }
 
 .run-button:disabled, .save-button:disabled {
@@ -266,6 +308,7 @@
   font-family: monospace;
   font-size: 0.9rem;
   resize: vertical;
+  color: #333;
 }
 
 .input-textarea:focus {
@@ -305,6 +348,10 @@
 
 .node-item.memory {
   background-color: #f9f0ff;
+}
+
+.node-item.http_request {
+  background-color: #ecfeff;
 }
 
 .node-icon {

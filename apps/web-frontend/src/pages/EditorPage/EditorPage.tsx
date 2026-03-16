@@ -2,8 +2,8 @@
  * EditorPage component
  * Page for creating and editing workflows
  */
-import React, { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import React, { useEffect, useCallback } from 'react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import MainLayout from '../../components/Layout/MainLayout';
 import WorkflowCanvas from '../../components/WorkflowCanvas/WorkflowCanvas';
 import CodeEditor from '../../components/CodeEditor/CodeEditor';
@@ -11,30 +11,46 @@ import TemplateLoader from '../../components/TemplateLoader/TemplateLoader';
 import { Flow } from '../../types';
 import { generateId } from '../../utils/flowUtils';
 import apiService from '../../services/ApiService';
+import { useExecutionStore } from '../../stores/executionStore';
+import { useWorkflowStore } from '../../stores/workflowStore';
 import './EditorPage.css';
 
-const EditorPage: React.FC<{}> = () => {
+const EditorPage: React.FC = () => {
   const { flowId } = useParams<{ flowId: string }>();
   const navigate = useNavigate();
-  
-  const [flow, setFlow] = useState<Flow | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [isRunning, setIsRunning] = useState<boolean>(false);
-  const [isSaving, setIsSaving] = useState<boolean>(false);
-  const [showTemplates, setShowTemplates] = useState<boolean>(false);
-  const [showCodeEditor, setShowCodeEditor] = useState<boolean>(false);
-  const [selectedApplet, setSelectedApplet] = useState<string>('');
-  const [appletCode, setAppletCode] = useState<string>('');
-  const [inputData, setInputData] = useState<string>('');
-  const [imageGenerator, setImageGenerator] = useState<string>('stability');
-  
-  // State for workflow results
-  const [workflowResults, setWorkflowResults] = useState<any>(null);
+  const [searchParams] = useSearchParams();
+
+  const flow = useWorkflowStore((state) => state.flow);
+  const isLoading = useWorkflowStore((state) => state.isLoading);
+  const isSaving = useWorkflowStore((state) => state.isSaving);
+  const showTemplates = useWorkflowStore((state) => state.showTemplates);
+  const showCodeEditor = useWorkflowStore((state) => state.showCodeEditor);
+  const selectedApplet = useWorkflowStore((state) => state.selectedApplet);
+  const appletCode = useWorkflowStore((state) => state.appletCode);
+  const inputData = useWorkflowStore((state) => state.inputData);
+  const imageGenerator = useWorkflowStore((state) => state.imageGenerator);
+  const setFlow = useWorkflowStore((state) => state.setFlow);
+  const setIsLoading = useWorkflowStore((state) => state.setIsLoading);
+  const setIsSaving = useWorkflowStore((state) => state.setIsSaving);
+  const setShowTemplates = useWorkflowStore((state) => state.setShowTemplates);
+  const setShowCodeEditor = useWorkflowStore((state) => state.setShowCodeEditor);
+  const setSelectedApplet = useWorkflowStore((state) => state.setSelectedApplet);
+  const setAppletCode = useWorkflowStore((state) => state.setAppletCode);
+  const setInputData = useWorkflowStore((state) => state.setInputData);
+  const setImageGenerator = useWorkflowStore((state) => state.setImageGenerator);
+  const createEmptyFlow = useWorkflowStore((state) => state.createEmptyFlow);
+
+  const isRunning = useExecutionStore((state) => state.isRunning);
+  const workflowResults = useExecutionStore((state) => state.workflowResults);
+  const setIsRunning = useExecutionStore((state) => state.setIsRunning);
+  const setWorkflowResults = useExecutionStore((state) => state.setWorkflowResults);
+  const resetExecutionState = useExecutionStore((state) => state.resetExecutionState);
 
   // Load flow data if flowId is provided
   useEffect(() => {
     const loadFlow = async () => {
       setIsLoading(true);
+      resetExecutionState();
       
       if (flowId) {
         try {
@@ -54,36 +70,45 @@ const EditorPage: React.FC<{}> = () => {
     };
     
     loadFlow();
-  }, [flowId]);
+    
+    // Check for input_data in URL parameters
+    const encodedInputData = searchParams.get('input_data');
+    if (encodedInputData) {
+      try {
+        // Decode the base64 encoded input data
+        const decodedInputData = atob(encodedInputData);
+        setInputData(decodedInputData);
+      } catch (error) {
+        console.error('Error decoding input data:', error);
+      }
+    }
+  }, [flowId, searchParams]);
 
   // Subscribe to WebSocket updates for workflow results
   useEffect(() => {
     // Make sure WebSocket is connected
     import('../../services/WebSocketService').then(({ default: webSocketService }) => {
-      console.log('Setting up WebSocket connection for workflow:', flowId);
+
       // Ensure WebSocket is connected
       webSocketService.connect();
 
       // Subscribe to workflow status updates
       const unsubscribe = webSocketService.subscribe('workflow.status', (status) => {
-        console.log('Received workflow status update:', status);
+
         
         // Enhanced debug logging
-        console.log('Current flowId:', flowId);
-        console.log('Status flowId:', status.flow_id);
-        console.log('Status:', status.status);
-        console.log('Results:', status.results);
+
+
+
+
         
-        // More relaxed condition - just check if we have results when status is success
-        if (status.status === 'success' && status.results) {
-          console.log('Setting workflow results:', status.results);
-          setWorkflowResults(status.results);
+        if (status.status === 'success') {
+          if (status.results) {
+            setWorkflowResults(status.results);
+          }
           setIsRunning(false);
-          
-          // Force re-render
-          setTimeout(() => {
-            console.log('Current results state:', status.results);
-          }, 100);
+        } else if (status.status === 'error') {
+          setIsRunning(false);
         }
       });
 
@@ -91,45 +116,19 @@ const EditorPage: React.FC<{}> = () => {
         unsubscribe();
       };
     });
-  }, [flowId]);
-  
-  
-  // Create an empty flow
-  const createEmptyFlow = () => {
-    const newFlow: Flow = {
-      id: generateId(),
-      name: 'New Workflow',
-      nodes: [
-        {
-          id: generateId(),
-          type: 'start',
-          position: { x: 250, y: 25 },
-          data: { label: 'Start' }
-        },
-        {
-          id: generateId(),
-          type: 'end',
-          position: { x: 250, y: 500 },
-          data: { label: 'End' }
-        }
-      ],
-      edges: []
-    };
-    
-    setFlow(newFlow);
-  };
+  }, [flowId, setIsRunning, setWorkflowResults]);
   
   // Save the flow
   const saveFlow = async () => {
     if (!flow) return;
-    
+    if (!flow.name || flow.name.trim() === '') return;
     setIsSaving(true);
-    
     try {
       const response = await apiService.saveFlow(flow);
-      
+      // Always update the flow ID after save
+      setFlow({ ...flow, id: response.id });
       // If this is a new flow, navigate to the new URL
-      if (!flowId) {
+      if (!flowId || flowId !== response.id) {
         navigate(`/editor/${response.id}`, { replace: true });
       }
     } catch (error) {
@@ -157,17 +156,22 @@ const EditorPage: React.FC<{}> = () => {
         }
       }
       
-      // Add image generator preference to context
-      if (!parsedInput.context) {
-        parsedInput.context = {};
+      // Only inject image generator preference when the workflow has an artist node
+      const hasArtistNode = flow.nodes.some(n => n.type === 'artist');
+      if (hasArtistNode) {
+        if (!parsedInput.context) {
+          parsedInput.context = {};
+        }
+        parsedInput.context.image_generator = imageGenerator;
       }
-      parsedInput.context.image_generator = imageGenerator;
       
-      console.log('Running workflow with input:', parsedInput);
+
       await apiService.runFlow(flow.id, parsedInput);
+      // Don't reset isRunning here — the WebSocket 'workflow.status' handler
+      // will set isRunning(false) when the run completes or errors.
     } catch (error) {
       console.error('Error running flow:', error);
-    } finally {
+      // Only reset on HTTP error (the run never started)
       setIsRunning(false);
     }
   };
@@ -276,14 +280,14 @@ class ${nodeType.charAt(0).toUpperCase() + nodeType.slice(1)}Applet(BaseApplet):
       
       // Update the flow state
       setFlow(updatedFlow);
-      console.log(`New node of type ${nodeType} with ID ${nodeId} added to the workflow`);
+
     }
   };
   
   // Handle applet code save
   const handleCodeSave = (code: string) => {
     // In a real implementation, we would send the code to the backend
-    console.log(`Saving ${selectedApplet} applet code:`, code);
+
     
     // Close the editor
     setShowCodeEditor(false);
@@ -298,24 +302,54 @@ class ${nodeType.charAt(0).toUpperCase() + nodeType.slice(1)}Applet(BaseApplet):
       >
         Templates
       </button>
+      <button 
+        className="load-button"
+        onClick={() => navigate('/history')}
+      >
+        Load
+      </button>
       <input
         type="text"
         className="workflow-name-input"
         value={flow?.name || ''}
-        onChange={(e) => setFlow(prev => prev ? { ...prev, name: e.target.value } : null)}
+        onChange={(e) => {
+          if (!flow) return;
+          setFlow({ ...flow, name: e.target.value });
+        }}
         placeholder="Workflow Name"
       />
       <button 
         className="save-button"
         onClick={saveFlow}
-        disabled={isSaving || !flow}
+        disabled={isSaving || !flow || !flow.name || flow.name.trim() === ''}
       >
         {isSaving ? 'Saving...' : 'Save'}
       </button>
-      <button 
+      <button
+        className="export-button"
+        onClick={async () => {
+          if (!flow?.id || !flowId) return;
+          try {
+            const data = await apiService.exportFlow(flow.id);
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${(flow.name || 'workflow').replace(/[^a-zA-Z0-9_-]/g, '_')}.synapps.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+          } catch (error) {
+            console.error('Export failed:', error);
+          }
+        }}
+        disabled={!flow?.id || !flowId}
+      >
+        Export
+      </button>
+      <button
         className="run-button"
         onClick={runFlow}
-        disabled={isRunning || !flow}
+        disabled={isRunning || !flow || !flow.id || !flowId}
       >
         {isRunning ? 'Running...' : 'Run Workflow'}
       </button>
@@ -330,10 +364,7 @@ class ${nodeType.charAt(0).toUpperCase() + nodeType.slice(1)}Applet(BaseApplet):
         ) : flow ? (
           <div className="editor-container">
             <div className="canvas-container">
-              <WorkflowCanvas 
-                flow={flow} 
-                onFlowChange={handleFlowChange} 
-              />
+              <WorkflowCanvas flow={flow} onFlowChange={handleFlowChange} />
             </div>
             <div className="editor-sidebar">
               <div className="input-panel">
@@ -349,6 +380,7 @@ class ${nodeType.charAt(0).toUpperCase() + nodeType.slice(1)}Applet(BaseApplet):
                   rows={8}
                 />
                 
+                {flow.nodes.some(n => n.type === 'artist') && (
                 <div className="generator-selector">
                   <label htmlFor="image-generator">Image Generator:</label>
                   <select
@@ -368,6 +400,7 @@ class ${nodeType.charAt(0).toUpperCase() + nodeType.slice(1)}Applet(BaseApplet):
                     )}
                   </div>
                 </div>
+                )}
               </div>
               
               {/* Output Data Panel */}
@@ -375,7 +408,21 @@ class ${nodeType.charAt(0).toUpperCase() + nodeType.slice(1)}Applet(BaseApplet):
               <div className="node-panel">
                 <h3>Available Nodes</h3>
                 <div className="node-list">
-                  <div 
+                  <div
+                    className="node-item llm"
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData('application/reactflow', JSON.stringify({
+                        type: 'llm',
+                        data: { label: 'LLM', provider: 'openai', model: 'gpt-4o', temperature: 0.7, max_tokens: 1000 }
+                      }));
+                    }}
+                    onClick={() => handleNodeClick(generateId(), 'llm')}
+                  >
+                    <span className="node-icon">⚡</span>
+                    <span className="node-label">LLM</span>
+                  </div>
+                  <div
                     className="node-item writer"
                     draggable
                     onDragStart={(e) => {
@@ -403,7 +450,7 @@ class ${nodeType.charAt(0).toUpperCase() + nodeType.slice(1)}Applet(BaseApplet):
                     <span className="node-icon">🎨</span>
                     <span className="node-label">Artist</span>
                   </div>
-                  <div 
+                  <div
                     className="node-item memory"
                     draggable
                     onDragStart={(e) => {
@@ -417,6 +464,91 @@ class ${nodeType.charAt(0).toUpperCase() + nodeType.slice(1)}Applet(BaseApplet):
                     <span className="node-icon">🧠</span>
                     <span className="node-label">Memory</span>
                   </div>
+                  <div
+                    className="node-item merge"
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData('application/reactflow', JSON.stringify({
+                        type: 'merge',
+                        data: { label: 'Merge', strategy: 'array', delimiter: '\n' }
+                      }));
+                    }}
+                    onClick={() => handleNodeClick(generateId(), 'merge')}
+                  >
+                    <span className="node-icon">🔀</span>
+                    <span className="node-label">Merge</span>
+                  </div>
+                  <div
+                    className="node-item for_each"
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData('application/reactflow', JSON.stringify({
+                        type: 'for_each',
+                        data: { label: 'For-Each', array_source: '{{input}}', max_iterations: 1000, parallel: false }
+                      }));
+                    }}
+                    onClick={() => handleNodeClick(generateId(), 'for_each')}
+                  >
+                    <span className="node-icon">🔄</span>
+                    <span className="node-label">For-Each</span>
+                  </div>
+                  <div
+                    className="node-item if_else"
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData('application/reactflow', JSON.stringify({
+                        type: 'if_else',
+                        data: { label: 'If/Else', operation: 'equals', source: '{{content}}', value: '' }
+                      }));
+                    }}
+                    onClick={() => handleNodeClick(generateId(), 'if_else')}
+                  >
+                    <span className="node-icon">🔀</span>
+                    <span className="node-label">If/Else</span>
+                  </div>
+                  <div
+                    className="node-item code"
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData('application/reactflow', JSON.stringify({
+                        type: 'code',
+                        data: { label: 'Code', language: 'python', code: '', timeout_seconds: 5, memory_limit_mb: 256 }
+                      }));
+                    }}
+                    onClick={() => handleNodeClick(generateId(), 'code')}
+                  >
+                    <span className="node-icon">{"</>"}</span>
+                    <span className="node-label">Code</span>
+                  </div>
+                  <div
+                    className="node-item http_request"
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData(
+                        'application/reactflow',
+                        JSON.stringify({
+                          type: 'http_request',
+                          data: {
+                            label: 'HTTP Request',
+                            method: 'GET',
+                            url: '',
+                            headers: {},
+                            query_params: {},
+                            body_type: 'auto',
+                            timeout_seconds: 30,
+                            allow_redirects: true,
+                            verify_ssl: true,
+                            auth_type: 'none',
+                            max_retries: 0,
+                          },
+                        })
+                      );
+                    }}
+                    onClick={() => handleNodeClick(generateId(), 'http_request')}
+                  >
+                    <span className="node-icon">🌐</span>
+                    <span className="node-label">HTTP Request</span>
+                  </div>
                 </div>
               </div>
               
@@ -426,9 +558,9 @@ class ${nodeType.charAt(0).toUpperCase() + nodeType.slice(1)}Applet(BaseApplet):
                 
                 {/* Workflow metadata */}
                 <div className="debug-info" style={{ fontSize: '12px', marginBottom: '10px', color: '#666' }}>
-                  <div>Flow ID: {flowId}</div>
-                  <div>Results available: {workflowResults ? 'Yes' : 'No'}</div>
-                </div>
+  <div>Flow ID: {flow?.id || flowId || 'Not saved'}</div>
+  <div>Results available: {workflowResults ? 'Yes' : 'No'}</div>
+</div>
                 
                 {workflowResults ? (
                   <>
@@ -458,11 +590,11 @@ class ${nodeType.charAt(0).toUpperCase() + nodeType.slice(1)}Applet(BaseApplet):
                       
                       {/* Direct access to the complete workflow results for image detection */}
                       {(() => {
-                        console.log('Complete workflow results:', workflowResults);
+
                         
                         // CASE 1: Check if artist data exists directly in workflowResults
                         if (workflowResults.artist) {
-                          console.log('Artist data found:', workflowResults.artist);
+
                           
                           // Case 1.1: Direct image URL
                           if (workflowResults.artist.image_url) {
@@ -543,7 +675,7 @@ class ${nodeType.charAt(0).toUpperCase() + nodeType.slice(1)}Applet(BaseApplet):
                         
                         // CASE 2: Check artist node in the top-level nodes collection
                         if (workflowResults.nodes && workflowResults.nodes.artist) {
-                          console.log('Artist data found in nodes:', workflowResults.nodes.artist);
+
                           const artistNode = workflowResults.nodes.artist;
                           
                           // Similar checks for the artist node
@@ -607,7 +739,7 @@ class ${nodeType.charAt(0).toUpperCase() + nodeType.slice(1)}Applet(BaseApplet):
                         }
                         
                         // CASE 3: Look for any property that could be an image in the entire result
-                        console.log('Scanning entire result for potential image data');
+
                         const scanForImageData = (obj: any, path = ''): any => {
                           if (!obj || typeof obj !== 'object') return null;
                           
@@ -619,7 +751,7 @@ class ${nodeType.charAt(0).toUpperCase() + nodeType.slice(1)}Applet(BaseApplet):
                             // Look for common image property names
                             if ((key === 'image' || key === 'image_url' || key === 'image_data' || 
                                 key === 'base64' || key === 'url') && typeof value === 'string') {
-                              console.log(`Found potential image at ${currentPath}:`, value.substring(0, 30));
+
                               
                               // For URLs
                               if (value.startsWith('http')) {
@@ -649,7 +781,7 @@ class ${nodeType.charAt(0).toUpperCase() + nodeType.slice(1)}Applet(BaseApplet):
                         
                         const imageData = scanForImageData(workflowResults);
                         if (imageData) {
-                          console.log('Found image data through deep scan:', imageData);
+
                           if (imageData.type === 'url') {
                             return (
                               <div className="image-container">

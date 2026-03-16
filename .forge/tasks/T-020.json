@@ -1,0 +1,24 @@
+{
+  "id": "T-020",
+  "title": "Implement Node Card Redesign and Validation",
+  "description": "Update node cards to have category-colored borders, status indicators, mini-previews, port type hints, and connection validation logic.",
+  "status": "completed",
+  "assigned_to": "codex",
+  "task_type": "implement",
+  "depends_on": [
+    "T-019"
+  ],
+  "locked_files": [
+    "apps/web-frontend/src/"
+  ],
+  "acceptance_criteria": [
+    "Node cards styled as specified",
+    "Status indicators and mini-previews work",
+    "Invalid connections prevented"
+  ],
+  "created_at": "2026-02-15T03:19:12.347892763Z",
+  "updated_at": "2026-02-15T18:34:45.910258012Z",
+  "completed_at": "2026-02-15T18:34:45.910257378Z",
+  "plan_version": 2,
+  "retry_count": 0
+}
