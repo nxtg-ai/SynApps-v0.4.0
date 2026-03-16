@@ -1520,6 +1520,12 @@ This was self-authorized per cycle 66 proposal and standing CoS authorization fr
 
 ---
 
+> Last updated: 2026-03-15 (Wolf) — cycle 71 (idle)
+
+**Cycle 71 — nothing shipped.** No new CoS responses or directives. HEAD at `393b7c2`. Standing by.
+
+---
+
 ## Team Questions
 
 _(Project team: add questions for ASIF CoS here. They will be answered during the next enrichment cycle.)_
